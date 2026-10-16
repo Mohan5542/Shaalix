@@ -250,6 +250,49 @@
       .x-tw{position:relative}
       .x-creds .x-tw td{overflow-wrap:anywhere}
       #v-dyn .breakdown dd{min-width:0;overflow-wrap:anywhere}
+      /* Student fee payment modal (UPI QR) */
+      html.x-modal-open,html.x-modal-open body{overflow:hidden}
+      .x-modal{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:16px;background:rgb(22 31 57 / .6);overflow-y:auto;overscroll-behavior:contain}
+      .x-modal__box{position:relative;display:grid;grid-template-columns:minmax(0,1fr);gap:16px;width:min(560px,100%);max-height:calc(100dvh - 32px);overflow-y:auto;padding:clamp(18px,3vw,28px);background:var(--x-surface);color:var(--text-primary);border-radius:var(--r-l);box-shadow:0 24px 80px rgb(0 0 0 / .35)}
+      .x-modal__box>*{min-width:0}
+      .x-modal__box h2{font:var(--type-heading)}
+      .x-modal .x-form{padding:0;border:0;box-shadow:none;background:none}
+      .x-modal .x-form h3{font:var(--type-body-strong)}
+      .x-modal__note{margin:0;padding-top:12px;border-top:1px solid var(--stroke-secondary);color:var(--text-secondary)}
+      .x-pm__bal{display:grid;gap:2px;padding:14px 16px;border-radius:var(--r-s);background:var(--x-tint)}
+      .x-pm__bal span,.x-pm__bal small{font:var(--type-caption);color:var(--text-secondary)}
+      .x-pm__bal b{font:var(--weight-bold) var(--size-figure)/1.1 var(--sans)}
+      .x-f input[readonly]{background:var(--fill-tertiary);cursor:default}
+      .x-qr{display:grid;justify-items:center;gap:6px;text-align:center}
+      .x-qr__img{display:grid;place-items:center;width:min(232px,64vw);aspect-ratio:1;padding:6px;background:#fff;border:1px solid var(--stroke-primary);border-radius:var(--r-s)}
+      .x-qr__img svg{display:block;width:100%;height:100%}
+      .x-qr__img .fineprint{color:#636366;padding:8px}
+      .x-qr__amt{font:var(--weight-bold) var(--size-figure)/1.1 var(--sans)}
+      .x-qr__to{font:var(--type-small)}
+      .x-done{display:grid;justify-items:center;gap:6px;text-align:center}
+      .x-done__tick{display:grid;place-items:center;width:56px;height:56px;border-radius:50%;background:var(--fill-system-green);color:#fff;font:600 28px/1 var(--sans)}
+      .x-done h3{font:var(--type-heading)}
+      .x-paid{display:inline-flex;align-items:center;gap:6px;font:var(--type-label);color:var(--fill-system-green);white-space:nowrap}
+      .x-paid::before{content:"\2713"}
+      .x-tw .x-btn{min-height:40px;padding:0 16px}
+      .x-btn:disabled{opacity:.5;cursor:not-allowed}
+      .x-btn--danger{background:var(--fill-system-red)}.x-btn--danger:hover{background:#b0262b}
+      /* Excel import / export */
+      .x-file{position:relative;cursor:pointer}.x-file:focus-within{outline:2px solid var(--x-indigo);outline-offset:2px}
+      .x-chips{display:flex;flex-wrap:wrap;gap:6px;margin:0}
+      .x-imp{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;min-width:0;padding:clamp(16px,2.5vw,24px);border:1px solid var(--stroke-primary);border-radius:var(--r-l)}
+      .x-imp>*{min-width:0}
+      .x-imp h3{font:var(--type-heading)}
+      .x-imp details{border:1px solid var(--stroke-secondary);border-radius:var(--r-s);padding:12px 14px;min-width:0}
+      .x-imp details>*{min-width:0}
+      .x-imp summary{cursor:pointer;font:var(--type-label);min-height:24px}
+      .x-imp details>*+*{margin-top:10px}
+      .x-imp fieldset{border:0;padding:0;margin:0}
+      .x-probs{margin:0;padding-left:18px;font:var(--type-small);color:var(--fill-system-red)}.x-probs li+li{margin-top:4px}
+      .x-warn{margin:0;padding:12px 16px;border-left:4px solid var(--fill-system-red);border-radius:var(--r-s);background:color-mix(in srgb,var(--fill-system-red) 8%,transparent);font:var(--type-small)}
+      .x-imp .x-tw table.x-raw{min-width:0}
+      .x-imp table.x-raw td{white-space:nowrap;max-width:260px;overflow:hidden;text-overflow:ellipsis}
+      @media (max-width:600px){.x-modal{padding:8px;align-items:end}.x-modal__box{max-height:calc(100dvh - 16px)}}
       @media (max-width:600px){.x-bar>.x-f{flex:1 1 100%;width:100%}.x-bar input,.x-bar select{width:100%}.x-creds .x-tw table{min-width:0}.x-creds .x-tw td,.x-creds .x-tw th{white-space:normal}}
     </style>
   </head>
@@ -1562,8 +1605,9 @@
       }
 
       /* =====================================================================
-         DEMO PORTAL: front-end only. All state lives in memory below and
-         resets on refresh (no localStorage or cookies).
+         DEMO PORTAL: front-end only. All state lives in the DB module below
+         and is saved to this browser's localStorage, so payments and imports
+         survive a refresh. Admins can wipe it with "Reset demo data".
          ===================================================================== */
       const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
       const shiftISO = (iso, days) => { const [y, m, d] = iso.split("-").map(Number); const t = new Date(y, m - 1, d + days); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`; };
@@ -1577,8 +1621,8 @@
       //       admins: college_id = auth.jwt() ->> 'college_id'; students: student_id = auth.uid(), status = 'approved'
       //   The UI only ever talks to DB, so swapping the body of this module is the whole migration.
       const DB = (() => {
-        const T = { colleges: [], users: [], students: [], fees: [], attendance: {}, marks: [], notices: [] };
-        let session = null, seq = 1000;
+        const blank = () => ({ colleges: [], users: [], students: [], fees: [], payments: [], attendance: {}, marks: [], notices: [] });
+        let T = blank(), session = null, seq = 1000;
         const uid = (p) => `${p}_${(++seq).toString(36)}`;
         const clone = (x) => (x === undefined ? x : JSON.parse(JSON.stringify(x)));
         const fail = (message, field) => { const e = new Error(message); e.field = field; throw e; };
@@ -1588,6 +1632,44 @@
         const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/, PHONE = /^(\+?91|0)?[6-9]\d{9}$/;
         const TYPES = ["School", "Junior College", "Degree", "Engineering"];
         const ATT = { P: "Present", A: "Absent", L: "Leave" };
+
+        /* Excel sheets: [key, header, kind, required, header aliases]. Columns marked info are exported but not read back. */
+        const ROLL = ["roll", "rollno", "rollnumber", "admissionno", "admissionnumber", "studentid"];
+        const SPEC = [
+          { type: "students", sheet: "Students", label: "Students", alias: ["student", "studentlist"], cols: [["roll", "Roll No", "text", 1, ROLL], ["name", "Name", "text", 1, ["studentname", "fullname"]], ["cls", "Class / Course", "text", 1, ["class", "course"]], ["sec", "Section / Year", "text", 1, ["section", "sec"]], ["email", "Email", "text", 1, ["emailid", "mail"]], ["phone", "Phone", "text", 1, ["mobile", "phoneno", "mobileno", "phonenumber", "mobilenumber"]], ["status", "Status", "text", 0, []], ["created", "Joined On", "date", 0, ["joined", "joiningdate", "admissiondate", "created"]]] },
+          { type: "fees", sheet: "Fees", label: "Fees", alias: ["fee", "feeitems", "feestructure"], cols: [["id", "Fee ID", "text", 0, []], ["roll", "Roll No", "text", 1, ROLL], ["name", "Student Name", "info", 0, []], ["term", "Semester / Year", "text", 1, ["term", "semester", "sem", "year"]], ["head", "Fee Head", "text", 1, ["feetype", "particulars", "feename"]], ["amount", "Amount (₹)", "money", 1, ["totalamount", "feeamount", "total"]], ["due", "Due Date", "date", 1, ["due"]], ["paid", "Paid (₹)", "money", 0, ["amountpaid", "paidamount"]], ["balance", "Balance (₹)", "info-money", 0, []], ["status", "Status", "info", 0, []]] },
+          { type: "payments", sheet: "Payments", label: "Payments", alias: ["payment", "feepayments", "transactions", "receipts"], cols: [["id", "Payment ID", "text", 0, ["receiptno", "receiptid"]], ["at", "Date & Time", "datetime", 1, ["date", "datetime", "paidon", "paymentdate"]], ["roll", "Roll No", "text", 1, ROLL], ["name", "Student Name", "info", 0, []], ["fee_id", "Fee ID", "text", 0, []], ["fee_label", "Fee", "text", 0, ["feehead", "feelabel", "particulars"]], ["amount", "Amount (₹)", "money", 1, ["amountpaid"]], ["payer", "Payer", "text", 0, ["payername", "paidby"]], ["mode", "Mode / UPI App", "text", 0, ["mode", "paymentmode", "upiapp", "app"]], ["ref", "Reference / UTR", "text", 0, ["utr", "utrno", "utrnumber", "reference", "referenceno", "transactionid", "txnid"]], ["by", "Recorded By", "text", 0, ["recordedby"]]] },
+          { type: "attendance", sheet: "Attendance", label: "Attendance", alias: ["attendancerecords"], cols: [["roll", "Roll No", "text", 1, ROLL], ["name", "Student Name", "info", 0, []], ["date", "Date", "date", 1, []], ["status", "Status", "text", 1, ["attendance"]]] },
+          { type: "marks", sheet: "Marks", label: "Marks", alias: ["mark", "results", "exammarks"], cols: [["id", "Mark ID", "text", 0, []], ["roll", "Roll No", "text", 1, ROLL], ["name", "Student Name", "info", 0, []], ["exam", "Exam", "text", 1, ["examname", "test"]], ["subject", "Subject", "text", 1, []], ["max", "Max Marks", "num", 1, ["max", "outof", "maximummarks"]], ["score", "Marks", "num", 1, ["score", "marksobtained", "obtained"]], ["pct", "Percent", "info", 0, []], ["grade", "Grade", "info", 0, []]] },
+          { type: "notices", sheet: "Notices", label: "Notices", alias: ["notice", "announcements"], cols: [["id", "Notice ID", "text", 0, []], ["date", "Date", "date", 1, ["posted", "postedon"]], ["title", "Title", "text", 1, ["subject", "heading"]], ["text", "Notice", "text", 1, ["text", "message", "body", "details", "description"]]] },
+        ];
+        const INFO_SHEETS = ["college", "instructions", "readme", "about"];
+        const nrm = (h) => String(h ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        const pad2 = (n) => String(n).padStart(2, "0");
+        const MON = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+        const isoOk = (y, m, d) => { const t = new Date(Date.UTC(y, m - 1, d)); return y >= 1900 && y <= 2200 && t.getUTCMonth() === m - 1 && t.getUTCDate() === d ? `${y}-${pad2(m)}-${pad2(d)}` : null; };
+        /* Excel serial numbers and common Indian date formats -> YYYY-MM-DD */
+        function toISO(v) {
+          if (v instanceof Date && !isNaN(v)) return isoOk(v.getFullYear(), v.getMonth() + 1, v.getDate());
+          if (typeof v === "number" && isFinite(v) && v > 0) { const t = new Date(Math.round((v - 25569) * 1440) * 60000); return isoOk(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate()); }
+          const s = tx(v); let m;
+          if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T].*)?$/))) return isoOk(+m[1], +m[2], +m[3]);
+          if ((m = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})(?: .*)?$/))) return isoOk(+m[3], +m[2], +m[1]);
+          if ((m = s.match(/^(\d{1,2})[- ]([A-Za-z]{3})[A-Za-z]*[- ,]+(\d{4})(?: .*)?$/)) && MON.includes(m[2].toLowerCase())) return isoOk(+m[3], MON.indexOf(m[2].toLowerCase()) + 1, +m[1]);
+          return null;
+        }
+        /* Date & time to the minute -> "YYYY-MM-DD HH:MM" */
+        function toStamp(v) {
+          if (typeof v === "number" && isFinite(v) && v > 0) { const t = new Date(Math.round((v - 25569) * 1440) * 60000); const d = isoOk(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate()); return d && `${d} ${pad2(t.getUTCHours())}:${pad2(t.getUTCMinutes())}`; }
+          if (v instanceof Date && !isNaN(v)) { const d = toISO(v); return d && `${d} ${pad2(v.getHours())}:${pad2(v.getMinutes())}`; }
+          const s = tx(v), d = toISO(s); if (!d) return null;
+          const m = s.match(/(\d{1,2}):(\d{2})(?::\d{2})?\s*([ap]m)?$/i); if (!m) return `${d} 00:00`;
+          let h = +m[1]; const mi = +m[2], ap = (m[3] || "").toLowerCase();
+          if (ap === "pm" && h < 12) h += 12; if (ap === "am" && h === 12) h = 0;
+          return h < 24 && mi < 60 ? `${d} ${pad2(h)}:${pad2(mi)}` : null;
+        }
+        const toNum = (v) => { if (typeof v === "number") return isFinite(v) ? v : NaN; const s = tx(v).replace(/[₹,\s]/g, "").replace(/^rs\.?/i, ""); return /^-?\d+(\.\d+)?$/.test(s) ? Number(s) : NaN; };
+        const cellTxt = (v) => (v instanceof Date ? v.toISOString().slice(0, 10) : String(v ?? "").trim());
 
         /* Access rules (the future RLS policies) */
         const need = (role) => { if (!session || (role && session.role !== role)) fail(role === "admin" ? "Sign in as a college admin first." : "Sign in first."); return session; };
@@ -1600,7 +1682,11 @@
         const checkPhone = (p) => { if (!PHONE.test(tx(p).replace(/[\s()-]/g, ""))) fail("Enter a valid 10-digit mobile number.", "phone"); };
         const checkPass = (d) => { if (String(d.password || "").length < 8) fail("Use at least 8 characters.", "password"); if (d.password !== d.confirm) fail("Passwords do not match.", "confirm"); };
         const classOf = (s) => `${s.cls} · ${s.sec}`;
-        const feeOut = (f) => ({ ...clone(f), balance: Math.max(0, f.amount - f.paid), status: f.paid >= f.amount ? "Paid" : f.paid > 0 ? "Partial" : "Due" });
+        const r2 = (n) => Math.round(n * 100) / 100;
+        const rupees = (n) => "₹" + r2(n).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+        const nowStamp = () => { const d = new Date(), p = (n) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; };
+        const feeLabel = (f) => `${f.term} · ${f.head}`;
+        const feeOut = (f) => ({ ...clone(f), label: feeLabel(f), balance: Math.max(0, r2(f.amount - f.paid)), status: f.paid >= f.amount ? "Paid" : f.paid > 0 ? "Partial" : "Due" });
         const markOut = (m) => { const pct = Math.round((m.score / m.max) * 1000) / 10; return { ...clone(m), pct, grade: gradeOf(pct) }; };
         const newCode = () => { let c; do c = "SHX-" + (1000 + Math.floor(Math.random() * 9000)); while (T.colleges.some((x) => x.code === c)); return c; };
         const collegeOf = (id) => T.colleges.find((c) => c.id === id);
@@ -1617,7 +1703,12 @@
           T.users.push({ id: uid("usr"), college_id, role: "student", email: st.email, pass: hash(d.password), student_id: st.id, name: st.name });
           return st;
         }
-        function startSession(u) { session = { user_id: u.id, role: u.role, college_id: u.college_id, student_id: u.student_id || null }; return clone(session); }
+        function startSession(u) { session = { user_id: u.id, role: u.role, college_id: u.college_id, student_id: u.student_id || null }; saveSession(); return clone(session); }
+        function dropStudentData(id) {
+          T.students = T.students.filter((x) => x.id !== id); T.users = T.users.filter((x) => x.student_id !== id);
+          T.fees = T.fees.filter((x) => x.student_id !== id); T.marks = T.marks.filter((x) => x.student_id !== id); T.payments = T.payments.filter((x) => x.student_id !== id);
+          for (const k of Object.keys(T.attendance)) if (T.attendance[k].student_id === id) delete T.attendance[k];
+        }
 
         const api = {
           /* ----- Public ----- */
@@ -1651,7 +1742,7 @@
             if (!u || u.role !== role || u.pass !== hash(password)) fail("Wrong email or password.", "password");
             return startSession(u);
           },
-          logout() { session = null; },
+          logout() { session = null; saveSession(); },
           me() {
             if (!session) return null;
             const u = T.users.find((x) => x.id === session.user_id);
@@ -1690,29 +1781,31 @@
           },
           removeStudent(id) {
             need("admin"); mine(T.students.find((x) => x.id === id));
-            T.students = T.students.filter((x) => x.id !== id); T.users = T.users.filter((x) => x.student_id !== id);
-            T.fees = T.fees.filter((x) => x.student_id !== id); T.marks = T.marks.filter((x) => x.student_id !== id);
-            for (const k of Object.keys(T.attendance)) if (T.attendance[k].student_id === id) delete T.attendance[k];
+            dropStudentData(id);
           },
           getFees(student_id) { const s = need("admin"); return T.fees.filter((f) => f.college_id === s.college_id && (!student_id || f.student_id === student_id)).sort((a, b) => a.due.localeCompare(b.due)).map(feeOut); },
           upsertFee(d) {
             const s = need("admin");
-            req(d, ["head", "amount", "due"]);
+            req(d, ["term", "head", "amount", "due"]);
             const amount = Number(d.amount), paid = Number(d.paid || 0);
             if (!(amount > 0)) fail("Enter an amount above zero.", "amount");
             if (!/^\d{4}-\d{2}-\d{2}$/.test(d.due)) fail("Pick a due date.", "due");
             if (!(paid >= 0) || paid > amount) fail("Paid must be between 0 and the amount.", "paid");
-            if (d.id) { const f = mine(T.fees.find((x) => x.id === d.id)); Object.assign(f, { head: tx(d.head), amount, due: d.due, paid }); return feeOut(f); }
+            if (d.id) { const f = mine(T.fees.find((x) => x.id === d.id)); Object.assign(f, { term: tx(d.term), head: tx(d.head), amount, due: d.due, paid }); return feeOut(f); }
             const st = mine(T.students.find((x) => x.id === d.student_id));
-            const f = { id: uid("fee"), college_id: s.college_id, student_id: st.id, head: tx(d.head), amount, due: d.due, paid };
+            const f = { id: uid("fee"), college_id: s.college_id, student_id: st.id, term: tx(d.term), head: tx(d.head), amount, due: d.due, paid };
             T.fees.push(f); return feeOut(f);
           },
           recordPayment(id, amount) {
             need("admin"); const f = mine(T.fees.find((x) => x.id === id)), a = Number(amount);
             if (!(a > 0)) fail("Enter an amount above zero.", "amount");
-            if (a > f.amount - f.paid) fail(`The balance is only ₹${(f.amount - f.paid).toLocaleString("en-IN")}.`, "amount");
-            f.paid += a; return feeOut(f);
+            if (a > r2(f.amount - f.paid)) fail(`The balance is only ${rupees(f.amount - f.paid)}.`, "amount");
+            f.paid = r2(f.paid + a);
+            T.payments.push({ id: uid("pay"), college_id: f.college_id, student_id: f.student_id, fee_id: f.id, fee_label: feeLabel(f), amount: r2(a), at: nowStamp(), payer: "", mode: "Cash / office", ref: "", by: "College office" });
+            return feeOut(f);
           },
+          /* Every payment in this college: student UPI payments and ones the office records */
+          getPayments(student_id) { const s = need("admin"); return clone(T.payments.filter((p) => p.college_id === s.college_id && (!student_id || p.student_id === student_id)).sort((a, b) => b.at.localeCompare(a.at) || b.id.localeCompare(a.id))); },
           removeFee(id) { need("admin"); mine(T.fees.find((x) => x.id === id)); T.fees = T.fees.filter((x) => x.id !== id); },
           getAttendance(date, cls) {
             const s = need("admin");
@@ -1785,22 +1878,84 @@
             return { overall: tally(rows), months, recent: clone(rows.slice(0, 10)) };
           },
           myMarks() { const st = myStudent(); return T.marks.filter((m) => m.student_id === st.id).map(markOut); },
+          myPayments() { const st = myStudent(); return clone(T.payments.filter((p) => p.student_id === st.id).sort((a, b) => b.at.localeCompare(a.at) || b.id.localeCompare(a.id))); },
+          /* Student fee payment (UPI, demo: no gateway verification). Checks an amount against the balance of one of my fees. */
+          checkPayAmount(fee_id, amount) {
+            const st = myStudent(), f = T.fees.find((x) => x.id === fee_id && x.student_id === st.id);
+            if (!f) fail("This fee is not on your account.");
+            const bal = r2(f.amount - f.paid), v = tx(amount).replace(/[₹,\s]/g, "");
+            if (bal <= 0) fail("This fee is already paid.");
+            if (!v) fail("Enter an amount.", "amount");
+            if (!/^\d+(\.\d{1,2})?$/.test(v)) fail("Enter the amount in numbers only, like 5000 or 5000.50.", "amount");
+            const a = Number(v);
+            if (!(a > 0)) fail("The amount must be more than ₹0.", "amount");
+            if (a > bal) fail(`The amount cannot be more than the balance of ${rupees(bal)}.`, "amount");
+            return a;
+          },
+          payMyFee(fee_id, d) {
+            const st = myStudent(), a = api.checkPayAmount(fee_id, d.amount), f = T.fees.find((x) => x.id === fee_id);
+            if (!tx(d.payer)) fail("Enter the name of the person who paid.", "payer");
+            const ref = tx(d.ref).replace(/\s/g, "");
+            if (!ref) fail("Enter the 12-digit UTR number from your UPI app.", "ref");
+            if (!/^\d{12}$/.test(ref)) fail("A UTR number has exactly 12 digits.", "ref");
+            if (T.payments.some((p) => p.ref === ref)) fail("This UTR number was already used for another payment.", "ref");
+            f.paid = r2(f.paid + a);
+            const p = { id: uid("pay"), college_id: st.college_id, student_id: st.id, fee_id: f.id, fee_label: feeLabel(f), amount: a, at: nowStamp(), payer: tx(d.payer), mode: tx(d.app) || "UPI", ref, by: "Student (UPI)" };
+            T.payments.push(p);
+            return { payment: clone(p), fee: feeOut(f) };
+          },
+
+          /* ----- Excel import / export (admin). Sheets are plain arrays of rows, so a real backend can reuse this. ----- */
+          dataSpec: () => clone(SPEC),
+          exportSheets() {
+            const s = need("admin"), cid = s.college_id, c = collegeOf(cid), stu = studentsIn(cid), byId = Object.fromEntries(stu.map((x) => [x.id, x]));
+            const roll = (sid) => (byId[sid] ? byId[sid].roll : ""), nm = (sid) => (byId[sid] ? byId[sid].name : "");
+            const cmp = (...ks) => (a, b) => { for (const k of ks) { const x = String(a[k] ?? ""), y = String(b[k] ?? ""); if (x !== y) return x.localeCompare(y); } return 0; };
+            const cap = (w) => w.charAt(0).toUpperCase() + w.slice(1);
+            const data = {
+              students: stu.slice().sort(cmp("roll")).map((x) => ({ ...x, status: cap(x.status) })),
+              fees: T.fees.filter((f) => f.college_id === cid).map((f) => ({ ...feeOut(f), roll: roll(f.student_id), name: nm(f.student_id) })).sort(cmp("roll", "due", "id")),
+              payments: T.payments.filter((p) => p.college_id === cid).map((p) => ({ ...p, roll: roll(p.student_id), name: nm(p.student_id) })).sort(cmp("at", "id")),
+              attendance: Object.values(T.attendance).filter((a) => a.college_id === cid).map((a) => ({ roll: roll(a.student_id), name: nm(a.student_id), date: a.date, status: ATT[a.status] })).sort(cmp("date", "roll")),
+              marks: T.marks.filter((m) => m.college_id === cid).map((m) => ({ ...markOut(m), roll: roll(m.student_id), name: nm(m.student_id) })).sort(cmp("roll", "exam", "subject")),
+              notices: T.notices.filter((n) => n.college_id === cid).slice().sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id)),
+            };
+            return { college: clone(c), sheets: SPEC.map((sp) => ({ type: sp.type, name: sp.sheet, cols: sp.cols.map(([key, header, kind]) => ({ key, header, kind })), rows: data[sp.type].map((r) => sp.cols.map(([k]) => (r[k] === undefined || r[k] === null ? "" : r[k]))) })) };
+          },
+          analyzeImport(sheets, mode) { need("admin"); return publicReport(analyze(sheets, mode)); },
+          applyImport(sheets, mode) {
+            need("admin"); const a = analyze(sheets, mode);
+            if (!a.types.length) fail("Nothing to import: the file has no sheet the portal can read.");
+            return applyAnalysis(a);
+          },
+          /* Canonical copy of this college's records, for tests (round trip must be identical) */
+          snapshot() {
+            const s = need("admin"), cid = s.college_id, canon = (x) => (Array.isArray(x) ? x.map(canon) : x && typeof x === "object" ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, canon(x[k])])) : x);
+            const by = (arr) => arr.map(canon).map((x) => JSON.stringify(x)).sort();
+            return JSON.stringify({ college: canon(collegeOf(cid)), users: by(T.users.filter((u) => u.college_id === cid)), students: by(studentsIn(cid)), fees: by(T.fees.filter((x) => x.college_id === cid)), payments: by(T.payments.filter((x) => x.college_id === cid)), attendance: by(Object.entries(T.attendance).filter(([, v]) => v.college_id === cid).map(([k, v]) => ({ k, ...v }))), marks: by(T.marks.filter((x) => x.college_id === cid)), notices: by(T.notices.filter((x) => x.college_id === cid)) });
+          },
+          resetDemo() {
+            need("admin"); T = blank(); seq = 1000; seed();
+            const u = session && T.users.find((x) => x.id === session.user_id && x.email);
+            if (!u) { session = null; saveSession(); }
+            return !!session;
+          },
         };
 
         /* ----- Seed data: two colleges, so the demo works on first load ----- */
-        (function seed() {
+        function seed() {
           let r = 20261011; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647;
           const today = todayISO(), days = [];
           for (let d = today; days.length < 20; d = shiftISO(d, -1)) if (dowOf(d) !== 0) days.push(d);
           const COLS = [
             { code: "SHX-1001", name: "Sri Vidya Junior College", type: "Junior College", city: "Visakhapatnam", state: "Andhra Pradesh", phone: "+91 89123 45670", admin: "K. Srinivasa Rao", email: "admin@srividya.demo", dom: "srividya.demo",
-              fees: [["Term 1 tuition", 22000, -75], ["Term 2 tuition", 22000, 25], ["Exam fee", 1500, 10]],
+              fees: [["Year 1", "Term 1 tuition", 22000, -75], ["Year 1", "Term 2 tuition", 22000, 25], ["Year 1", "Exam fee", 1500, 10], ["Year 2", "Annual tuition", 44000, 220]],
               subjects: { "MPC 1st Year": ["Mathematics", "Physics", "Chemistry", "English"], "BiPC 1st Year": ["Botany", "Zoology", "Chemistry", "English"] },
               students: [["Ravi Kumar Varma", "SV24001", "MPC 1st Year", "Sec A", 0.86], ["Lakshmi Prasanna", "SV24002", "MPC 1st Year", "Sec A", 0.93], ["Sai Teja Reddy", "SV24003", "MPC 1st Year", "Sec A", 0.68], ["Harika Naidu", "SV24004", "MPC 1st Year", "Sec B", 0.78], ["Venkatesh Rao", "SV24005", "MPC 1st Year", "Sec B", 0.58], ["Divya Sree", "SV24006", "BiPC 1st Year", "Sec A", 0.82]],
               pending: ["Anil Kumar Patnaik", "SV24007", "MPC 1st Year", "Sec B"],
               notices: [["Parent-teacher meeting on Saturday", "Parents of MPC and BiPC 1st Year students are invited on Saturday from 10:00 to 12:30 in the main hall. Progress cards will be shared.", -2], ["Unit Test 2 timetable", "Unit Test 2 starts in two weeks. The subject-wise timetable is on the notice board; bring your hall ticket to every exam.", -6]] },
             { code: "SHX-1002", name: "Green Valley Degree College", type: "Degree", city: "Hyderabad", state: "Telangana", phone: "+91 90000 12345", admin: "Dr. Meena Iyer", email: "admin@greenvalley.demo", dom: "greenvalley.demo",
-              fees: [["Semester 3 tuition", 28000, -60], ["Lab & library fee", 4500, -30], ["Semester 4 tuition", 28000, 40]],
+              fees: [["Sem 3", "Tuition fee", 28000, -60], ["Sem 3", "Lab & library fee", 4500, -30], ["Sem 4", "Tuition fee", 28000, 40]],
               subjects: { "B.Com 2nd Year": ["Financial Accounting", "Business Economics", "Business Law", "English"], "B.Sc 1st Year": ["Mathematics", "Physics", "Computer Science", "English"] },
               students: [["Priya Sharma", "GV23001", "B.Com 2nd Year", "Sec A", 0.88], ["Mohammed Arif", "GV23002", "B.Com 2nd Year", "Sec A", 0.72], ["Sneha Reddy", "GV23003", "B.Com 2nd Year", "Sec A", 0.95], ["Karthik Goud", "GV23004", "B.Com 2nd Year", "Sec B", 0.61], ["Ananya Rao", "GV23005", "B.Sc 1st Year", "Sec A", 0.84], ["Rahul Yadav", "GV23006", "B.Sc 1st Year", "Sec A", 0.66]],
               pending: ["Fatima Begum", "GV23007", "B.Com 2nd Year", "Sec B"],
@@ -1813,9 +1968,9 @@
             const mk = ([name, roll, cls, sec], status, i) => makeStudent(c.id, { name, roll, cls, sec, email: `${name.split(" ")[0].toLowerCase()}@${C.dom}`, phone: `9${String(848000000 + i * 1373 + C.code.charCodeAt(7) * 7919).slice(0, 9)}`, password: "Demo@1234" }, status);
             C.students.forEach((row, i) => {
               const st = mk(row, "approved", i + 1), ability = row[4];
-              C.fees.forEach(([head, amount, due], j) => {
-                const paid = j === 0 ? (i === 4 ? 12000 : amount) : j === 1 ? [amount, 0, amount / 2, 0, 0, amount][i] : i % 2 ? amount : 0;
-                T.fees.push({ id: uid("fee"), college_id: c.id, student_id: st.id, head, amount, due: shiftISO(today, due), paid });
+              C.fees.forEach(([term, head, amount, due], j) => {
+                const paid = j === 0 ? (i === 4 ? 12000 : amount) : j === 1 ? [amount, 0, amount / 2, 0, 0, amount][i] : j === 2 ? (i % 2 ? amount : 0) : 0;
+                T.fees.push({ id: uid("fee"), college_id: c.id, student_id: st.id, term, head, amount, due: shiftISO(today, due), paid });
               });
               days.forEach((d) => { const x = rnd(); T.attendance[`${st.id}|${d}`] = { college_id: c.id, student_id: st.id, date: d, status: x < 0.06 + (1 - ability) * 0.15 ? "A" : x > 0.965 ? "L" : "P" }; });
               [["Unit Test 1", 25], ["Mid-term", 100]].forEach(([exam, max]) => C.subjects[st.cls].forEach((subject) => {
@@ -1826,7 +1981,201 @@
             mk(C.pending, "pending", 9);
             C.notices.forEach(([title, text, ago]) => T.notices.push({ id: uid("ntc"), college_id: c.id, title, text, date: shiftISO(today, ago) }));
           }
-        })();
+          save();
+        }
+
+        /* ----- Import: map sheets and headers, validate every row, then merge or replace ----- */
+        function analyze(sheets, mode) {
+          const s = need("admin"), cid = s.college_id, replace = mode === "replace";
+          const sheetsOut = [], got = {};
+          (Array.isArray(sheets) ? sheets : []).forEach((sh) => {
+            const name = tx(sh && sh.name), key = nrm(name), sp = SPEC.find((x) => [x.type, x.sheet, ...x.alias].map(nrm).includes(key));
+            const all = ((sh && sh.rows) || []).map((r, i) => ({ r: Array.isArray(r) ? r : [], n: i + 1 })).filter((x) => x.r.some((v) => tx(v) !== ""));
+            const head = all[0], body = all.slice(1);
+            const out = { sheet: name, type: sp ? sp.type : null, label: sp ? sp.label : null, rows: body.length, columns: head ? head.r.map(tx).filter(Boolean) : [], missing: [], ignoredCols: [], preview: { head: head ? head.r.map(tx) : [], rows: body.slice(0, 5).map((x) => x.r.map(cellTxt)) }, problems: [], valid: 0, skipped: 0, added: 0, updated: 0, removed: 0, recs: [] };
+            sheetsOut.push(out);
+            if (!sp) { out.ignored = true; out.note = INFO_SHEETS.includes(key) ? "Information sheet, not imported." : "Unknown sheet name, will be ignored. Use one of: " + SPEC.map((x) => x.sheet).join(", ") + "."; return; }
+            if (got[sp.type]) { out.ignored = true; out.note = `A second ${sp.label} sheet, will be ignored (the first one is used).`; return; }
+            if (!head) { out.ignored = true; out.note = "Empty sheet, nothing to import."; return; }
+            const map = {};
+            head.r.forEach((h, i) => { const k = nrm(h); if (!k) return; const col = sp.cols.find(([ck, hd, , , al]) => [ck, hd, ...(al || [])].map(nrm).includes(k)); if (col && map[col[0]] === undefined) map[col[0]] = i; else out.ignoredCols.push(tx(h)); });
+            out.missing = sp.cols.filter((c) => c[3] && map[c[0]] === undefined).map((c) => c[1]);
+            if (out.missing.length) { out.skipped = body.length; out.problems.push({ row: null, msg: `Missing required ${out.missing.length === 1 ? "column" : "columns"}: ${out.missing.join(", ")}. This sheet will be skipped.` }); return; }
+            out.recs = body.map((x) => { const o = { _row: x.n }; sp.cols.forEach(([k]) => (o[k] = map[k] === undefined ? "" : x.r[map[k]])); return o; });
+            got[sp.type] = out;
+          });
+
+          const exStu = studentsIn(cid), byRoll = new Map(exStu.map((x) => [lc(x.roll), x])), byEmail = new Map(exStu.map((x) => [lc(x.email), x]));
+          const ctx = { cid, replace, got, fileRolls: new Set(), newRollIds: {} };
+          const stuInFile = !!got.students;
+          const rollOK = (r) => ctx.fileRolls.has(lc(r)) || (!(replace && stuInFile) && byRoll.has(lc(r)));
+          const exRoll = (sid) => { const st = T.students.find((x) => x.id === sid); return st ? lc(st.roll) : ""; };
+          const finish = (out, recs, check, matchOf, keyOf) => {
+            const ids = new Set(), keys = new Set(), matched = new Set();
+            recs.forEach((rec) => {
+              const errs = [];
+              try { check(rec, errs); } catch (e) { errs.push(e.message); }
+              if (!errs.length && rec.id) { if (ids.has(rec.id)) errs.push(`Duplicate ID ${rec.id} in this sheet.`); }
+              const key = !errs.length && keyOf ? keyOf(rec) : null;
+              if (!errs.length && key && !rec.id && keys.has(key)) errs.push("Duplicate row: the same record appears earlier in this sheet.");
+              if (!errs.length) { const m = matchOf(rec); if (m && matched.has(m)) errs.push("Matches the same existing record as an earlier row."); else if (m) { matched.add(m); rec._match = m; } }
+              if (errs.length) { out.skipped++; out.problems.push({ row: rec._row, msg: errs.join(" ") }); rec._bad = true; return; }
+              if (rec.id) ids.add(rec.id); if (key) keys.add(key);
+              out.valid++; if (rec._match) out.updated++; else out.added++;
+            });
+            out.recs = recs.filter((r) => !r._bad);
+            return matched;
+          };
+          const idCheck = (rec, table) => { rec.id = tx(rec.id); if (!rec.id) return; if (!/^[A-Za-z0-9_-]{1,40}$/.test(rec.id)) throw new Error("ID may use letters, numbers, - and _ only."); const other = table.find((x) => x.id === rec.id && x.college_id !== cid); if (other) throw new Error(`ID ${rec.id} belongs to another college's record.`); };
+          const reqd = (rec, errs, sp) => SPEC.find((x) => x.type === sp).cols.forEach(([k, h, , r]) => { if (r && tx(rec[k]) === "") errs.push(`${h} is empty.`); });
+
+          /* Students: match by roll number, then by email */
+          if (got.students) {
+            const out = got.students, emails = new Set();
+            const matched = finish(out, out.recs, (rec, errs) => {
+              reqd(rec, errs, "students"); if (errs.length) return;
+              rec.roll = tx(rec.roll).toUpperCase(); rec.name = tx(rec.name); rec.cls = tx(rec.cls); rec.sec = tx(rec.sec); rec.email = lc(rec.email); rec.phone = tx(rec.phone);
+              if (!EMAIL.test(rec.email)) errs.push(`Invalid email "${rec.email}".`);
+              if (!PHONE.test(rec.phone.replace(/[\s()-]/g, ""))) errs.push(`Invalid phone "${rec.phone}" (10-digit Indian mobile).`);
+              const st = lc(rec.status) || "approved"; if (!["approved", "pending", "rejected"].includes(st)) errs.push(`Unknown status "${tx(rec.status)}" (use Approved, Pending or Rejected).`); rec.status = st;
+              if (tx(rec.created) === "") rec.created = todayISO(); else { const d = toISO(rec.created); if (!d) errs.push(`Invalid date "${cellTxt(rec.created)}" in Joined On.`); rec.created = d; }
+              if (ctx.fileRolls.has(lc(rec.roll))) errs.push(`Duplicate roll number ${rec.roll} in this sheet.`);
+              else if (emails.has(rec.email)) errs.push(`Duplicate email ${rec.email} in this sheet.`);
+              if (errs.length) return;
+              const m = byRoll.get(lc(rec.roll)) || byEmail.get(rec.email);
+              if (m && lc(m.roll) !== lc(rec.roll) && !replace && byRoll.has(lc(rec.roll))) errs.push(`Email ${rec.email} belongs to roll ${m.roll}, but roll ${rec.roll} is another student.`);
+              const u = T.users.find((x) => x.email === rec.email && !(m && x.student_id === m.id) && !(replace && x.college_id === cid && x.role === "student"));
+              if (u) errs.push(`Email ${rec.email} is already used by another account.`);
+              if (errs.length) return;
+              ctx.fileRolls.add(lc(rec.roll)); emails.add(rec.email);
+            }, (rec) => { const m = byRoll.get(lc(rec.roll)) || byEmail.get(rec.email); return m ? m.id : null; });
+            if (replace) out.removed = exStu.filter((x) => !matched.has(x.id)).length;
+          }
+          /* Fees: match by Fee ID, then by roll + term + fee head */
+          if (got.fees) {
+            const out = got.fees, ex = T.fees.filter((f) => f.college_id === cid), byKey = new Map(ex.map((f) => [`${exRoll(f.student_id)}|${lc(f.term)}|${lc(f.head)}`, f.id]));
+            const matched = finish(out, out.recs, (rec, errs) => {
+              reqd(rec, errs, "fees"); if (errs.length) return; idCheck(rec, T.fees);
+              rec.roll = tx(rec.roll).toUpperCase(); rec.term = tx(rec.term); rec.head = tx(rec.head);
+              if (!rollOK(rec.roll)) errs.push(`No student with roll ${rec.roll}.`);
+              const amt = toNum(rec.amount), paid = tx(rec.paid) === "" ? 0 : toNum(rec.paid);
+              if (!(amt > 0)) errs.push(`Amount "${cellTxt(rec.amount)}" must be a number above 0.`);
+              if (!(paid >= 0)) errs.push(`Paid "${cellTxt(rec.paid)}" must be a number, 0 or more.`); else if (amt > 0 && paid > amt) errs.push("Paid is more than the amount.");
+              const due = toISO(rec.due); if (!due) errs.push(`Invalid due date "${cellTxt(rec.due)}".`);
+              Object.assign(rec, { amount: amt, paid, due });
+            }, (rec) => (rec.id && ex.some((f) => f.id === rec.id) ? rec.id : !rec.id ? byKey.get(`${lc(rec.roll)}|${lc(rec.term)}|${lc(rec.head)}`) || null : null), (rec) => `${lc(rec.roll)}|${lc(rec.term)}|${lc(rec.head)}`);
+            if (replace) out.removed = ex.filter((f) => !matched.has(f.id)).length;
+          }
+          const feeIds = new Set([...(got.fees ? got.fees.recs.map((r) => r.id).filter(Boolean) : []), ...(replace && got.fees ? [] : T.fees.filter((f) => f.college_id === cid).map((f) => f.id))]);
+          /* Payments: match by Payment ID, then by roll + time + amount + reference */
+          if (got.payments) {
+            const out = got.payments, ex = T.payments.filter((p) => p.college_id === cid), byKey = new Map(ex.map((p) => [`${exRoll(p.student_id)}|${p.at}|${p.amount}|${p.ref}`, p.id]));
+            const matched = finish(out, out.recs, (rec, errs) => {
+              reqd(rec, errs, "payments"); if (errs.length) return; idCheck(rec, T.payments);
+              rec.roll = tx(rec.roll).toUpperCase(); if (!rollOK(rec.roll)) errs.push(`No student with roll ${rec.roll}.`);
+              const at = toStamp(rec.at); if (!at) errs.push(`Invalid date & time "${cellTxt(rec.at)}".`);
+              const amt = toNum(rec.amount); if (!(amt > 0)) errs.push(`Amount "${cellTxt(rec.amount)}" must be a number above 0.`);
+              rec.fee_id = tx(rec.fee_id); if (rec.fee_id && !feeIds.has(rec.fee_id)) errs.push(`Fee ID ${rec.fee_id} not found.`);
+              Object.assign(rec, { at, amount: amt, fee_label: tx(rec.fee_label), payer: tx(rec.payer), mode: tx(rec.mode), ref: tx(rec.ref), by: tx(rec.by) });
+            }, (rec) => (rec.id && ex.some((p) => p.id === rec.id) ? rec.id : !rec.id ? byKey.get(`${lc(rec.roll)}|${rec.at}|${rec.amount}|${rec.ref}`) || null : null), (rec) => `${lc(rec.roll)}|${rec.at}|${rec.amount}|${rec.ref}`);
+            if (replace) out.removed = ex.filter((p) => !matched.has(p.id)).length;
+          }
+          /* Attendance: one row per student per date */
+          if (got.attendance) {
+            const out = got.attendance, ex = Object.entries(T.attendance).filter(([, a]) => a.college_id === cid);
+            const matched = finish(out, out.recs, (rec, errs) => {
+              reqd(rec, errs, "attendance"); if (errs.length) return;
+              rec.roll = tx(rec.roll).toUpperCase(); if (!rollOK(rec.roll)) errs.push(`No student with roll ${rec.roll}.`);
+              const d = toISO(rec.date); if (!d) errs.push(`Invalid date "${cellTxt(rec.date)}".`); rec.date = d;
+              const k = { p: "P", present: "P", a: "A", absent: "A", l: "L", leave: "L" }[lc(rec.status)]; if (!k) errs.push(`Status "${tx(rec.status)}" must be Present, Absent or Leave.`); rec.status = k;
+            }, (rec) => { const st = byRoll.get(lc(rec.roll)), k = st && `${st.id}|${rec.date}`; return k && T.attendance[k] && T.attendance[k].college_id === cid ? k : null; }, (rec) => `${lc(rec.roll)}|${rec.date}`);
+            if (replace) out.removed = ex.filter(([k]) => !matched.has(k)).length;
+          }
+          /* Marks: match by Mark ID, then by roll + exam + subject */
+          if (got.marks) {
+            const out = got.marks, ex = T.marks.filter((m) => m.college_id === cid), byKey = new Map(ex.map((m) => [`${exRoll(m.student_id)}|${lc(m.exam)}|${lc(m.subject)}`, m.id]));
+            const matched = finish(out, out.recs, (rec, errs) => {
+              reqd(rec, errs, "marks"); if (errs.length) return; idCheck(rec, T.marks);
+              rec.roll = tx(rec.roll).toUpperCase(); rec.exam = tx(rec.exam); rec.subject = tx(rec.subject); if (!rollOK(rec.roll)) errs.push(`No student with roll ${rec.roll}.`);
+              const mx = toNum(rec.max), sc = toNum(rec.score);
+              if (!(mx > 0 && mx <= 1000)) errs.push(`Max marks "${cellTxt(rec.max)}" must be a number from 1 to 1000.`);
+              else if (!(sc >= 0 && sc <= mx)) errs.push(`Marks "${cellTxt(rec.score)}" must be a number from 0 to ${mx}.`);
+              Object.assign(rec, { max: mx, score: sc });
+            }, (rec) => (rec.id && ex.some((m) => m.id === rec.id) ? rec.id : !rec.id ? byKey.get(`${lc(rec.roll)}|${lc(rec.exam)}|${lc(rec.subject)}`) || null : null), (rec) => `${lc(rec.roll)}|${lc(rec.exam)}|${lc(rec.subject)}`);
+            if (replace) out.removed = ex.filter((m) => !matched.has(m.id)).length;
+          }
+          /* Notices: match by Notice ID, then by date + title */
+          if (got.notices) {
+            const out = got.notices, ex = T.notices.filter((n) => n.college_id === cid), byKey = new Map(ex.map((n) => [`${n.date}|${lc(n.title)}`, n.id]));
+            const matched = finish(out, out.recs, (rec, errs) => {
+              reqd(rec, errs, "notices"); if (errs.length) return; idCheck(rec, T.notices);
+              const d = toISO(rec.date); if (!d) errs.push(`Invalid date "${cellTxt(rec.date)}".`); rec.date = d; rec.title = tx(rec.title); rec.text = tx(rec.text);
+            }, (rec) => (rec.id && ex.some((n) => n.id === rec.id) ? rec.id : !rec.id ? byKey.get(`${rec.date}|${lc(rec.title)}`) || null : null), (rec) => `${rec.date}|${lc(rec.title)}`);
+            if (replace) out.removed = ex.filter((n) => !matched.has(n.id)).length;
+          }
+          /* A data type with no valid rows is never replaced or emptied */
+          Object.values(got).forEach((o) => { if (!o.valid) o.removed = 0; });
+          return { cid, replace, mode: replace ? "replace" : "merge", sheets: sheetsOut, got, types: SPEC.map((x) => x.type).filter((t) => got[t]) };
+        }
+        function publicReport(a) {
+          return { mode: a.mode, types: a.types.slice(), sheets: a.sheets.map(({ recs, ...o }) => clone(o)), totals: a.types.map((t) => { const o = a.got[t]; return { type: t, label: o.label, rows: o.rows, valid: o.valid, skipped: o.skipped, added: o.added, updated: o.updated, removed: o.removed }; }) };
+        }
+        function applyAnalysis(a) {
+          const { cid, replace } = a, res = {}, got = {};
+          const tally0 = (t) => (res[t] = { label: a.got[t].label, added: a.got[t].added, updated: a.got[t].updated, skipped: a.got[t].skipped, removed: a.got[t].removed });
+          a.types.forEach((t) => (a.got[t].valid ? (got[t] = a.got[t]) : tally0(t)));
+          if (!Object.keys(got).length) fail("Nothing valid to import. Fix the problems in the preview and choose the file again.");
+          if (got.students) {
+            tally0("students"); const keep = new Set(got.students.recs.map((r) => r._match).filter(Boolean));
+            if (replace) studentsIn(cid).filter((x) => !keep.has(x.id)).forEach((x) => dropStudentData(x.id));
+            got.students.recs.forEach((r) => {
+              const f = { name: r.name, roll: r.roll, cls: r.cls, sec: r.sec, email: r.email, phone: r.phone, status: r.status, created: r.created };
+              const st = r._match && T.students.find((x) => x.id === r._match);
+              if (st) { Object.assign(st, f); const u = T.users.find((x) => x.student_id === st.id); if (u) Object.assign(u, { email: st.email, name: st.name }); return; }
+              const n = { id: uid("stu"), college_id: cid, ...f };
+              T.students.push(n); T.users.push({ id: uid("usr"), college_id: cid, role: "student", email: n.email, pass: hash("Welcome@123"), student_id: n.id, name: n.name });
+            });
+          }
+          const sid = new Map(studentsIn(cid).map((x) => [lc(x.roll), x.id]));
+          const put = (t, table, build) => {
+            if (!got[t]) return; tally0(t);
+            if (replace) T[table] = T[table].filter((x) => x.college_id !== cid);
+            got[t].recs.forEach((r) => {
+              const rec = build(r), id = r.id || r._match || uid({ fees: "fee", payments: "pay", marks: "mrk", notices: "ntc" }[t]), cur = !replace && r._match && T[table].find((x) => x.id === r._match);
+              if (cur) Object.assign(cur, rec); else T[table].push({ id, college_id: cid, ...rec });
+            });
+          };
+          put("fees", "fees", (r) => ({ student_id: sid.get(lc(r.roll)), term: r.term, head: r.head, amount: r.amount, due: r.due, paid: r.paid }));
+          put("payments", "payments", (r) => { const f = r.fee_id && T.fees.find((x) => x.id === r.fee_id); return { student_id: sid.get(lc(r.roll)), fee_id: r.fee_id, fee_label: r.fee_label || (f ? feeLabel(f) : ""), amount: r.amount, at: r.at, payer: r.payer, mode: r.mode, ref: r.ref, by: r.by || "Imported" }; });
+          if (got.attendance) {
+            tally0("attendance");
+            if (replace) for (const k of Object.keys(T.attendance)) if (T.attendance[k].college_id === cid) delete T.attendance[k];
+            got.attendance.recs.forEach((r) => { const id = sid.get(lc(r.roll)); T.attendance[`${id}|${r.date}`] = { college_id: cid, student_id: id, date: r.date, status: r.status }; });
+          }
+          put("marks", "marks", (r) => ({ student_id: sid.get(lc(r.roll)), exam: r.exam, subject: r.subject, max: r.max, score: r.score }));
+          put("notices", "notices", (r) => ({ title: r.title, text: r.text, date: r.date }));
+          return res;
+        }
+
+        /* ----- Persistence: this browser only. Real backend: drop these and let Supabase hold the data. ----- */
+        const STORE_KEY = "shaalix-demo-db-v1", SESSION_KEY = "shaalix-demo-session-v1";
+        const storage = (k) => { try { return window[k] || null; } catch (_) { return null; } };
+        function save() { const ls = storage("localStorage"); if (ls) try { ls.setItem(STORE_KEY, JSON.stringify({ v: 1, seq, T })); } catch (_) { /* storage full or blocked: keep working in memory */ } }
+        function saveSession() { const ss = storage("sessionStorage"); if (ss) try { session ? ss.setItem(SESSION_KEY, JSON.stringify(session)) : ss.removeItem(SESSION_KEY); } catch (_) { /* ignore */ } }
+        function load() {
+          const ls = storage("localStorage"); if (!ls) return false;
+          try {
+            const d = JSON.parse(ls.getItem(STORE_KEY) || "null");
+            if (!d || d.v !== 1 || !d.T || !["colleges", "users", "students", "fees", "payments", "marks", "notices"].every((k) => Array.isArray(d.T[k])) || typeof d.T.attendance !== "object") return false;
+            T = { ...blank(), ...d.T }; seq = Number(d.seq) || 1000; return true;
+          } catch (_) { return false; }
+        }
+        if (!load()) seed();
+        try { const ss = storage("sessionStorage"), sv = ss && JSON.parse(ss.getItem(SESSION_KEY) || "null"); if (sv && T.users.some((u) => u.id === sv.user_id && u.role === sv.role)) session = sv; } catch (_) { /* no saved session */ }
+        /* Every write is saved right away */
+        ["registerCollege", "registerStudent", "addStudent", "updateStudent", "setStudentStatus", "removeStudent", "upsertFee", "recordPayment", "removeFee", "markAttendance", "upsertMarks", "postNotice", "removeNotice", "payMyFee", "applyImport", "resetDemo"].forEach((k) => {
+          const fn = api[k]; api[k] = (...args) => { const r = fn(...args); save(); return r; };
+        });
         return api;
       })();
 
@@ -1837,18 +2186,39 @@
       PAGES["/portal/admin"] = { t: "College admin dashboard", d: "Students, fees, attendance, marks and notices." };
       PAGES["/portal/student"] = { t: "Student dashboard", d: "Your fees, attendance, marks and notices." };
       const EXAMS = ["Unit Test 1", "Unit Test 2", "Mid-term", "Pre-final", "Final"];
-      const FEE_HEADS = ["Term 1 tuition", "Term 2 tuition", "Semester tuition", "Exam fee", "Lab & library fee", "Transport fee", "Hostel fee"];
+      const FEE_HEADS = ["Term 1 tuition", "Term 2 tuition", "Tuition fee", "Annual tuition", "Exam fee", "Lab & library fee", "Transport fee", "Hostel fee"];
+      const TERMS = ["Year 1", "Year 2", "Year 3", "Year 4", "Sem 1", "Sem 2", "Sem 3", "Sem 4", "Sem 5", "Sem 6", "Sem 7", "Sem 8"];
+
+      /* ================= UPI PAYMENT SETTINGS =================
+         COLLEGE: replace UPI_ID below with your college's own UPI ID (VPA),
+         for example "srividyacollege@sbi". "shaalix@upi" is only a placeholder:
+         money sent to it will NOT reach your college. The payee name shown in
+         the QR is the college name from the portal.                          */
+      const UPI_CONFIG = { UPI_ID: "shaalix@upi" };
+      /* Libraries loaded only when needed: QR codes (student pay) and Excel (admin import/export) */
+      const QR_URL = "https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js";
+      const XLSX_URL = "https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js";
+      const libs = {};
+      const loadLib = (url, global) => (window[global] ? Promise.resolve(window[global]) : (libs[url] = libs[url] || new Promise((ok, no) => {
+        const sc = document.createElement("script"); sc.src = url; sc.async = true;
+        sc.onload = () => (window[global] ? ok(window[global]) : no(new Error("A library did not load. Check your connection and try again.")));
+        sc.onerror = () => { delete libs[url]; sc.remove(); no(new Error(`Could not load ${new URL(url).hostname}. Check your internet connection and try again.`)); };
+        document.head.appendChild(sc);
+      })));
+      const upiUri = (amount, label, roll, payee) => "upi://pay?" + [["pa", UPI_CONFIG.UPI_ID], ["pn", payee], ["am", Number(amount).toFixed(2)], ["cu", "INR"], ["tn", `${label} ${roll}`.replace(/·/g, "-").replace(/[^\x20-\x7E]/g, "").replace(/\s+/g, " ").trim().slice(0, 60)]]
+        .map(([k, v]) => `${k}=${encodeURIComponent(v).replace(/%40/g, "@")}`).join("&");
       const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-      const inr = (n) => "₹" + Math.round(n).toLocaleString("en-IN");
+      const inr = (n) => "₹" + (Math.round(n * 100) / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 });
       const inrShort = (n) => (n >= 100000 ? "₹" + (Math.round(n / 10000) / 10).toLocaleString("en-IN") + "L" : inr(n));
       const parseISO = (iso) => { const [y, m, d] = iso.split("-").map(Number); return new Date(y, m - 1, d); };
       const fmtD = (iso) => parseISO(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+      const fmtDT = (st) => { const [d, t = "00:00"] = String(st).split(" "), [h, mi] = t.split(":").map(Number); return `${fmtD(d)}, ${((h + 11) % 12) + 1}:${String(mi).padStart(2, "0")} ${h < 12 ? "am" : "pm"}`; };
       const fmtM = (ym) => parseISO(ym + "-01").toLocaleDateString("en-IN", { month: "long", year: "numeric" });
       const pctTxt = (p) => (p === null || p === undefined ? "—" : p + "%");
       const lastMonths = (n) => { const out = []; const d = parseISO(todayISO()); for (let i = 0; i < n; i++) { const t = new Date(d.getFullYear(), d.getMonth() - i, 1); out.push(`${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}`); } return out; };
-      const UI0 = () => ({ loginRole: "admin", tab: "overview", flash: null, msg: "", sQ: "", sCls: "", sStatus: "", edit: null, confirm: null, feeStu: "", feeSt: "", feeEdit: null, pay: null, attDate: todayISO(), attCls: "", attMonth: todayISO().slice(0, 7), mExam: "Unit Test 1", mCls: "", mSub: "", mMax: "" });
+      const UI0 = () => ({ loginRole: "admin", tab: "overview", flash: null, msg: "", sQ: "", sCls: "", sStatus: "", edit: null, confirm: null, feeStu: "", feeSt: "", feeEdit: null, pay: null, attDate: todayISO(), attCls: "", attMonth: todayISO().slice(0, 7), mExam: "Unit Test 1", mCls: "", mSub: "", mMax: "", payStu: "", pm: null, imp: null, impMode: "merge", impErr: "", impBusy: false, impResult: null, note: "" });
       let UI = UI0();
-      const demoNote = `<p class="x-note" role="note">Demo mode: data resets on refresh.</p>`;
+      const demoNote = `<p class="x-note" role="note">Demo mode: changes are saved in this browser only. College admins can reset the demo data anytime.</p>`;
       const pf = (label, nm, attrs = "", full = false, req = true) => `<label class="x-f${full ? " x-f--full" : ""}">${label}<input name="${nm}" ${attrs}${req ? " required" : ""} /><small class="x-err"></small></label>`;
       const psel = (label, nm, opts, val = "", attrs = "", full = false) => `<label class="x-f${full ? " x-f--full" : ""}">${label}<select name="${nm}" ${attrs}>${opts.map((o) => { const [v, l] = Array.isArray(o) ? o : [o, o]; return `<option value="${esc(v)}"${String(v) === String(val) ? " selected" : ""}>${esc(l)}</option>`; }).join("")}</select><small class="x-err"></small></label>`;
       const formErr = `<p class="x-err" data-err="_form" role="alert"></p>`;
@@ -1922,7 +2292,7 @@
         </form>`);
 
       /* 4. Admin dashboard */
-      const ADMIN_TABS = [["overview", "Overview"], ["students", "Students"], ["fees", "Fees"], ["attendance", "Attendance"], ["marks", "Marks"], ["notices", "Notices"]];
+      const ADMIN_TABS = [["overview", "Overview"], ["students", "Students"], ["fees", "Fees"], ["payments", "Payments"], ["attendance", "Attendance"], ["marks", "Marks"], ["notices", "Notices"], ["data", "Import / Export"]];
       const classOpts = (all) => [...(all ? [["", all]] : []), ...DB.getClasses()];
       const approved = () => DB.getStudents({ status: "approved" });
       const PANES = {
@@ -1964,19 +2334,20 @@
           return `<div class="x-phead"><div><h2>Fees</h2></div><button type="button" class="x-btn" data-act="feeNew">Add fee item</button></div>` +
             (UI.feeEdit ? `<form class="x-form" data-portal="fee" novalidate aria-label="${f ? "Edit fee item" : "Add fee item"}"><h3 class="x-f--full">${f ? "Edit fee item" : "Add a fee item"}</h3>
               ${f ? `<p class="x-f">Student<b>${esc(name[f.student_id] ? name[f.student_id].name : "")}</b></p>` : psel("Student", "student_id", [["", "Select"], ...stuOpts], UI.feeStu, "required")}
-              ${pf("Term / fee head", "head", `value="${esc(f && f.head)}" list="pa-heads"`)}<datalist id="pa-heads">${FEE_HEADS.map((h) => `<option value="${esc(h)}">`).join("")}</datalist>
+              ${pf("Semester / year", "term", `value="${esc(f ? f.term : "")}" list="pa-terms" placeholder="Year 1 or Sem 1"`)}<datalist id="pa-terms">${TERMS.map((h) => `<option value="${esc(h)}">`).join("")}</datalist>
+              ${pf("Fee head", "head", `value="${esc(f && f.head)}" list="pa-heads"`)}<datalist id="pa-heads">${FEE_HEADS.map((h) => `<option value="${esc(h)}">`).join("")}</datalist>
               ${pf("Amount (₹)", "amount", `type="number" min="1" step="1" inputmode="numeric" value="${f ? f.amount : ""}"`)}
               ${pf("Due date", "due", `type="date" value="${f ? f.due : ""}"`)}
               ${pf("Paid so far (₹)", "paid", `type="number" min="0" step="1" inputmode="numeric" value="${f ? f.paid : 0}"`, false, false)}
               <p class="fineprint">Status is set from paid and amount: Paid, Partial or Due.</p>
               ${formErr}<div class="x-acts"><button class="x-btn" type="submit">Save fee item</button><button type="button" class="x-sbtn" data-act="cancel">Cancel</button></div></form>` : "") +
             (p ? `<form class="x-form" data-portal="pay" novalidate aria-label="Record payment"><h3 class="x-f--full">Record payment</h3>
-              <p class="x-f--full">${esc(pStu ? pStu.name : "")} · ${esc(p.head)} · balance <b>${inr(p.balance)}</b></p>
+              <p class="x-f--full">${esc(pStu ? pStu.name : "")} · ${esc(p.label)} · balance <b>${inr(p.balance)}</b></p>
               ${pf("Amount received (₹)", "amount", `type="number" min="1" max="${p.balance}" step="1" inputmode="numeric" value="${p.balance}" data-autofocus`)}
               ${formErr}<div class="x-acts"><button class="x-btn" type="submit">Record payment</button><button type="button" class="x-sbtn" data-act="cancel">Cancel</button></div></form>` : "") +
             `<div class="x-bar">${psel("Student", "", [["", "All students"], ...stuOpts], UI.feeStu, `data-ui="feeStu"`)}${psel("Status", "", [["", "All"], "Due", "Partial", "Paid"], UI.feeSt, `data-ui="feeSt"`)}</div>${okMsg()}` +
-            (rows.length ? `<div class="x-tw"><table><caption>${rows.length} fee ${rows.length === 1 ? "item" : "items"} · billed ${inr(sum("amount"))} · collected ${inr(sum("paid"))} · balance ${inr(sum("balance"))}</caption><thead><tr><th scope="col">Student</th><th scope="col">Fee head</th><th scope="col">Amount</th><th scope="col">Due date</th><th scope="col">Paid</th><th scope="col">Balance</th><th scope="col">Status</th><th scope="col"><span class="x-sr">Actions</span></th></tr></thead><tbody>${rows.map((r) => {
-              const st = name[r.student_id]; return `<tr><th scope="row">${esc(st ? st.name : "")}<small>${esc(st ? st.roll + " · " + st.klass : "")}</small></th><td>${esc(r.head)}</td><td class="num">${inr(r.amount)}</td><td>${fmtD(r.due)}${r.balance && r.due < todayISO() ? "<small>Overdue</small>" : ""}</td><td class="num">${inr(r.paid)}</td><td class="num">${inr(r.balance)}</td><td>${chipFor(r.status)}</td><td><div class="x-acts">${r.balance ? `<button type="button" class="x-sbtn" data-act="pay" data-id="${r.id}">Record payment</button>` : ""}<button type="button" class="x-sbtn" data-act="feeEdit" data-id="${r.id}">Edit</button>${delBtn("feeDel", r.id, r.head)}</div></td></tr>`;
+            (rows.length ? `<div class="x-tw"><table><caption>${rows.length} fee ${rows.length === 1 ? "item" : "items"} · billed ${inr(sum("amount"))} · collected ${inr(sum("paid"))} · balance ${inr(sum("balance"))}</caption><thead><tr><th scope="col">Student</th><th scope="col">Semester / year</th><th scope="col">Fee head</th><th scope="col">Amount</th><th scope="col">Due date</th><th scope="col">Paid</th><th scope="col">Balance</th><th scope="col">Status</th><th scope="col"><span class="x-sr">Actions</span></th></tr></thead><tbody>${rows.map((r) => {
+              const st = name[r.student_id]; return `<tr><th scope="row">${esc(st ? st.name : "")}<small>${esc(st ? st.roll + " · " + st.klass : "")}</small></th><td>${esc(r.term)}</td><td>${esc(r.head)}</td><td class="num">${inr(r.amount)}</td><td>${fmtD(r.due)}${r.balance && r.due < todayISO() ? "<small>Overdue</small>" : ""}</td><td class="num">${inr(r.paid)}</td><td class="num">${inr(r.balance)}</td><td>${chipFor(r.status)}</td><td><div class="x-acts">${r.balance ? `<button type="button" class="x-sbtn" data-act="pay" data-id="${r.id}">Record payment</button>` : ""}<button type="button" class="x-sbtn" data-act="feeEdit" data-id="${r.id}">Edit</button>${delBtn("feeDel", r.id, r.head)}</div></td></tr>`;
             }).join("")}</tbody></table></div>` : `<p>No fee items match.</p>`);
         },
         attendance() {
@@ -2003,6 +2374,23 @@
             ${formErr}${okMsg()}${sts.length ? `<div class="x-acts"><button class="x-btn" type="submit">Save marks</button></div>` : ""}
           </form>`;
         },
+        payments() {
+          const sts = DB.getStudents(), byId = Object.fromEntries(sts.map((x) => [x.id, x]));
+          const rows = DB.getPayments(UI.payStu), total = rows.reduce((a, p) => a + p.amount, 0);
+          return `<h2>Payments</h2><p>Student UPI payments show here as soon as the student confirms with a UTR number. Match each UTR with your bank statement; payments recorded in the Fees tab show as College office.</p>
+            <div class="x-bar">${psel("Student", "", [["", "All students"], ...sts.map((x) => [x.id, `${x.roll} · ${x.name}`])], UI.payStu, `data-ui="payStu"`)}</div>` +
+            (rows.length ? `<div class="x-tw"><table><caption>${rows.length} ${rows.length === 1 ? "payment" : "payments"} · ${inr(total)}</caption><thead><tr><th scope="col">Date &amp; time</th><th scope="col">Student</th><th scope="col">Fee</th><th scope="col">Amount</th><th scope="col">Paid via</th><th scope="col">Reference / UTR</th><th scope="col">Recorded by</th></tr></thead><tbody>${rows.map((p) => { const st = byId[p.student_id]; return `<tr><td>${fmtDT(p.at)}</td><th scope="row">${esc(st ? st.name : "")}<small>${esc(st ? st.roll : "")}</small></th><td>${esc(p.fee_label)}</td><td class="num">${inr(p.amount)}</td><td>${esc(p.mode)}${p.payer ? `<small>${esc(p.payer)}</small>` : ""}</td><td>${esc(p.ref || "—")}</td><td>${esc(p.by)}</td></tr>`; }).join("")}</tbody></table></div>` : `<p>No payments yet.</p>`);
+        },
+        data() {
+          const r = UI.imp ? DB.analyzeImport(UI.imp.sheets, UI.impMode) : null;
+          return `<h2>Import / Export</h2><p>Move your college's data in and out of Shaalix with Excel (.xlsx). Export gives a backup you can open in Excel or Google Sheets. Import adds or replaces records from a file in the same format.</p>
+            <div class="cards">
+              <div><h3>Export Data</h3><p>One sheet each for students, fees, payments, attendance, marks and notices.</p><div class="x-acts x-acts--card"><button type="button" class="x-btn" data-act="xExport">Export Data</button></div></div>
+              <div><h3>Import Data</h3><p>Excel files only (.xlsx or .xls). You see a full preview before anything changes.</p><div class="x-acts x-acts--card"><label class="x-btn x-file">Import Data<input type="file" class="x-sr" accept=".xlsx,.xls" data-import aria-label="Choose an Excel file to import" /></label><button type="button" class="x-sbtn" data-act="xTemplate">Download template</button></div></div>
+            </div>
+            <p class="x-err" data-err="_form" role="alert">${esc(UI.impErr)}</p>${okMsg()}
+            ${UI.impBusy ? `<p class="x-note" role="status">Reading the file…</p>` : ""}${UI.impResult ? importResult(UI.impResult) : ""}${r ? importPreview(r) : ""}`;
+        },
         notices() {
           const list = DB.getNotices();
           return `<h2>Notices</h2><form class="x-form" data-portal="notice" novalidate aria-label="Post a notice">
@@ -2012,6 +2400,38 @@
         },
       };
       const delBtn = (act, id, what) => UI.confirm === id ? `<button type="button" class="x-sbtn x-sbtn--warn" data-act="${act}" data-id="${id}" data-focus-after>Confirm remove</button><button type="button" class="x-sbtn" data-act="cancelDel">Keep</button>` : `<button type="button" class="x-sbtn" data-act="askDel" data-id="${id}" aria-label="Remove ${esc(what)}">Remove</button>`;
+      /* ---------- Import preview and result ---------- */
+      const nIN = (n) => Number(n).toLocaleString("en-IN");
+      function importPreview(r) {
+        const rep = r.mode === "replace", anyValid = r.totals.some((t) => t.valid), known = r.sheets.filter((x) => !x.ignored && x.type);
+        const detail = (x) => `<details${x.problems.length || x.missing.length ? " open" : ""}><summary>${esc(x.label)} · sheet “${esc(x.sheet)}” · ${nIN(x.rows)} ${x.rows === 1 ? "row" : "rows"} · ${nIN(x.valid)} valid · ${nIN(x.skipped)} skipped</summary>
+            <p class="fineprint">Columns detected: ${x.columns.map(esc).join(", ") || "none"}${x.ignoredCols.length ? ` · not used: ${x.ignoredCols.map(esc).join(", ")}` : ""}</p>
+            ${x.missing.length ? `<p class="x-warn"><b>Missing required columns:</b> ${x.missing.map(esc).join(", ")}. This sheet will be skipped.</p>` : ""}
+            ${x.preview.rows.length ? `<div class="x-tw"><table class="x-raw"><caption>First ${x.preview.rows.length} ${x.preview.rows.length === 1 ? "row" : "rows"}</caption><thead><tr>${x.preview.head.map((h) => `<th scope="col">${esc(h)}</th>`).join("")}</tr></thead><tbody>${x.preview.rows.map((row) => `<tr>${x.preview.head.map((_, i) => `<td title="${esc(row[i])}">${esc(row[i])}</td>`).join("")}</tr>`).join("")}</tbody></table></div>` : `<p class="fineprint">No data rows.</p>`}
+            ${x.problems.filter((p) => p.row).length ? `<ul class="x-probs" aria-label="Problems in ${esc(x.sheet)}">${x.problems.filter((p) => p.row).slice(0, 12).map((p) => `<li>Row ${p.row}: ${esc(p.msg)}</li>`).join("")}${x.problems.length > 12 ? `<li>…and ${x.problems.length - 12} more ${x.problems.length - 12 === 1 ? "problem" : "problems"}.</li>` : ""}</ul>` : ""}
+            ${rep && !x.valid && !x.missing.length ? `<p class="fineprint">No valid rows, so existing ${esc(x.label.toLowerCase())} stay as they are.</p>` : ""}
+          </details>`;
+        return `<section class="x-imp" aria-labelledby="imp-h" data-imp>
+          <div><p class="x-kicker">Import preview · nothing has changed yet</p><h3 id="imp-h" tabindex="-1" data-imp-head>${esc(UI.imp.file)}</h3></div>
+          <p class="x-chips">${known.length ? known.map((t) => `<span class="chip">${esc(t.label)}: ${nIN(t.rows)} ${t.rows === 1 ? "row" : "rows"}</span>`).join("") : `<span class="chip chip--solid">No sheets the portal can read</span>`}</p>
+          <div class="x-tw"><table><caption>Sheets found</caption><thead><tr><th scope="col">Sheet</th><th scope="col">Imports as</th><th scope="col">Rows</th><th scope="col">Valid</th><th scope="col">Skipped</th><th scope="col">New</th><th scope="col">Matching existing</th>${rep ? `<th scope="col">Will be removed</th>` : ""}</tr></thead><tbody>
+            ${r.sheets.map((x) => `<tr><th scope="row">${esc(x.sheet)}</th>${x.ignored ? `<td><span class="muted">Ignored</span></td><td class="num">${nIN(x.rows)}</td><td colspan="${rep ? 5 : 4}" class="muted">${esc(x.note)}</td>` : `<td>${esc(x.label)}</td><td class="num">${nIN(x.rows)}</td><td class="num">${nIN(x.valid)}</td><td class="num">${nIN(x.skipped)}</td><td class="num">${nIN(x.added)}</td><td class="num">${nIN(x.updated)}</td>${rep ? `<td class="num">${nIN(x.removed)}</td>` : ""}`}</tr>`).join("")}
+          </tbody></table></div>
+          ${known.map(detail).join("")}
+          <fieldset><legend class="x-kicker">How should this data go in?</legend><div class="x-checks" role="radiogroup" aria-label="Import mode">
+            <label><input type="radio" name="impMode" value="merge"${rep ? "" : " checked"} />Add into existing data</label>
+            <label><input type="radio" name="impMode" value="replace"${rep ? " checked" : ""} />Completely replace existing data</label></div>
+            <p class="fineprint">Add: new records are added and records that match by ID (roll number or email for students) are updated. Replace: for each data type in the file, the college's current records are deleted and the file's rows take their place. New students get the password Welcome@123.</p></fieldset>
+          ${rep ? `<p class="x-warn" role="alert"><b>Replace deletes data.</b> ${r.totals.filter((t) => t.valid).map((t) => `${esc(t.label)}: ${nIN(t.removed)} current ${t.removed === 1 ? "record" : "records"} removed`).join(" · ") || "Nothing will change."}. ${r.types.includes("students") ? "Students not in the file are removed with their fees, payments, attendance and marks. " : ""}This cannot be undone, so export a backup first.</p>` : ""}
+          <div class="x-acts"><button type="button" class="x-btn${rep ? " x-btn--danger" : ""}" data-act="impConfirm"${anyValid ? "" : " disabled"}>${rep ? "Confirm Import and replace" : "Confirm Import"}</button><button type="button" class="x-sbtn" data-act="impCancel">Cancel</button></div>
+          ${anyValid ? "" : `<p class="x-err">Nothing valid to import. Fix the problems above and choose the file again.</p>`}
+        </section>`;
+      }
+      function importResult(x) {
+        const rows = Object.values(x.res), rep = x.mode === "replace";
+        return `<aside class="callout x-callout-wide" aria-label="Import finished" data-imp-done tabindex="-1"><p class="callout__head">Import finished · ${rep ? "replaced existing data" : "added into existing data"}</p><p class="callout__lead"><strong>${esc(x.file)}</strong> Every tab now shows the imported data.</p>
+          <div class="x-tw x-tw--s"><table><thead><tr><th scope="col">Data</th><th scope="col">Added</th><th scope="col">Updated</th><th scope="col">Skipped</th>${rep ? `<th scope="col">Removed</th>` : ""}</tr></thead><tbody>${rows.map((t) => `<tr><th scope="row">${esc(t.label)}</th><td class="num">${nIN(t.added)}</td><td class="num">${nIN(t.updated)}</td><td class="num">${nIN(t.skipped)}</td>${rep ? `<td class="num">${nIN(t.removed)}</td>` : ""}</tr>`).join("")}</tbody></table></div></aside>`;
+      }
       function studentsList() {
         const rows = DB.getStudents({ q: UI.sQ, cls: UI.sCls, status: UI.sStatus });
         if (!rows.length) return `<p>No students match.</p>`;
@@ -2020,7 +2440,8 @@
       ROUTES["/portal/admin"] = () => {
         const me = DB.me(); if (!me || me.role !== "admin") return "/portal";
         const c = me.college;
-        dyn(portalCrumbs("Admin dashboard") + `<div class="x-panel">${phead("College admin · " + esc(me.name), esc(c.name), `College code <b>${esc(c.code)}</b> · ${esc(c.type)} · ${esc(c.city)}, ${esc(c.state)}`, logoutBtn)}${demoNote}</div>` +
+        const resetBtn = UI.confirm === "reset" ? `<button type="button" class="x-sbtn x-sbtn--warn" data-act="resetDemo" data-id="reset" data-focus-after>Yes, reset all demo data</button><button type="button" class="x-sbtn" data-act="cancelDel">Keep my data</button>` : `<button type="button" class="x-sbtn" data-act="askDel" data-id="reset">Reset demo data</button>`;
+        dyn(portalCrumbs("Admin dashboard") + `<div class="x-panel">${phead("College admin · " + esc(me.name), esc(c.name), `College code <b>${esc(c.code)}</b> · ${esc(c.type)} · ${esc(c.city)}, ${esc(c.state)}`, `<div class="x-acts">${resetBtn}${logoutBtn}</div>`)}${demoNote}${UI.note ? `<p class="x-ok" role="status">${esc(UI.note)}</p>` : ""}</div>` +
           tabs(ADMIN_TABS, UI.tab, "tab", "Dashboard sections") + `<div class="x-panel" role="tabpanel" id="pa-panel" aria-labelledby="tab-tab-${UI.tab}">${PANES[UI.tab]()}</div>`);
       };
 
@@ -2030,7 +2451,11 @@
         const s = me.student, c = me.college;
         const top = portalCrumbs("Student dashboard") + `<div class="x-panel">${phead("Student · " + esc(c.name), esc(s.name), `Roll ${esc(s.roll)} · ${esc(s.cls)} · ${esc(s.sec)}`, logoutBtn)}${demoNote}</div>`;
         if (s.status !== "approved") return void dyn(top + `<div class="x-panel x-wait"><h2>${s.status === "rejected" ? "Your registration was not approved" : "Waiting for your college to approve"}</h2>${s.status === "rejected" ? `<p>${esc(c.name)} did not approve this account. Check your details with the college office.</p>` : `<p>${esc(c.name)} has your registration. Once the college office approves it, your fees, attendance, marks and notices appear here.</p><p><span class="chip chip--solid">Pending approval</span></p><p class="fineprint">Demo tip: sign in as admin@srividya.demo in another session to approve, or log out and back in after approval.</p>`}</div>`);
-        const fees = DB.myFees(), att = DB.myAttendance(), marks = DB.myMarks(), notices = DB.getNotices();
+        const fees = DB.myFees(), att = DB.myAttendance(), marks = DB.myMarks(), notices = DB.getNotices(), pays = DB.myPayments();
+        const tsum = (l, k) => l.reduce((a, f) => a + f[k], 0), terms = [...new Set(fees.map((f) => f.term))].map((t) => { const l = fees.filter((f) => f.term === t); return { t, l, amount: tsum(l, "amount"), paid: tsum(l, "paid"), balance: tsum(l, "balance") }; });
+        const termChip = (x) => chipFor(x.balance <= 0 ? "Paid" : x.paid > 0 ? "Partial" : "Due");
+        document.documentElement.classList.toggle("x-modal-open", !!UI.pm);
+        if (UI.pm && UI.pm.step === "qr") setTimeout(drawQR, 0);
         const fsum = (k) => fees.reduce((a, f) => a + f[k], 0), exams = EXAMS.filter((e) => marks.some((m) => m.exam === e));
         const examTot = (e) => { const ms = marks.filter((m) => m.exam === e), sc = ms.reduce((a, m) => a + m.score, 0), mx = ms.reduce((a, m) => a + m.max, 0); return { ms, sc, mx, pct: mx ? Math.round((sc / mx) * 1000) / 10 : 0 }; };
         const latest = exams.length ? examTot(exams[exams.length - 1]) : null;
@@ -2039,20 +2464,135 @@
             <div class="stat"><span class="stat__fig">${inr(fsum("balance"))}</span><span class="stat__label">Fee balance</span></div>
             <div class="stat"><span class="stat__fig">${latest ? latest.pct + "%" : "—"}</span><span class="stat__label">${latest ? esc(exams[exams.length - 1]) + " · grade " + gradeOf(latest.pct) : "No marks yet"}</span></div>
           </section>
-          <div class="links"><a class="btn" href="#ps-profile">Profile</a><a class="btn" href="#ps-fees">Fees</a><a class="btn" href="#ps-att">Attendance</a><a class="btn" href="#ps-marks">Marks</a><a class="btn" href="#ps-notices">Notices</a></div>
+          <div class="links"><a class="btn" href="#ps-profile">Profile</a><a class="btn" href="#ps-fees">Fees</a><a class="btn" href="#ps-payments">Payments</a><a class="btn" href="#ps-att">Attendance</a><a class="btn" href="#ps-marks">Marks</a><a class="btn" href="#ps-notices">Notices</a></div>
           <section class="section" id="ps-profile"><div class="head"><h2>Profile</h2></div><div class="breakdown"><dl>
             ${[["Name", s.name], ["Roll / admission no.", s.roll], ["Class / course", s.cls], ["Section / year", s.sec], ["College", `${c.name} (${c.code})`], ["Email", s.email], ["Phone", s.phone]].map(([k, v]) => `<div class="row"><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join("")}
           </dl><p class="fineprint">To change your details, contact your college office.</p></div></section>
-          <section class="section" id="ps-fees"><div class="head"><h2>Fees</h2><p class="head__sub">${inr(fsum("paid"))} paid of ${inr(fsum("amount"))}</p></div>
-            ${fees.length ? `<div class="x-tw"><table><thead><tr><th scope="col">Fee head</th><th scope="col">Due date</th><th scope="col">Amount</th><th scope="col">Paid</th><th scope="col">Balance</th><th scope="col">Status</th></tr></thead><tbody>${fees.map((f) => `<tr><th scope="row">${esc(f.head)}</th><td>${fmtD(f.due)}${f.balance && f.due < todayISO() ? "<small>Overdue</small>" : ""}</td><td class="num">${inr(f.amount)}</td><td class="num">${inr(f.paid)}</td><td class="num">${inr(f.balance)}</td><td>${chipFor(f.status)}</td></tr>`).join("")}<tr class="x-total"><th scope="row">Total</th><td></td><td class="num">${inr(fsum("amount"))}</td><td class="num">${inr(fsum("paid"))}</td><td class="num">${inr(fsum("balance"))}</td><td></td></tr></tbody></table></div>` : `<p>No fee items yet.</p>`}</section>
+          <section class="section" id="ps-fees"><div class="head"><h2>Fees</h2><p class="head__sub">${inr(fsum("paid"))} paid of ${inr(fsum("amount"))} · ${inr(fsum("balance"))} balance</p></div>
+            ${okMsg()}
+            ${fees.length ? `<div class="x-tw x-tw--s"><table data-fee-summary><caption>By semester / year</caption><thead><tr><th scope="col">Semester / year</th><th scope="col">Total</th><th scope="col">Paid</th><th scope="col">Balance</th><th scope="col">Status</th></tr></thead><tbody>${terms.map((x) => `<tr><th scope="row">${esc(x.t)}</th><td class="num">${inr(x.amount)}</td><td class="num">${inr(x.paid)}</td><td class="num">${inr(x.balance)}</td><td>${termChip(x)}</td></tr>`).join("")}<tr class="x-total"><th scope="row">All fees</th><td class="num">${inr(fsum("amount"))}</td><td class="num">${inr(fsum("paid"))}</td><td class="num">${inr(fsum("balance"))}</td><td></td></tr></tbody></table></div>
+              ${terms.map((x) => `<div class="x-tw"><table data-term="${esc(x.t)}"><caption>${esc(x.t)} · total ${inr(x.amount)} · paid ${inr(x.paid)} · balance ${inr(x.balance)}</caption><thead><tr><th scope="col">Fee head</th><th scope="col">Due date</th><th scope="col">Amount</th><th scope="col">Paid</th><th scope="col">Balance</th><th scope="col">Status</th><th scope="col"><span class="x-sr">Pay</span></th></tr></thead><tbody>${x.l.map((f) => `<tr data-fee="${f.id}"><th scope="row">${esc(f.head)}</th><td>${fmtD(f.due)}${f.balance && f.due < todayISO() ? "<small>Overdue</small>" : ""}</td><td class="num">${inr(f.amount)}</td><td class="num">${inr(f.paid)}</td><td class="num">${inr(f.balance)}</td><td>${chipFor(f.status)}</td><td>${f.balance > 0 ? `<button type="button" class="x-btn" data-act="pmOpen" data-id="${f.id}" aria-label="Pay fee: ${esc(f.label)}">Pay Fee</button>` : `<span class="x-paid">Paid</span>`}</td></tr>`).join("")}<tr class="x-total"><th scope="row">${esc(x.t)} total</th><td></td><td class="num">${inr(x.amount)}</td><td class="num">${inr(x.paid)}</td><td class="num">${inr(x.balance)}</td><td></td><td></td></tr></tbody></table></div>`).join("")}` : `<p>No fee items yet.</p>`}</section>
+          <section class="section" id="ps-payments"><div class="head"><h2>Payment history</h2><p class="head__sub">${pays.length} ${pays.length === 1 ? "payment" : "payments"}</p></div>
+            ${pays.length ? `<div class="x-tw"><table><thead><tr><th scope="col">Date &amp; time</th><th scope="col">Fee</th><th scope="col">Amount</th><th scope="col">Paid via</th><th scope="col">Reference / UTR</th><th scope="col">Receipt no.</th></tr></thead><tbody>${pays.map((p) => `<tr><td>${fmtDT(p.at)}</td><th scope="row">${esc(p.fee_label)}</th><td class="num">${inr(p.amount)}</td><td>${esc(p.mode)}</td><td>${esc(p.ref || "—")}</td><td>${esc(p.id.toUpperCase())}</td></tr>`).join("")}</tbody></table></div>` : `<p>No payments yet. Use Pay Fee next to a fee to pay by UPI.</p>`}</section>
           <section class="section" id="ps-att"><div class="head"><h2>Attendance</h2><p class="head__sub">${att.overall.P} present, ${att.overall.A} absent, ${att.overall.L} leave</p></div>
             ${att.months.length ? `<div class="pair"><div class="x-tw x-tw--s"><table><caption>By month</caption><thead><tr><th scope="col">Month</th><th scope="col">Present</th><th scope="col">Absent</th><th scope="col">Leave</th><th scope="col">Attendance</th></tr></thead><tbody>${att.months.map((m) => `<tr><th scope="row">${fmtM(m.month)}</th><td>${m.P}</td><td>${m.A}</td><td>${m.L}</td><td class="num">${pctTxt(m.pct)}</td></tr>`).join("")}</tbody></table></div>
               <div class="x-tw x-tw--s"><table><caption>Recent days</caption><thead><tr><th scope="col">Date</th><th scope="col">Status</th></tr></thead><tbody>${att.recent.map((r) => `<tr><th scope="row">${parseISO(r.date).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })}</th><td>${chipFor(r.status)}</td></tr>`).join("")}</tbody></table></div></div>` : `<p>No attendance recorded yet.</p>`}</section>
           <section class="section" id="ps-marks"><div class="head"><h2>Marks</h2></div>
             ${exams.length ? `<div class="pair">${exams.map((e) => { const t = examTot(e); return `<div class="x-tw x-tw--s"><table><caption>${esc(e)} · ${t.pct}% · grade ${gradeOf(t.pct)}</caption><thead><tr><th scope="col">Subject</th><th scope="col">Marks</th><th scope="col">Percent</th><th scope="col">Grade</th></tr></thead><tbody>${t.ms.map((m) => `<tr><th scope="row">${esc(m.subject)}</th><td class="num">${m.score} / ${m.max}</td><td>${m.pct}%</td><td class="num">${m.grade}</td></tr>`).join("")}<tr class="x-total"><th scope="row">Total</th><td class="num">${t.sc} / ${t.mx}</td><td>${t.pct}%</td><td class="num">${gradeOf(t.pct)}</td></tr></tbody></table></div>`; }).join("")}</div>` : `<p>No marks published yet.</p>`}</section>
           <section class="section" id="ps-notices"><div class="head"><h2>Notices</h2></div>
-            ${notices.length ? `<div class="cards">${notices.map((n) => `<div><p class="fineprint">${fmtD(n.date)}</p><h3>${esc(n.title)}</h3><p>${esc(n.text)}</p></div>`).join("")}</div>` : `<p>No notices yet.</p>`}</section>`);
+            ${notices.length ? `<div class="cards">${notices.map((n) => `<div><p class="fineprint">${fmtD(n.date)}</p><h3>${esc(n.title)}</h3><p>${esc(n.text)}</p></div>`).join("")}</div>` : `<p>No notices yet.</p>`}</section>` + (UI.pm ? payModal(s, c) : ""));
       };
+
+      /* Pay Fee modal: choose amount -> UPI QR + payment details -> receipt */
+      function payModal(st, college) {
+        const pm = UI.pm, f = DB.myFees().find((x) => x.id === pm.fee);
+        if (!f) return "";
+        const label = pm.step === "done" ? pm.receipt.payment.fee_label : f.label;
+        let body = "";
+        if (pm.step === "choose") {
+          const full = pm.mode !== "partial";
+          body = `<form class="x-form" data-portal="pmAmount" novalidate aria-label="Choose how much to pay">
+            <div class="x-f--full x-pm__bal"><span>Balance due</span><b>${inr(f.balance)}</b><small>of ${inr(f.amount)} · due ${fmtD(f.due)}</small></div>
+            <fieldset class="x-f x-f--full"><legend>How much do you want to pay?</legend><div class="x-checks" role="radiogroup" aria-label="Payment type">
+              <label><input type="radio" name="mode" value="full" data-pm-mode${full ? " checked data-autofocus" : ""} />Full</label>
+              <label><input type="radio" name="mode" value="partial" data-pm-mode${full ? "" : " checked data-autofocus"} />Partial</label></div></fieldset>
+            ${pf("Amount (₹)", "amount", `type="text" inputmode="decimal" autocomplete="off" aria-describedby="pm-amt-hint" value="${full ? f.balance : esc(pm.amount === undefined ? "" : pm.amount)}"${full ? " readonly" : ""}`, true)}
+            <p class="fineprint" id="pm-amt-hint">${full ? "Full payment clears this fee." : `Enter any amount up to ${inr(f.balance)}.`}</p>
+            ${formErr}<div class="x-acts"><button class="x-btn" type="submit">Pay</button><button type="button" class="x-sbtn" data-act="pmClose">Cancel</button></div></form>`;
+        } else if (pm.step === "qr") {
+          const uri = upiUri(pm.amount, f.label, st.roll, college.name);
+          body = `<div class="x-qr"><div class="x-qr__img" id="pm-qr" role="img" aria-label="UPI QR code to pay ${inr(pm.amount)} to ${esc(college.name)}" data-uri="${esc(uri)}"><span class="fineprint">Loading QR code…</span></div>
+              <p class="x-qr__amt" data-pm-amount>${inr(pm.amount)}</p><p class="x-qr__to">to <b>${esc(college.name)}</b><br /><span class="muted">UPI ID ${esc(UPI_CONFIG.UPI_ID)}</span></p>
+              <p class="fineprint">Scan with any UPI app: Google Pay, PhonePe, Paytm or BHIM. On a phone, <a class="link" href="${esc(uri)}">open your UPI app</a>.</p></div>
+            <form class="x-form" data-portal="pmConfirm" novalidate aria-label="Payment details"><h3 class="x-f--full">After paying, enter the payment details</h3>
+              ${pf("Payer name", "payer", `autocomplete="name" value="${esc(pm.payer === undefined ? st.name : pm.payer)}" data-autofocus`)}
+              ${psel("UPI app", "app", [["", "Select (optional)"], "Google Pay", "PhonePe", "Paytm", "BHIM", "Amazon Pay", "Other UPI app"], pm.app || "")}
+              ${pf("UTR / transaction reference number", "ref", `inputmode="numeric" autocomplete="off" maxlength="12" placeholder="12-digit UTR" aria-describedby="pm-utr-hint"`, true)}
+              <p class="fineprint" id="pm-utr-hint">The 12-digit UTR number is in your UPI app, in this payment's details.</p>
+              ${formErr}<div class="x-acts"><button class="x-btn" type="submit">I have paid · Confirm Payment</button><button type="button" class="x-sbtn" data-act="pmBack">Change amount</button></div></form>`;
+        } else {
+          const p = pm.receipt.payment, nf = pm.receipt.fee;
+          body = `<div class="x-done" role="status"><span class="x-done__tick" aria-hidden="true">✓</span><h3>Payment Done</h3><p>${inr(p.amount)} paid towards ${esc(p.fee_label)}.</p></div>
+            <div class="breakdown" data-receipt><dl>${[["Receipt no.", p.id.toUpperCase()], ["Amount paid", inr(p.amount)], ["Fee", p.fee_label], ["Student", `${st.name} (${st.roll})`], ["Date & time", fmtDT(p.at)], ["Reference (UTR)", p.ref], ["Paid via", p.mode], ["Payer", p.payer], ["Paid to", `${college.name} · ${UPI_CONFIG.UPI_ID}`], ["New balance", nf.balance > 0 ? inr(nf.balance) : "₹0 · Paid in full"]].map(([k, v]) => `<div class="row"><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl></div>
+            <div class="x-acts"><button type="button" class="x-btn" data-act="pmClose" data-autofocus>Done</button></div>`;
+        }
+        return `<div class="x-modal" data-modal><div class="x-modal__box" role="dialog" aria-modal="true" aria-labelledby="pm-h">
+          <div class="x-phead"><div><p class="x-kicker">${pm.step === "done" ? "Receipt" : pm.step === "qr" ? "Step 2 of 2 · Pay by UPI" : "Step 1 of 2 · Pay fee"}</p><h2 id="pm-h">${esc(label)}</h2></div><button type="button" class="x-sbtn" data-act="pmClose" aria-label="Close">Close</button></div>
+          ${body}
+          <p class="fineprint x-modal__note">Payment is confirmed after verification by the college.</p></div></div>`;
+      }
+      function drawQR() {
+        const box = document.getElementById("pm-qr"); if (!box || box.dataset.ready) return;
+        loadLib(QR_URL, "qrcode").then((qr) => {
+          if (!box.isConnected) return;
+          if (qr.stringToBytesFuncs && qr.stringToBytesFuncs["UTF-8"]) qr.stringToBytes = qr.stringToBytesFuncs["UTF-8"];
+          const q = qr(0, "M"); q.addData(box.dataset.uri); q.make();
+          box.innerHTML = q.createSvgTag({ cellSize: 4, margin: 4, scalable: true }); box.dataset.ready = "1";
+        }).catch(() => { if (box.isConnected) box.innerHTML = `<span class="fineprint">The QR code could not load. In your UPI app, pay to UPI ID ${esc(UPI_CONFIG.UPI_ID)}.</span>`; });
+      }
+
+      /* ---------- Excel (.xlsx) export, template and import, with SheetJS ---------- */
+      const toSerial = (v) => { const [d, t = "00:00"] = v.split(" "), [y, m, dd] = d.split("-").map(Number), [h, mi] = t.split(":").map(Number); return Date.UTC(y, m - 1, dd, h, mi) / 864e5 + 25569; };
+      function makeSheet(X, cols, rows) {
+        const ws = X.utils.aoa_to_sheet([cols.map((c) => c.header)]), width = cols.map((c) => c.header.length);
+        rows.forEach((r, ri) => r.forEach((v, ci) => {
+          if (v === "" || v === null || v === undefined) return;
+          const kind = cols[ci].kind; let cell, shown;
+          if (kind === "date" && /^\d{4}-\d{2}-\d{2}$/.test(v)) { cell = { t: "n", v: toSerial(v), z: "dd-mmm-yyyy" }; shown = 11; }
+          else if (kind === "datetime" && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(v)) { cell = { t: "n", v: toSerial(v), z: "dd-mmm-yyyy hh:mm" }; shown = 17; }
+          else if (/money/.test(kind) && typeof v === "number") { cell = { t: "n", v, z: Number.isInteger(v) ? '"₹"#,##0' : '"₹"#,##0.00' }; shown = inr(v).length + 1; }
+          else if (typeof v === "number" && kind !== "text") { cell = { t: "n", v }; shown = String(v).length; }
+          else { cell = { t: "s", v: String(v) }; shown = String(v).length; }
+          ws[X.utils.encode_cell({ r: ri + 1, c: ci })] = cell; width[ci] = Math.max(width[ci], shown);
+        }));
+        const range = X.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows.length, c: cols.length - 1 } });
+        ws["!ref"] = range; ws["!autofilter"] = { ref: range };
+        ws["!cols"] = width.map((w) => ({ wch: Math.min(60, w + 2) }));
+        return ws;
+      }
+      const fileSafe = (n) => String(n).replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+      async function exportXlsx() {
+        const X = await loadLib(XLSX_URL, "XLSX"), ex = DB.exportSheets(), c = ex.college, wb = X.utils.book_new();
+        const info = X.utils.aoa_to_sheet([["Shaalix data export"], ["College", c.name], ["College code", c.code], ["Type", c.type], ["City", `${c.city}, ${c.state}`], ["Exported on", fmtDT(nowStampUI())], ["How to use", "Edit the data sheets and import this file back from Import / Export. This College sheet is not imported."]]);
+        info["!cols"] = [{ wch: 16 }, { wch: 70 }];
+        X.utils.book_append_sheet(wb, info, "College");
+        ex.sheets.forEach((sh) => X.utils.book_append_sheet(wb, makeSheet(X, sh.cols, sh.rows), sh.name));
+        wb.Props = { Title: `${c.name} data`, Author: "Shaalix", Company: c.name };
+        const file = `Shaalix_${fileSafe(c.name)}_Data_${todayISO()}.xlsx`;
+        X.writeFile(wb, file, { compression: true });
+        return { file, counts: ex.sheets.map((sh) => `${sh.name} ${sh.rows.length}`).join(", ") };
+      }
+      const nowStampUI = () => { const d = new Date(), p = (n) => String(n).padStart(2, "0"); return `${todayISO()} ${p(d.getHours())}:${p(d.getMinutes())}`; };
+      const TEMPLATE_HELP = { roll: ["SV24010", "Unique per student"], name: ["Kavya Reddy"], cls: ["MPC 1st Year"], sec: ["Sec A"], email: ["kavya@example.com", "Unique; the student's login"], phone: ["9876543210", "10-digit Indian mobile"], status: ["Approved", "Approved, Pending or Rejected (blank = Approved)"], created: ["16-Oct-2026", "Blank = today"],
+        id: ["", "Leave blank for new rows; keep it to update a row"], term: ["Year 1", "Semester or year, e.g. Year 1 or Sem 3"], head: ["Tuition fee"], amount: ["22000", "Rupees, numbers only"], due: ["15-Nov-2026"], paid: ["0", "Amount already paid (blank = 0)"],
+        at: ["16-Oct-2026 10:30", "Date and time"], fee_id: ["", "Optional: Fee ID from the Fees sheet"], fee_label: ["Year 1 · Tuition fee"], payer: ["Parent name"], mode: ["PhonePe", "UPI app, Cash, Cheque…"], ref: ["412345678901", "UTR or receipt number"], by: ["College office"],
+        date: ["16-Oct-2026"], exam: ["Unit Test 1"], subject: ["Mathematics"], max: ["100", "1 to 1000"], score: ["78", "0 to Max Marks"], title: ["Holiday on Friday"], text: ["The college is closed on Friday for the festival."] };
+      const KIND_TXT = { text: "Text", date: "Date: 16-Oct-2026, 16-10-2026, 2026-10-16 or an Excel date", datetime: "Date and time: 16-Oct-2026 10:30", money: "Number (₹)", num: "Number" };
+      async function templateXlsx() {
+        const X = await loadLib(XLSX_URL, "XLSX"), spec = DB.dataSpec(), wb = X.utils.book_new();
+        const help = [["Shaalix import template"], ["Fill in the sheets you need and delete the ones you don't. Keep the header row exactly as it is. Then open Portal > Import / Export > Import Data."], ["Add into existing data adds new rows and updates rows that match by ID (Roll No or Email for students). Completely replace removes that data type's current records first."], ["Students must exist (in this file or already in the portal) before their fees, payments, attendance or marks. Importing payments does not change fee balances: put the paid amount in the Fees sheet."], [], ["Sheet", "Column", "Required", "Format", "Example"]];
+        spec.forEach((sp) => sp.cols.filter((c) => !/info/.test(c[2])).forEach(([k, h, kind, req]) => help.push([sp.sheet, h, req ? "Yes" : "No", (sp.type === "attendance" && k === "status" ? "Present, Absent or Leave" : (TEMPLATE_HELP[k] || [])[1] || KIND_TXT[kind]), (TEMPLATE_HELP[k] || [""])[0]])));
+        const ws = X.utils.aoa_to_sheet(help); ws["!cols"] = [{ wch: 14 }, { wch: 22 }, { wch: 10 }, { wch: 52 }, { wch: 28 }];
+        X.utils.book_append_sheet(wb, ws, "Instructions");
+        spec.forEach((sp) => { const cols = sp.cols.filter((c) => !/info/.test(c[2])).map(([key, header, kind]) => ({ key, header, kind })); X.utils.book_append_sheet(wb, makeSheet(X, cols, []), sp.sheet); });
+        X.writeFile(wb, "Shaalix_Import_Template.xlsx", { compression: true });
+      }
+      async function readImport(file) {
+        Object.assign(UI, { imp: null, impResult: null, impErr: "", msg: "" });
+        if (!file) return paint();
+        if (!/\.(xlsx|xls)$/i.test(file.name)) { UI.impErr = `“${file.name}” is not an Excel file. Only .xlsx or .xls files can be imported. In Excel or Google Sheets, save it as Excel Workbook (.xlsx) first.`; return paint('#v-dyn [data-act="xTemplate"]'); }
+        if (file.size > 15 * 1024 * 1024) { UI.impErr = "This file is larger than 15 MB. Split it into smaller files."; return paint(); }
+        UI.impBusy = true; paint();
+        try {
+          const buf = await file.arrayBuffer(), b = new Uint8Array(buf.slice(0, 4));
+          const zip = b[0] === 0x50 && b[1] === 0x4b, ole = b[0] === 0xd0 && b[1] === 0xcf && b[2] === 0x11 && b[3] === 0xe0;
+          if (!zip && !ole) throw new Error("the file's contents are not an Excel workbook");
+          const X = await loadLib(XLSX_URL, "XLSX"), wb = X.read(buf, { type: "array" });
+          UI.imp = { file: file.name, sheets: wb.SheetNames.map((n) => ({ name: n, rows: X.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: "", blankrows: true }) })) };
+          UI.impMode = "merge";
+        } catch (err) { UI.impErr = `Could not read “${file.name}”: ${err.message}. Check it is a valid .xlsx file, or start from the template.`; }
+        UI.impBusy = false; paint(UI.imp ? "#v-dyn [data-imp-head]" : undefined);
+      }
 
       /* ---------- Nav, footer and home cards from data ---------- */
       const productsMega = (i) => `<li class="x-has x-has--wide"><button type="button" aria-expanded="false" aria-controls="m${i}">Products</button><div class="x-mega x-mega--wide" id="m${i}">${Object.values(PRODUCTS).map((P) => `<div class="x-mcol"><a href="#${P.path}"><b>${name(P.path)}</b>${P.mods.length ? "" : `<small>${P.d}</small>`}</a>${P.mods.length ? `<ul>${P.mods.map((m) => `<li><a href="#${m.path}">${m.t}</a></li>`).join("")}</ul>` : ""}</div>`).join("")}<a class="x-mega__all" href="#/products"><b>All products →</b></a></div></li>`;
@@ -2144,6 +2684,8 @@
       let shown = null;
       function render() {
         const raw = location.hash.slice(1);
+        if (UI.pm) UI.pm = null;
+        document.documentElement.classList.remove("x-modal-open");
         /* A bare in-page anchor (e.g. #products) on load: show home and scroll to it */
         const anchor = raw && raw[0] !== "/" ? raw : "";
         let path = anchor ? "/" : norm(raw);
@@ -2258,6 +2800,12 @@
           const n = DB.upsertMarks(d.exam, d.subject, d.max, entries); UI.mSub = d.subject.trim(); UI.mMax = d.max; UI.msg = `Saved ${n} marks for ${d.subject.trim()}, ${d.exam}.`; paint('#v-dyn [data-portal="marks"] [type="submit"]');
         },
         notice(f, d) { const n = DB.postNotice(d); UI.msg = `“${n.title}” posted to students.`; paint('#v-dyn [name="title"]'); },
+        pmAmount(f, d) { const a = DB.checkPayAmount(UI.pm.fee, d.amount); Object.assign(UI.pm, { mode: d.mode === "partial" ? "partial" : "full", amount: a, step: "qr" }); paint(); },
+        pmConfirm(f, d) {
+          Object.assign(UI.pm, { payer: d.payer, app: d.app });
+          const r = DB.payMyFee(UI.pm.fee, { amount: UI.pm.amount, payer: d.payer, app: d.app, ref: d.ref });
+          Object.assign(UI.pm, { step: "done", receipt: r }); UI.msg = `Payment of ${inr(r.payment.amount)} received for ${r.payment.fee_label}. Receipt ${r.payment.id.toUpperCase()}.`; paint();
+        },
       };
       document.addEventListener("submit", (e) => {
         const f = e.target, k = f.dataset && f.dataset.portal;
@@ -2272,7 +2820,7 @@
         logout() { DB.logout(); UI = UI0(); go("/portal"); },
         role(id) { UI.loginRole = id; paint(`[data-act="role"][data-id="${id}"]`); },
         fill(email, b) { UI.loginRole = b.dataset.role; paint(); const f = document.querySelector('#v-dyn [data-portal="login"]'); f.email.value = email; f.password.value = "Demo@1234"; f.querySelector("[type=submit]").focus(); },
-        tab(id) { Object.assign(UI, { tab: id, msg: "", edit: null, confirm: null, feeEdit: null, pay: null }); paint(`[data-act="tab"][data-id="${id}"]`); },
+        tab(id) { Object.assign(UI, { tab: id, msg: "", edit: null, confirm: null, feeEdit: null, pay: null, note: "", imp: null, impErr: "", impResult: null }); paint(`[data-act="tab"][data-id="${id}"]`); },
         goPending() { Object.assign(UI, { tab: "students", sStatus: "pending", sQ: "", sCls: "", msg: "" }); paint('[data-act="tab"][data-id="students"]'); },
         stuNew() { Object.assign(UI, { edit: "new", msg: "" }); paint(); },
         stuEdit(id) { Object.assign(UI, { edit: id, msg: "" }); paint(); },
@@ -2287,12 +2835,25 @@
         pay(id) { Object.assign(UI, { pay: id, feeEdit: null, msg: "" }); paint(); },
         feeDel(id) { DB.removeFee(id); UI.confirm = null; UI.msg = "Fee item removed."; paint(); },
         noticeDel(id) { DB.removeNotice(id); UI.confirm = null; UI.msg = "Notice removed."; paint(); },
+        resetDemo() { const tab = UI.tab, still = DB.resetDemo(); UI = UI0(); if (!still) return go("/portal"); UI.tab = tab; UI.note = "Demo data reset. Every change saved in this browser was cleared."; paint('[data-act="askDel"][data-id="reset"]'); },
+        pmOpen(id) { const f = DB.myFees().find((x) => x.id === id); if (!f || !(f.balance > 0)) return; UI.msg = ""; UI.pm = { fee: id, mode: "full", amount: f.balance, step: "choose" }; paint(); },
+        pmClose() { const id = UI.pm && UI.pm.fee; UI.pm = null; paint(`#v-dyn [data-act="pmOpen"][data-id="${id}"]`); },
+        pmBack() { if (UI.pm) { UI.pm.step = "choose"; paint(); } },
+        xExport(_, b) { b.disabled = true; b.textContent = "Preparing…"; UI.impErr = ""; return exportXlsx().then(({ file, counts }) => { UI.msg = `Downloaded ${file} · ${counts}.`; paint('#v-dyn [data-act="xExport"]'); }, (err) => { UI.msg = ""; UI.impErr = err.message; paint(); }); },
+        xTemplate(_, b) { b.disabled = true; UI.impErr = ""; return templateXlsx().then(() => { UI.msg = "Downloaded Shaalix_Import_Template.xlsx. Fill it in, then use Import Data."; paint('#v-dyn [data-act="xTemplate"]'); }, (err) => { UI.msg = ""; UI.impErr = err.message; paint(); }); },
+        impConfirm() {
+          if (!UI.imp) return;
+          const res = DB.applyImport(UI.imp.sheets, UI.impMode);
+          Object.assign(UI, { impResult: { file: UI.imp.file, mode: UI.impMode, res }, imp: null, impErr: "", msg: "", feeStu: "", feeSt: "", sCls: "", sQ: "", sStatus: "", payStu: "", attCls: "", mCls: "", mSub: "", mMax: "" });
+          paint("#v-dyn [data-imp-done]");
+        },
+        impCancel() { Object.assign(UI, { imp: null, impErr: "" }); paint('#v-dyn [data-act="xExport"]'); },
         allP() { document.querySelectorAll('#v-dyn [data-portal="att"] input[type=radio][value="P"]').forEach((r) => (r.checked = true)); },
       };
       document.addEventListener("click", (e) => {
         const b = e.target.closest("#v-dyn [data-act]"); if (!b || !ACTS[b.dataset.act]) return;
         e.preventDefault();
-        try { ACTS[b.dataset.act](b.dataset.id, b); } catch (err) { UI.msg = ""; alertBox(err.message); }
+        try { const r = ACTS[b.dataset.act](b.dataset.id, b); if (r && typeof r.then === "function") r.catch((err) => alertBox(err.message)); } catch (err) { UI.msg = ""; alertBox(err.message); }
       });
       const alertBox = (msg) => { const box = document.querySelector('#v-dyn [data-err="_form"]') || document.querySelector("#v-dyn .x-ok"); if (box) { box.textContent = msg; } };
       /* Tabs: arrow keys move between tabs, as the ARIA tabs pattern expects */
@@ -2312,6 +2873,18 @@
         if (el.dataset.norender !== undefined) return;
         paint(`#v-dyn [data-ui="${k}"]`);
       });
+      document.addEventListener("change", (e) => {
+        const el = e.target; if (!el.closest || !el.closest("#v-dyn")) return;
+        if (el.matches("input[type=file][data-import]")) { const file = el.files && el.files[0]; readImport(file); el.value = ""; return; }
+        if (el.name === "impMode" && UI.imp) { UI.impMode = el.value === "replace" ? "replace" : "merge"; paint(`#v-dyn input[name="impMode"][value="${UI.impMode}"]`); return; }
+        if (el.matches("[data-pm-mode]") && UI.pm) {
+          const f = DB.myFees().find((x) => x.id === UI.pm.fee), inp = el.form.amount, hint = document.getElementById("pm-amt-hint"), full = el.value === "full";
+          UI.pm.mode = full ? "full" : "partial"; clearErrs(el.form);
+          inp.readOnly = full; inp.value = full ? f.balance : ""; hint.textContent = full ? "Full payment clears this fee." : `Enter any amount up to ${inr(f.balance)}.`;
+          if (!full) inp.focus();
+        }
+      });
+      document.addEventListener("keydown", (e) => { if (e.key === "Escape" && UI.pm && document.querySelector("#v-dyn [data-modal]")) { e.preventDefault(); ACTS.pmClose(); } });
       document.addEventListener("input", (e) => {
         const el = e.target;
         if (!el.closest || !el.closest("#v-dyn")) return;

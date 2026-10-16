@@ -108,7 +108,57 @@ DB.registerStudent({ code: c.code, name: "New S", roll: "1", cls: "CSE 1st Year"
 if (DB.me().student.status !== "pending") fails.push("New student should be pending");
 DB.logout();
 for (const p of ["/portal", "/portal/register-college", "/portal/register-student"]) renderAs("signed-out " + p, p);
-console.log("portal: admin tabs, forms, student views and isolation checked");
+// Student fee payment: amount checks, partial then full, receipt, admin sees it
+DB.login("student", "ravi@srividya.demo", "Demo@1234");
+const due = DB.myFees().find((f) => f.balance > 0 && f.term === "Year 2");
+if (!due) fails.push("Ravi should have a Year 2 fee with a balance");
+else {
+  for (const [v, why] of [["", "empty"], ["0", "zero"], ["-5", "negative"], ["abc", "text"], ["12.345", "3 decimals"], [String(due.balance + 1), "over balance"]]) expectErr(`pay amount ${why}`, () => DB.checkPayAmount(due.id, v), "amount");
+  expectErr("UTR must be 12 digits", () => DB.payMyFee(due.id, { amount: 100, payer: "R", ref: "12345" }), "ref");
+  expectErr("Payer required", () => DB.payMyFee(due.id, { amount: 100, payer: "", ref: "123456789012" }), "payer");
+  P.setUI({ pm: { fee: due.id, mode: "full", amount: due.balance, step: "choose" } }); renderAs("student/pay-choose", "/portal/student");
+  P.setUI({ pm: { fee: due.id, mode: "partial", amount: 1000, step: "qr" } });
+  if (!/upi:\/\/pay\?pa=shaalix@upi&amp;pn=Sri%20Vidya%20Junior%20College&amp;am=1000\.00&amp;cu=INR&amp;tn=/.test(renderAs("student/pay-qr", "/portal/student"))) fails.push("UPI link in the QR step is wrong");
+  const r1 = DB.payMyFee(due.id, { amount: "20000", payer: "Ravi", app: "PhonePe", ref: "111122223333" });
+  if (r1.fee.balance !== due.balance - 20000 || r1.fee.status !== "Partial") fails.push("Partial payment did not reduce the balance");
+  expectErr("Duplicate UTR", () => DB.payMyFee(due.id, { amount: 1, payer: "R", ref: "111122223333" }), "ref");
+  const r2 = DB.payMyFee(due.id, { amount: String(r1.fee.balance), payer: "Ravi", ref: "111122224444" });
+  if (r2.fee.balance !== 0 || r2.fee.status !== "Paid") fails.push("Full payment did not clear the fee");
+  expectErr("Paid fee cannot be paid again", () => DB.checkPayAmount(due.id, "1"));
+  P.setUI({ pm: { fee: due.id, step: "done", receipt: r2 } }); if (!/Payment Done/.test(renderAs("student/pay-done", "/portal/student"))) fails.push("Receipt step missing");
+  P.setUI({ pm: null }); const sh = renderAs("student/after-pay", "/portal/student");
+  if (!new RegExp(`data-fee="${due.id}"[\\s\\S]*?x-paid`).test(sh) || new RegExp(`data-act="pmOpen" data-id="${due.id}"`).test(sh)) fails.push("Paid fee should show Paid without a Pay Fee button");
+  if (DB.myPayments().length !== 2) fails.push("Student payment history should have 2 payments");
+  DB.login("admin", "admin@srividya.demo", "Demo@1234");
+  if (DB.getPayments().filter((p) => p.ref.startsWith("11112222")).length !== 2) fails.push("Admin does not see the student's payments");
+}
+// Excel import: export -> replace gives identical data; errors are caught; merge adds and updates
+DB.login("admin", "admin@srividya.demo", "Demo@1234");
+const toRows = (ex) => ex.sheets.map((sh) => ({ name: sh.name, rows: [sh.cols.map((c) => c.header), ...sh.rows] }));
+const before = DB.snapshot(), file = toRows(DB.exportSheets());
+const pre = DB.analyzeImport(file, "replace");
+if (pre.totals.some((t) => t.skipped)) fails.push("Round trip: export has rows the import rejects: " + JSON.stringify(pre.sheets.flatMap((x) => x.problems).slice(0, 3)));
+DB.applyImport(file, "replace");
+if (DB.snapshot() !== before) fails.push("Round trip: export + replace import changed the data");
+const stuSheet = file.find((x) => x.name === "Students");
+const bad = [{ name: "Students", rows: [stuSheet.rows[0], ["SV9001", "New One", "MPC 1st Year", "Sec A", "new1@x.in", "9876500001", "Approved", ""], ["SV9001", "Dup Roll", "MPC 1st Year", "Sec A", "new2@x.in", "9876500002", "", ""], ["SV9002", "Bad Mail", "MPC 1st Year", "Sec A", "nope", "9876500003", "", ""], ["", "No Roll", "MPC 1st Year", "Sec A", "n3@x.in", "9876500004", "", ""], [stuSheet.rows[1][0], "Renamed", stuSheet.rows[1][2], stuSheet.rows[1][3], stuSheet.rows[1][4], stuSheet.rows[1][5], "Approved", ""]] },
+  { name: "Fees", rows: [["Roll No", "Semester / Year", "Fee Head", "Amount (₹)", "Due Date"], ["SV9001", "Year 1", "Tuition", "abc", "2026-11-01"], ["SV9001", "Year 1", "Tuition", 5000, "31-02-2026"], ["SV9001", "Year 1", "Tuition", 5000, "01-11-2026"], ["ZZ1", "Year 1", "Tuition", 5000, "01-11-2026"]] },
+  { name: "Marks", rows: [["Roll No", "Exam"], ["SV9001", "Unit Test 1"]] }, { name: "Teachers", rows: [["Name"], ["A"]] }];
+const an = DB.analyzeImport(bad, "merge"), st = an.sheets.find((x) => x.sheet === "Students"), fe = an.sheets.find((x) => x.sheet === "Fees"), mk = an.sheets.find((x) => x.sheet === "Marks"), te = an.sheets.find((x) => x.sheet === "Teachers");
+if (!(st.valid === 2 && st.skipped === 3 && st.added === 1 && st.updated === 1)) fails.push("Import students validation: " + JSON.stringify({ v: st.valid, s: st.skipped, a: st.added, u: st.updated, p: st.problems }));
+if (!(fe.valid === 1 && fe.skipped === 3)) fails.push("Import fees validation: " + JSON.stringify(fe.problems));
+if (!(mk.missing.includes("Subject") && mk.valid === 0)) fails.push("Import marks: missing columns not reported");
+if (!te.ignored) fails.push("Unknown sheet should be ignored");
+P.setUI({ tab: "data", imp: { file: "bad.xlsx", sheets: bad }, impMode: "replace" }); if (!/Replace deletes data/.test(renderAs("admin/data+preview", "/portal/admin"))) fails.push("Replace warning missing");
+P.setUI({ imp: null, impMode: "merge", tab: "overview" });
+const res = DB.applyImport(bad, "merge");
+if (res.students.added !== 1 || res.students.updated !== 1 || res.fees.added !== 1) fails.push("Merge result: " + JSON.stringify(res));
+if (!DB.getStudents().find((x) => x.roll === "SV9001") || DB.getStudents().find((x) => x.roll === stuSheet.rows[1][0]).name !== "Renamed") fails.push("Merge did not add/update students");
+DB.applyImport(file, "replace");
+if (DB.snapshot() !== before) fails.push("Replace with the earlier export did not restore the data");
+DB.resetDemo();
+if (DB.getPayments().some((p) => p.ref.startsWith("11112222"))) fails.push("Reset demo data kept payments");
+console.log("portal: admin tabs, forms, student views, isolation, fee payment and Excel import checked");
 const checked = new Set();
 for (const [where, h] of sources) {
   const local = new Set([...ids(h), ...staticIds]);
