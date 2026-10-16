@@ -1,4 +1,4 @@
-/* Hark's design tokens and component styles. Each component's rules follow its @component comment. style-gates: data */
+/* Shaalix design tokens and component styles. Each component's rules follow its @component comment. style-gates: data */
 
 /* @component foundations */
 :root {
@@ -41,8 +41,8 @@
   --mat-thin: light-dark(rgb(255 255 255 / 0.22), rgb(29 29 31 / 0.4));
   --mat-agent: light-dark(rgb(255 255 255 / 0.84), rgb(29 29 31 / 0.66));
   --mat-inverse: color-mix(in srgb, var(--fill-primary) 86%, transparent);  /* the nav: dark on light, light on dark */
-  --hark-blur: blur(50px) saturate(1.6);
-  --hark-shadow: 0 8px 40px #1d1d1f1f;
+  --sx-blur: blur(50px) saturate(1.6);
+  --sx-shadow: 0 8px 40px #1d1d1f1f;
 
   --sans: "GT Standard", "GT Standard L", "Geist", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
   --lh: 1.3;                                            /* every text style is 130% */
@@ -129,8 +129,8 @@ small { font-size: max(var(--size-caption), 0.85em); }
 
 .glass {
   background: var(--mat-inverse);
-  -webkit-backdrop-filter: var(--hark-blur);
-  backdrop-filter: var(--hark-blur);
+  -webkit-backdrop-filter: var(--sx-blur);
+  backdrop-filter: var(--sx-blur);
   border: 1px solid var(--stroke-primary-on);
 }
 .nav {
@@ -144,7 +144,7 @@ small { font-size: max(var(--size-caption), 0.85em); }
   gap: 6px;
   padding: 5px;
   border-radius: var(--r-pill);
-  box-shadow: var(--hark-shadow);
+  box-shadow: var(--sx-shadow);
 }
 .nav :focus-visible { outline-color: var(--fill-primary-on); }
 .seg {
@@ -217,13 +217,13 @@ small { font-size: max(var(--size-caption), 0.85em); }
   border-radius: var(--r-xl);
   background: var(--fill-primary);
   color: var(--text-primary-on);
-  box-shadow: var(--hark-shadow);
+  box-shadow: var(--sx-shadow);
   font: var(--weight-medium) var(--size-body)/1.1 var(--sans);
   text-decoration: none;
 }
-.badge:hover { box-shadow: var(--hark-shadow), inset 0 0 0 100px var(--hover-wash-primary-on); }
-.hark-mark { display: inline-grid; place-items: center; }
-.hark-mark svg { display: block; }
+.badge:hover { box-shadow: var(--sx-shadow), inset 0 0 0 100px var(--hover-wash-primary-on); }
+.sx-mark { display: inline-grid; place-items: center; }
+.sx-mark svg { display: block; }
 @media (max-width: 599px) {
   .foot nav a { display: inline-flex; align-items: center; min-height: var(--tap); min-width: var(--tap); }
   .badge { min-height: var(--tap); }
@@ -319,7 +319,7 @@ tbody th .dot { display: flex; width: fit-content; }
   align-items: flex-end;
   color: var(--hero-text);
   isolation: isolate;
-  box-shadow: var(--hark-shadow);
+  box-shadow: var(--sx-shadow);
   background: var(--hero-surface);
 }
 /* Without a photo the hero is as tall as its copy, so the callout sits beside the copy instead of over it. */
@@ -359,8 +359,8 @@ tbody th .dot { display: flex; width: fit-content; }
   border-radius: var(--r-pill);
   background: var(--hero-glass);
   border: 1px solid var(--hero-glass-stroke);
-  -webkit-backdrop-filter: var(--hark-blur);
-  backdrop-filter: var(--hark-blur);
+  -webkit-backdrop-filter: var(--sx-blur);
+  backdrop-filter: var(--sx-blur);
   font: var(--type-label);
 }
 .hero h1 { font: var(--type-display); letter-spacing: 0; }
@@ -374,8 +374,8 @@ tbody th .dot { display: flex; width: fit-content; }
   padding: 4px 10px;
   border-radius: var(--r-pill);
   background: var(--hero-glass-faint);
-  -webkit-backdrop-filter: var(--hark-blur);
-  backdrop-filter: var(--hark-blur);
+  -webkit-backdrop-filter: var(--sx-blur);
+  backdrop-filter: var(--sx-blur);
   font: var(--type-caption);
   color: var(--hero-text-muted);
 }
@@ -401,10 +401,10 @@ tbody th .dot { display: flex; width: fit-content; }
   padding: 16px 18px 18px;
   border-radius: var(--r-l);
   background: var(--mat-agent);
-  -webkit-backdrop-filter: var(--hark-blur);
-  backdrop-filter: var(--hark-blur);
+  -webkit-backdrop-filter: var(--sx-blur);
+  backdrop-filter: var(--sx-blur);
   border: 1px solid var(--stroke-composer);
-  box-shadow: var(--hark-shadow);
+  box-shadow: var(--sx-shadow);
   color: var(--text-primary);
   font-size: var(--size-small);
 }

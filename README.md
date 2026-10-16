@@ -7,7 +7,7 @@ Marketing website and demo portal for Shaalix, a school/college ERP by JJH Globa
 ## What's inside
 - `index.html` — single-file, hash-routed site (110+ pages: Products, Solutions, Integrations, Pricing, Blog, Parent Help, About, legal pages).
 - Demo portal: `#/portal` — college registration, student registration (needs college approval), college admin dashboard (students, fees, attendance, marks, notices) and read-only student dashboard.
-- `hark.css`, `hark-hero.css`, `hark.js` — styles and UI helpers.
+- `styles.css`, `hero.css`, `app.js` — styles and UI helpers.
 - `vl_*.jpg` — images.
 - `work/selfcheck.js` — route/link self-check (`node work/selfcheck.js`).
 
@@ -26,4 +26,4 @@ Open `index.html` in a browser, or serve the folder: `npx serve .`
 Works on any static host (GitHub Pages, Netlify, Vercel). For GitHub Pages: Settings → Pages → Deploy from branch `main`, folder `/`.
 
 ## Contact
-E. Kiran Kumar, Founder & President — +91 97032 22544 — president@jjhglobalsolutions.com
+E. Kiran Kumar, Founder & President — +91 97032 22544 — info@shaalix.com

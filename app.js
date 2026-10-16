@@ -1,4 +1,4 @@
-/* Page behaviors for Hark's component library: the nav, the theme toggle, tables, line charts and images. style-gates: data */
+/* Page behaviors for Shaalix component library: the nav, the theme toggle, tables, line charts and images. style-gates: data */
 (function () {
   "use strict";
   var doc = document, root = doc.documentElement;
@@ -96,19 +96,19 @@
       var mark = function () { if (im.naturalHeight > im.naturalWidth) im.parentNode.classList.add("is-portrait"); };
       if (im.complete) mark(); else im.addEventListener("load", mark);
     });
-    [].slice.call(doc.querySelectorAll(".hark-mark:empty")).forEach(function (m) { m.innerHTML = LOGO.replace(/SIZE/g, m.getAttribute("data-size") || "20"); });
+    [].slice.call(doc.querySelectorAll(".sx-mark:empty")).forEach(function (m) { m.innerHTML = LOGO.replace(/SIZE/g, m.getAttribute("data-size") || "20"); });
   }
 
   function behaviors() {
     var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     var btn = doc.getElementById("theme-btn"), mq = window.matchMedia("(prefers-color-scheme: dark)");
-    try { var saved = localStorage.getItem("hark-theme"); if (saved === "light" || saved === "dark") root.setAttribute("data-theme", saved); } catch (e) { /* storage blocked: follow the system theme */ }
+    try { var saved = localStorage.getItem("shaalix-theme"); if (saved === "light" || saved === "dark") root.setAttribute("data-theme", saved); } catch (e) { /* storage blocked: follow the system theme */ }
     function current() { var t = root.getAttribute("data-theme"); return t === "light" || t === "dark" ? t : (mq.matches ? "dark" : "light"); }
     function label() { if (btn) btn.setAttribute("aria-label", current() === "dark" ? "Switch to light theme" : "Switch to dark theme"); }
     if (btn) btn.addEventListener("click", function () {
       var next = current() === "dark" ? "light" : "dark";
       root.setAttribute("data-theme", next);
-      try { localStorage.setItem("hark-theme", next); } catch (e) { /* storage blocked: the choice lasts this visit */ }
+      try { localStorage.setItem("shaalix-theme", next); } catch (e) { /* storage blocked: the choice lasts this visit */ }
       label();
     });
     label();

@@ -11,8 +11,8 @@
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400&display=swap"
     />
-    <link rel="stylesheet" href="hark.css" />
-    <link rel="stylesheet" href="hark-hero.css" />
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="hero.css" />
     <style>
       :root{--x-navy:#1e1b4b;--x-indigo:light-dark(#4338ca,#a5b4fc);--x-indigo-fill:#4338ca;--x-orange:#c2410c;--x-orange-hover:#9a3412;--x-surface:light-dark(#fff,#1c1c21);--x-tint:light-dark(#eef2ff,#26263d)}
       /* Full-width shell: the library frame is boxed, this site runs edge to edge (content column 1320px incl. 24px padding) */
@@ -29,7 +29,7 @@
       .x-menu>li>a,.x-menu button{display:flex;align-items:center;gap:8px;min-height:var(--tap);padding:0 12px;border:0;background:none;border-radius:var(--r-s);font:var(--type-label);color:var(--text-primary);text-decoration:none;cursor:pointer}
       .x-menu button::after{content:"";width:6px;height:6px;border:solid currentColor;border-width:0 1.5px 1.5px 0;transform:translateY(-2px) rotate(45deg)}
       .x-menu>li>a:hover,.x-menu button:hover,.x-menu .is-active>button,.x-menu>li>a[aria-current]{background:var(--x-tint);color:var(--x-indigo)}
-      .x-mega{display:none;position:absolute;top:100%;left:0;width:540px;grid-template-columns:1fr 1fr;gap:2px;padding:10px;margin-top:8px;background:var(--x-surface);border:1px solid var(--stroke-secondary);border-radius:var(--r-m);box-shadow:var(--hark-shadow)}
+      .x-mega{display:none;position:absolute;top:100%;left:0;width:540px;grid-template-columns:1fr 1fr;gap:2px;padding:10px;margin-top:8px;background:var(--x-surface);border:1px solid var(--stroke-secondary);border-radius:var(--r-m);box-shadow:var(--sx-shadow)}
       .x-mega::before{content:"";position:absolute;left:0;right:0;top:-12px;height:12px}
       .x-has:nth-child(n+3) .x-mega{left:auto;right:0}
       .x-mega a{display:grid;gap:2px;padding:10px 12px;border-radius:var(--r-s);text-decoration:none}
@@ -79,7 +79,7 @@
       .x-faq summary::-webkit-details-marker{display:none}
       .x-faq summary::after{content:"+";font:var(--type-heading);color:var(--x-indigo)}.x-faq [open] summary::after{content:"–"}
       .x-faq details p{padding:0 22px 18px;color:var(--text-secondary);max-width:70ch}
-      .x-form,.x-thanks{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:clamp(20px,3vw,32px);background:var(--x-surface);border:1px solid var(--stroke-secondary);border-radius:var(--r-l);box-shadow:var(--hark-shadow)}
+      .x-form,.x-thanks{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:clamp(20px,3vw,32px);background:var(--x-surface);border:1px solid var(--stroke-secondary);border-radius:var(--r-l);box-shadow:var(--sx-shadow)}
       .x-form[hidden],.x-thanks[hidden]{display:none}
       .x-thanks{grid-template-columns:1fr;gap:10px}.x-thanks h3{font:var(--type-heading)}
       .x-f{display:grid;gap:6px;align-content:start;font:var(--type-label);min-width:0;margin:0;padding:0;border:0}
@@ -110,7 +110,7 @@
       @media (max-width:900px){.x-foot__grid{grid-template-columns:1fr 1fr}.x-foot__brand{grid-column:1/-1}}
       .x-top a,.x-foot a,.x-logo,.x-plain{display:inline-flex;align-items:center;min-height:var(--tap);min-width:var(--tap)}
       .x-foot ul{gap:0}
-      .x-wa{position:fixed;right:20px;bottom:20px;z-index:40;display:grid;place-items:center;width:56px;height:56px;border-radius:50%;background:#25d366;color:#fff;box-shadow:var(--hark-shadow)}
+      .x-wa{position:fixed;right:20px;bottom:20px;z-index:40;display:grid;place-items:center;width:56px;height:56px;border-radius:50%;background:#25d366;color:#fff;box-shadow:var(--sx-shadow)}
       .x-wa svg{width:30px;height:30px}
       .x-crumbs ol{display:flex;flex-wrap:wrap;align-items:center;gap:0 8px;list-style:none;margin:0;padding:0;font:var(--type-small);color:var(--text-secondary)}
       .x-crumbs li{display:flex;align-items:center;gap:8px}.x-crumbs li+li::before{content:"/";color:var(--text-secondary)}
@@ -257,7 +257,7 @@
     <div class="page x-wide" id="top">
       <div class="x-top">
         <a href="tel:+919703222544">📞 +91 97032 22544</a>
-        <a href="mailto:president@jjhglobalsolutions.com" aria-label="Email president@jjhglobalsolutions.com">✉ <span class="x-top__txt">president@jjhglobalsolutions.com</span></a>
+        <a href="mailto:info@shaalix.com" aria-label="Email info@shaalix.com">✉ <span class="x-top__txt">info@shaalix.com</span></a>
       </div>
       <header class="x-head" id="x-head">
         <a class="x-logo" href="#/" aria-label="Shaalix home">
@@ -500,7 +500,7 @@
                 <p class="quote">Founder &amp; President</p>
                 <ul>
                   <li><a class="link" href="tel:+919703222544">+91 97032 22544</a></li>
-                  <li><a class="link" href="mailto:president@jjhglobalsolutions.com">president@jjhglobalsolutions.com</a></li>
+                  <li><a class="link" href="mailto:info@shaalix.com">info@shaalix.com</a></li>
                   <li>Pulaganipalem, Pendurthi, Visakhapatnam, Andhra Pradesh - 531173, India</li>
                 </ul>
               </div>
@@ -535,7 +535,7 @@
             <p>Your whole school. One smart platform.</p>
             <p>A JJH Global Solutions venture</p>
             <a href="tel:+919703222544">+91 97032 22544</a>
-            <a href="mailto:president@jjhglobalsolutions.com">president@jjhglobalsolutions.com</a>
+            <a href="mailto:info@shaalix.com">info@shaalix.com</a>
             <p>Pulaganipalem, Pendurthi, Visakhapatnam, Andhra Pradesh - 531173, India</p>
           </div>
         </div>
@@ -550,7 +550,7 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5a9.5 9.5 0 0 0-8.2 14.3L2.5 21.5l4.8-1.3A9.5 9.5 0 1 0 12 2.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8.6 7.4c.3-.4.6-.4.9-.4h.5c.2 0 .4 0 .6.5l.8 1.9c.1.2.1.4 0 .6l-.5.7c-.1.2-.2.4 0 .6.6 1 1.5 1.9 2.6 2.5.2.1.4.1.6-.1l.7-.8c.2-.2.4-.2.6-.1l1.8.9c.2.1.4.2.4.4 0 .6-.2 1.4-.8 1.8-.6.5-1.6.7-2.8.3-1.6-.5-3.2-1.7-4.4-3.2-.8-1-1.4-2.2-1.5-3.2-.1-.9.2-1.7.5-2.4z" fill="currentColor"/></svg>
     </a>
 
-    <script src="hark.js"></script>
+    <script src="app.js"></script>
     <script>
       /* ---------- Site data: add pages here ---------- */
       const PAGES = {
@@ -1321,7 +1321,7 @@
 
       ROUTES["/about/team"] = () => dyn(aboutCrumbs("Team") +
         pHero("About", "The team behind Shaalix", "A Visakhapatnam team building and supporting software for Indian schools.", "", contactGhost) +
-        `<div class="pair"><div class="cards"><div><span class="x-avatar" aria-hidden="true">EK</span><h3>E. Kiran Kumar</h3><p class="quote">Founder &amp; President</p><ul><li><a class="link" href="tel:+919703222544">+91 97032 22544</a></li><li><a class="link" href="mailto:president@jjhglobalsolutions.com">president@jjhglobalsolutions.com</a></li></ul></div></div><div class="prose"><p>Shaalix is led by its founder and president, E. Kiran Kumar, as a venture of JJH Global Solutions.</p></div></div>` +
+        `<div class="pair"><div class="cards"><div><span class="x-avatar" aria-hidden="true">EK</span><h3>E. Kiran Kumar</h3><p class="quote">Founder &amp; President</p><ul><li><a class="link" href="tel:+919703222544">+91 97032 22544</a></li><li><a class="link" href="mailto:info@shaalix.com">info@shaalix.com</a></li></ul></div></div><div class="prose"><p>Shaalix is led by its founder and president, E. Kiran Kumar, as a venture of JJH Global Solutions.</p></div></div>` +
         sec("How we work", "Three teams, one platform.", cardsOf([
           ["Product &amp; Engineering", "Designs, builds and secures the ERP, LMS and mobile apps."],
           ["Customer Success", "Sets up schools, migrates data, trains staff and answers support requests."],
@@ -1350,7 +1350,7 @@
 
       ROUTES["/about/support"] = () => dyn(aboutCrumbs("Support") +
         pHero("About", "Support for Shaalix schools", "Reach our Visakhapatnam team by phone, email or WhatsApp, or raise a ticket.", "Mon–Sat · 9:30 AM–6:30 PM IST", "") +
-        `<div class="cards"><div><h3>Phone</h3><p><a class="link" href="tel:+919703222544">+91 97032 22544</a></p></div><div><h3>Email</h3><p><a class="link" href="mailto:president@jjhglobalsolutions.com">president@jjhglobalsolutions.com</a></p></div><div><h3>WhatsApp</h3><p><a class="link" href="https://wa.me/919703222544" target="_blank" rel="noopener">Chat on WhatsApp</a></p></div><div><h3>Hours</h3><p>Monday to Saturday, 9:30 AM to 6:30 PM IST.</p></div></div>` +
+        `<div class="cards"><div><h3>Phone</h3><p><a class="link" href="tel:+919703222544">+91 97032 22544</a></p></div><div><h3>Email</h3><p><a class="link" href="mailto:info@shaalix.com">info@shaalix.com</a></p></div><div><h3>WhatsApp</h3><p><a class="link" href="https://wa.me/919703222544" target="_blank" rel="noopener">Chat on WhatsApp</a></p></div><div><h3>Hours</h3><p>Monday to Saturday, 9:30 AM to 6:30 PM IST.</p></div></div>` +
         sec("Before you raise a ticket", "What to include, and what we help with.", `<div class="cards">${listCard("Include in your ticket", ["Your school name and your role", "The module or app, and whether on web, Android or iOS", "What you did, what you expected and what happened", "A screenshot of any error message", "The student, class or receipt involved, if any"])}${listCard("Typical support topics", ["Login and password resets", "Fee structures, payments and receipts", "Parent and staff mobile apps", "Marks entry, report cards and reports", "Attendance devices and bus tracking", "Adding classes, staff or students"])}</div>`) +
         sec("Raise a ticket", "Tell us what needs fixing.", waForm("ticket-form", "New support ticket – Shaalix", field("Name", "Name", 'autocomplete="name"') + field("School", "School", 'autocomplete="organization"') + field("Phone", "Phone", 'type="tel" autocomplete="tel" placeholder="+91"') + field("Email", "Email", 'type="email" autocomplete="email"') + `<label class="x-f x-f--full">Issue type<select name="Issue" required><option value="">Select</option><option>Login</option><option>Fees &amp; payments</option><option>Mobile app</option><option>Reports &amp; marks</option><option>Other</option></select><small class="x-err"></small></label><label class="x-f x-f--full">Describe the issue<textarea name="Message" required></textarea><small class="x-err"></small></label>`, "Raise ticket", "Thank you, your ticket is raised.")) +
         sec("FAQ", "Support questions, answered.", faq([
@@ -1475,7 +1475,7 @@
         demoCta("Shaalix"))));
 
       /* ---------- Company and resources ---------- */
-      const mailLink = `<a class="link" href="mailto:president@jjhglobalsolutions.com">president@jjhglobalsolutions.com</a>`;
+      const mailLink = `<a class="link" href="mailto:info@shaalix.com">info@shaalix.com</a>`;
       const stepsOf = (rows) => `<div class="steps">${rows.map(([e, h, t], i) => `<article class="step"><div class="step__intro"><p class="step__num">0${i + 1}</p><p class="step__eyebrow">${e}</p></div><div><h3>${h}</h3><p>${t}</p></div></article>`).join("")}</div>`;
       const listCards = (rows) => `<div class="cards">${rows.map(([h, l]) => `<div><h3>${h}</h3><ul>${l.split("|").map((x) => `<li>${x}</li>`).join("")}</ul></div>`).join("")}</div>`;
       const helpCta = `<aside class="callout" aria-label="Need help"><p class="callout__head">Need help?</p><p class="callout__lead"><strong>Our Visakhapatnam team is a call away.</strong> Phone, email, WhatsApp or a ticket.</p><a class="btn" href="#/about/support">Get support</a></aside>`;
@@ -1483,7 +1483,7 @@
       ROUTES["/careers"] = () => dyn(crumbs([["Home", "/"], ["Careers"]]) +
         titleHero("Careers", "We're growing", "Help us build school software that every Indian school can afford.") +
         `<div class="pair"><div class="prose"><p>Shaalix is built and supported from Visakhapatnam as a JJH Global Solutions venture. We are always glad to hear from people who care about education and good software.</p><p>There are no open roles listed right now. If you work in engineering, design, customer success or sales, send your CV with a short note on what you would like to do.</p></div>` +
-        `<aside class="callout" aria-label="Send your CV"><p class="callout__head">Send your CV</p><p class="callout__lead"><strong>president@jjhglobalsolutions.com</strong> Add a line on the work you want to do.</p><a class="btn" href="mailto:president@jjhglobalsolutions.com?subject=CV%20%E2%80%93%20Shaalix">Email your CV</a></aside></div>`);
+        `<aside class="callout" aria-label="Send your CV"><p class="callout__head">Send your CV</p><p class="callout__lead"><strong>info@shaalix.com</strong> Add a line on the work you want to do.</p><a class="btn" href="mailto:info@shaalix.com?subject=CV%20%E2%80%93%20Shaalix">Email your CV</a></aside></div>`);
 
       ROUTES["/press"] = () => dyn(crumbs([["Home", "/"], ["Press"]]) +
         titleHero("Press", "Press and media", "Interviews, company facts and product information for journalists.") +
