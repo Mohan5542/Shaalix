@@ -2,6 +2,8 @@
 
 **Your whole school. One smart platform.**
 
+Shaalix by BrandiQue Web Solutions — designed and developed by K. Mohan Rao, Founder of BrandiQue Web Solutions.
+
 Marketing website and demo portal for Shaalix, a school/college ERP by JJH Global Solutions.
 
 ## What's inside
@@ -47,3 +49,6 @@ Works on any static host (GitHub Pages, Netlify, Vercel). For GitHub Pages: Sett
 
 ## Contact
 E. Kiran Kumar, Founder & President — +91 97032 22544 — info@shaalix.com
+
+## Ownership
+Shaalix is a child company of BrandiQue Web Solutions (https://brandique.in) — designed and developed by K. Mohan Rao, Founder of BrandiQue Web Solutions. The product is publicly presented by JJH Global Solutions.
