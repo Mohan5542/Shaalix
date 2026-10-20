@@ -1,3 +1,8 @@
+/*
+ * Shaalix — School & College ERP
+ * Shaalix by BrandiQue Web Solutions — a child company of BrandiQue Web Solutions (https://brandique.in)
+ * Designed and developed by K. Mohan Rao, Founder of BrandiQue Web Solutions
+ */
 /* Page behaviors for Shaalix component library: the nav, the theme toggle, tables, line charts and images. style-gates: data */
 (function () {
   "use strict";
