@@ -232,7 +232,8 @@
       .x-auth{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:24px;align-items:start}
       .x-auth>div{display:grid;gap:16px;min-width:0}
       @media (max-width:860px){.x-auth{grid-template-columns:minmax(0,1fr)}}
-      .x-tabs{display:flex;gap:4px;width:max-content;max-width:100%;padding:4px;border-radius:var(--r-pill);background:var(--fill-tertiary);overflow-x:auto;scrollbar-width:none}
+      .x-off{display:none!important}
+.x-tabs{display:flex;gap:4px;width:max-content;max-width:100%;padding:4px;border-radius:var(--r-pill);background:var(--fill-tertiary);overflow-x:auto;scrollbar-width:none}
       .x-tab{flex:none;min-height:var(--tap);padding:0 16px;border:0;border-radius:var(--r-pill);background:none;color:var(--text-secondary);font:var(--type-label);white-space:nowrap;cursor:pointer}
       .x-tab:hover{color:var(--x-indigo)}
       .x-tab[aria-selected=true],.x-tab[aria-pressed=true]{background:var(--x-surface);color:var(--x-indigo);box-shadow:0 1px 3px rgb(0 0 0 / .12)}
@@ -1672,7 +1673,7 @@
       //       admins: college_id = auth.jwt() ->> 'college_id'; students: student_id = auth.uid(), status = 'approved'
       //   The UI only ever talks to DB, so swapping the body of this module is the whole migration.
       const DB = (() => {
-        const blank = () => ({ colleges: [], users: [], students: [], fees: [], payments: [], attendance: {}, marks: [], notices: [] });
+        const blank = () => ({ colleges: [], users: [], students: [], fees: [], payments: [], attendance: {}, marks: [], notices: [], faculty: [] });
         let T = blank(), session = null, seq = 1000;
         const uid = (p) => `${p}_${(++seq).toString(36)}`;
         const clone = (x) => (x === undefined ? x : JSON.parse(JSON.stringify(x)));
@@ -1756,6 +1757,7 @@
         const need = (role) => { if (!session || (role && session.role !== role)) fail(role === "admin" ? "Sign in as a college admin first." : "Sign in first."); return session; };
         const mine = (rec) => { if (!rec || rec.college_id !== session.college_id) fail("Record not found in your college."); return rec; };
         const myStudent = () => { const s = need("student"); const st = T.students.find((x) => x.id === s.student_id); if (!st || st.status !== "approved") fail("Your account is waiting for approval."); return st; };
+        const needStaff = () => { if (!session || (session.role !== "admin" && session.role !== "faculty")) fail("Sign in as a college admin or faculty first."); return session; };
 
         /* Validation */
         const req = (d, keys) => keys.forEach((k) => { if (!tx(d[k])) fail("Required.", k); });
@@ -1843,7 +1845,7 @@
           T.users.push({ id: uid("usr"), college_id, role: "student", email: st.email, pass: hash(d.password), student_id: st.id, name: st.name });
           return st;
         }
-        function startSession(u) { session = { user_id: u.id, role: u.role, college_id: u.college_id, student_id: u.student_id || null }; saveSession(); return clone(session); }
+        function startSession(u) { session = { user_id: u.id, role: u.role, college_id: u.college_id, student_id: u.student_id || null, faculty_id: u.faculty_id || null }; saveSession(); return clone(session); }
         function dropStudentData(id) {
           T.students = T.students.filter((x) => x.id !== id); T.users = T.users.filter((x) => x.student_id !== id);
           T.fees = T.fees.filter((x) => x.student_id !== id); T.marks = T.marks.filter((x) => x.student_id !== id); T.payments = T.payments.filter((x) => x.student_id !== id);
@@ -1878,7 +1880,7 @@
             if (!tx(email)) fail("Required.", "email");
             if (!password) fail("Required.", "password");
             const u = T.users.find((x) => x.email === lc(email));
-            if (u && u.role !== role && u.pass === hash(password)) fail(`This is a ${u.role === "admin" ? "College Admin" : "Student"} account. Switch the tab above.`, "password");
+            if (u && u.role !== role && u.pass === hash(password)) fail(`This is a ${{ admin: "College Admin", student: "Student", faculty: "Faculty" }[u.role] || "different"} account. Switch the tab above.`, "password");
             if (!u || u.role !== role || u.pass !== hash(password)) fail("Wrong email or password.", "password");
             return startSession(u);
           },
@@ -1886,7 +1888,7 @@
           me() {
             if (!session) return null;
             const u = T.users.find((x) => x.id === session.user_id);
-            return { role: session.role, name: u.name, email: u.email, college: clone(collegeOf(session.college_id)), student: session.student_id ? clone(T.students.find((s) => s.id === session.student_id)) : null };
+            return { role: session.role, name: u.name, email: u.email, college: clone(collegeOf(session.college_id)), student: session.student_id ? clone(T.students.find((s) => s.id === session.student_id)) : null, faculty: session.faculty_id ? clone(T.faculty.find((f) => f.id === session.faculty_id)) : null };
           },
 
           /* ----- College admin: own college only ----- */
@@ -1898,9 +1900,9 @@
             const bal = (l) => l.reduce((a, f) => a + Math.max(0, f.amount - f.paid), 0);
             return { students: ok.length, pending: all.filter((x) => x.status === "pending").length, billed: fees.reduce((a, f) => a + f.amount, 0), collected: fees.reduce((a, f) => a + f.paid, 0), due: bal(fees.filter(dueNow)), upcoming: bal(fees.filter((f) => !dueNow(f))), todayPct: t.pct, todayMarked: t.days };
           },
-          getClasses() { const s = need("admin"); return [...new Set(studentsIn(s.college_id).map(classOf))].sort(); },
+          getClasses() { const s = needStaff(); return [...new Set(studentsIn(s.college_id).map(classOf))].sort(); },
           getStudents({ q = "", cls = "", status = "" } = {}) {
-            const s = need("admin"), k = lc(q);
+            const s = needStaff(), k = lc(q);
             return clone(studentsIn(s.college_id).filter((x) => (!cls || classOf(x) === cls) && (!status || x.status === status) && (!k || [x.name, x.roll, x.email, x.phone].some((v) => lc(v).includes(k))))
               .sort((a, b) => (a.status === "pending" ? -1 : 0) - (b.status === "pending" ? -1 : 0) || a.roll.localeCompare(b.roll))).map((x) => ({ ...x, klass: classOf(x) }));
           },
@@ -1929,6 +1931,22 @@
           removeStudent(id) {
             need("admin"); mine(T.students.find((x) => x.id === id));
             dropStudentData(id);
+          },
+          getFaculty() { const s = need("admin"); return clone(T.faculty.filter((f) => f.college_id === s.college_id).sort((a, b) => a.name.localeCompare(b.name))); },
+          addFaculty(d) {
+            const s = need("admin");
+            req(d, ["name", "email", "phone", "dept"]);
+            checkEmail(d.email); checkPhone(d.phone);
+            if (d.password && String(d.password).length < 8) fail("Use at least 8 characters, or leave blank.", "password");
+            const f = { id: uid("fac"), college_id: s.college_id, name: tx(d.name), email: lc(d.email), phone: tx(d.phone), dept: tx(d.dept), designation: tx(d.designation) || "Assistant Professor", qualification: tx(d.qualification), subjects: tx(d.subjects), doj: tx(d.doj) || todayISO() };
+            T.faculty.push(f);
+            T.users.push({ id: uid("usr"), college_id: s.college_id, role: "faculty", email: f.email, pass: hash(d.password || "Welcome@123"), faculty_id: f.id, name: f.name });
+            return clone(f);
+          },
+          removeFaculty(id) {
+            const s = need("admin"); const f = mine(T.faculty.find((x) => x.id === id));
+            T.faculty = T.faculty.filter((x) => x.id !== id); T.users = T.users.filter((u) => u.faculty_id !== id);
+            return clone(f);
           },
           getFees(student_id) { const s = need("admin"); return T.fees.filter((f) => f.college_id === s.college_id && (!student_id || f.student_id === student_id)).sort(feeSort).map(feeOut); },
           /* One fee line: a student, a course year (1-4) and a fee type (Tuition or Affiliation) */
@@ -1960,12 +1978,12 @@
           getPayments(student_id) { const s = need("admin"); return clone(T.payments.filter((p) => p.college_id === s.college_id && (!student_id || p.student_id === student_id)).sort((a, b) => b.at.localeCompare(a.at) || b.id.localeCompare(a.id))); },
           removeFee(id) { need("admin"); mine(T.fees.find((x) => x.id === id)); T.fees = T.fees.filter((x) => x.id !== id); },
           getAttendance(date, cls) {
-            const s = need("admin");
+            const s = needStaff();
             return studentsIn(s.college_id).filter((x) => x.status === "approved" && classOf(x) === cls).sort((a, b) => a.roll.localeCompare(b.roll))
               .map((x) => ({ student: clone(x), status: (T.attendance[`${x.id}|${date}`] || {}).status || null }));
           },
           markAttendance(date, records) {
-            const s = need("admin");
+            const s = needStaff();
             if (!/^\d{4}-\d{2}-\d{2}$/.test(date || "")) fail("Pick a date.");
             if (date > todayISO()) fail("You cannot mark attendance for a future date.");
             const ids = Object.keys(records);
@@ -1974,12 +1992,12 @@
             return ids.length;
           },
           attendanceMonthly(month, cls) {
-            const s = need("admin");
+            const s = needStaff();
             return studentsIn(s.college_id).filter((x) => x.status === "approved" && classOf(x) === cls).sort((a, b) => a.roll.localeCompare(b.roll))
               .map((x) => ({ student: clone(x), ...tally(attOf(x.id).filter((a) => a.date.startsWith(month))) }));
           },
           classSummary() {
-            const s = need("admin"), month = todayISO().slice(0, 7);
+            const s = needStaff(), month = todayISO().slice(0, 7);
             return api.getClasses().map((cls) => {
               const sts = studentsIn(s.college_id).filter((x) => x.status === "approved" && classOf(x) === cls), ids = new Set(sts.map((x) => x.id));
               const t = tally(Object.values(T.attendance).filter((a) => ids.has(a.student_id) && a.date.startsWith(month)));
@@ -1987,15 +2005,15 @@
             }).filter((r) => r.students);
           },
           subjects(cls) {
-            const s = need("admin"), ids = new Set(studentsIn(s.college_id).filter((x) => classOf(x) === cls).map((x) => x.id));
+            const s = needStaff(), ids = new Set(studentsIn(s.college_id).filter((x) => classOf(x) === cls).map((x) => x.id));
             return [...new Set(T.marks.filter((m) => ids.has(m.student_id)).map((m) => m.subject))].sort();
           },
           getMarks({ exam = "", cls = "", subject = "" } = {}) {
-            const s = need("admin"), ids = new Set(studentsIn(s.college_id).filter((x) => !cls || classOf(x) === cls).map((x) => x.id));
+            const s = needStaff(), ids = new Set(studentsIn(s.college_id).filter((x) => !cls || classOf(x) === cls).map((x) => x.id));
             return T.marks.filter((m) => m.college_id === s.college_id && ids.has(m.student_id) && (!exam || m.exam === exam) && (!subject || lc(m.subject) === lc(subject))).map(markOut);
           },
           upsertMarks(exam, subject, max, entries) {
-            const s = need("admin"), M = Number(max);
+            const s = needStaff(), M = Number(max);
             if (!tx(exam)) fail("Pick an exam.", "exam");
             if (!tx(subject)) fail("Enter a subject.", "subject");
             if (!(M > 0) || M > 1000) fail("Max marks must be between 1 and 1000.", "max");
@@ -2144,6 +2162,14 @@
             const c = { id: uid("col"), name: C.name, code: C.code, type: C.type, city: C.city, state: C.state, phone: C.phone, created: shiftISO(today, -120), feeTuition: C.feeTuition, feeAffil: C.feeAffil };
             T.colleges.push(c);
             T.users.push({ id: uid("usr"), college_id: c.id, role: "admin", email: C.email, pass: hash("Demo@1234"), name: C.admin });
+            const FAC = ci === 0
+              ? [["Dr. Ananya Sharma", "CSE", "Professor & HOD", "Ph.D, M.Tech", "Data Structures, Operating Systems", "ananya"], ["Prof. Rajesh Varma", "ECE", "Associate Professor", "M.Tech", "Signals & Systems, Digital Electronics", "rajesh"]]
+              : [["Dr. Kiran Reddy", "CSE", "Professor", "Ph.D", "DBMS, Software Engineering", "kiran"], ["Prof. Divya Nair", "IT", "Assistant Professor", "M.Tech", "Web Technologies, Computer Networks", "divya"]];
+            FAC.forEach(([fname, dept, designation, qualification, subjects, local], fi) => {
+              const f = { id: uid("fac"), college_id: c.id, name: fname, email: `${local}@${C.dom}`, phone: `9${String(818000000 + ci * 50000 + fi * 31337).slice(0, 9)}`, dept, designation, qualification, subjects, doj: shiftISO(today, -300 - fi * 60) };
+              T.faculty.push(f);
+              T.users.push({ id: uid("usr"), college_id: c.id, role: "faculty", email: f.email, pass: hash("Demo@1234"), faculty_id: f.id, name: fname });
+            });
             const serial = {};
             const mk = (row, status, i) => {
               const [name, branch, admType, curYear, sec, , , gender, father, mother, dob, blood, religion, category, caste, income, scheme, schStatus, prevPct] = row;
@@ -2383,18 +2409,19 @@
         if (!load()) seed();
         try { const ss = storage("sessionStorage"), sv = ss && JSON.parse(ss.getItem(SESSION_KEY) || "null"); if (sv && T.users.some((u) => u.id === sv.user_id && u.role === sv.role)) session = sv; } catch (_) { /* no saved session */ }
         /* Every write is saved right away */
-        ["registerCollege", "registerStudent", "addStudent", "updateStudent", "updateMyContact", "setStudentStatus", "removeStudent", "upsertFee", "recordPayment", "removeFee", "markAttendance", "upsertMarks", "postNotice", "removeNotice", "payMyFee", "applyImport", "resetDemo"].forEach((k) => {
+        ["registerCollege", "registerStudent", "addFaculty", "removeFaculty", "addStudent", "updateStudent", "updateMyContact", "setStudentStatus", "removeStudent", "upsertFee", "recordPayment", "removeFee", "markAttendance", "upsertMarks", "postNotice", "removeNotice", "payMyFee", "applyImport", "resetDemo"].forEach((k) => {
           const fn = api[k]; api[k] = (...args) => { const r = fn(...args); save(); return r; };
         });
         return api;
       })();
 
       /* ---------- Portal UI: renders from DB only ---------- */
-      PAGES["/portal"] = { t: "Portal login", d: "Sign in as a college admin or a student." };
+      PAGES["/portal"] = { t: "Portal login", d: "Sign in as a college admin, faculty or a student." };
       PAGES["/portal/register-college"] = { t: "Register your college", d: "Create a college account on the Shaalix demo portal." };
       PAGES["/portal/register-student"] = { t: "Student registration", d: "Join your college on the Shaalix demo portal." };
       PAGES["/portal/admin"] = { t: "College admin dashboard", d: "Students, fees, attendance, marks and notices." };
       PAGES["/portal/student"] = { t: "Student dashboard", d: "Your fees, attendance, marks and notices." };
+      PAGES["/portal/faculty"] = { t: "Faculty dashboard", d: "Your profile, students, attendance, marks and notices." };
       const EXAMS = ["Unit Test 1", "Mid-1", "Unit Test 2", "Mid-2", "Final"];
       const BRANCHES = ["CSE", "ECE", "EEE", "MECH", "CIVIL", "IT", "CSM", "CSD"];
       const YEAR_OPTS = [1, 2, 3, 4].map((y) => [y, `Year ${y}`]);
@@ -2429,7 +2456,7 @@
       const fmtM = (ym) => parseISO(ym + "-01").toLocaleDateString("en-IN", { month: "long", year: "numeric" });
       const pctTxt = (p) => (p === null || p === undefined ? "—" : p + "%");
       const lastMonths = (n) => { const out = []; const d = parseISO(todayISO()); for (let i = 0; i < n; i++) { const t = new Date(d.getFullYear(), d.getMonth() - i, 1); out.push(`${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}`); } return out; };
-      const UI0 = () => ({ loginRole: "admin", tab: "overview", flash: null, msg: "", sQ: "", sCls: "", sStatus: "", edit: null, confirm: null, feeStu: "", feeSt: "", feeEdit: null, pay: null, attDate: todayISO(), attCls: "", attMonth: todayISO().slice(0, 7), mExam: "Unit Test 1", mCls: "", mSub: "", mMax: "", payStu: "", pm: null, imp: null, impMode: "merge", impErr: "", impBusy: false, impResult: null, note: "", feeYear: "", view: null, showAad: false, contactEdit: false, pmsg: "" });
+      const UI0 = () => ({ loginRole: "admin", tab: "overview", stab: "overview", ftab: "overview", flash: null, msg: "", sQ: "", sCls: "", sStatus: "", edit: null, confirm: null, feeStu: "", feeSt: "", feeEdit: null, pay: null, attDate: todayISO(), attCls: "", attMonth: todayISO().slice(0, 7), mExam: "Unit Test 1", mCls: "", mSub: "", mMax: "", payStu: "", pm: null, imp: null, impMode: "merge", impErr: "", impBusy: false, impResult: null, note: "", feeYear: "", view: null, showAad: false, contactEdit: false, pmsg: "" });
       let UI = UI0();
       const demoNote = `<p class="x-note" role="note">Demo mode: changes are saved in this browser only. College admins can reset the demo data anytime.</p>`;
       const pf = (label, nm, attrs = "", full = false, req = true) => `<label class="x-f${full ? " x-f--full" : ""}">${label}<input name="${nm}" ${attrs}${req ? " required" : ""} /><small class="x-err"></small></label>`;
@@ -2498,27 +2525,27 @@
 
       /* 1. Login */
       ROUTES["/portal"] = () => {
-        const me = DB.me(), isA = UI.loginRole === "admin";
-        dyn(portalCrumbs("Login") + titleHero("Shaalix Portal · Demo", "Sign in to your portal", "College admins run students, fees, attendance, marks and notices. Students see their own records.") + demoNote +
-          (me ? `<aside class="callout" aria-label="Signed in"><p class="callout__head">Signed in</p><p class="callout__lead"><strong>You are signed in as ${esc(me.name)}.</strong> ${esc(me.college.name)}</p><div class="links"><a class="btn" href="#/portal/${me.role === "admin" ? "admin" : "student"}">Open my dashboard</a><button type="button" class="btn" data-act="logout">Log out</button></div></aside>` : "") +
+        const me = DB.me(), isA = UI.loginRole === "admin", isF = UI.loginRole === "faculty";
+        dyn(portalCrumbs("Login") + titleHero("Shaalix Portal · Demo", "Sign in to your portal", "College admins run students, fees, attendance, marks and notices. Faculty mark attendance and enter marks. Students see their own records.") + demoNote +
+          (me ? `<aside class="callout" aria-label="Signed in"><p class="callout__head">Signed in</p><p class="callout__lead"><strong>You are signed in as ${esc(me.name)}.</strong> ${esc(me.college.name)}</p><div class="links"><a class="btn" href="#/portal/${me.role}">Open my dashboard</a><button type="button" class="btn" data-act="logout">Log out</button></div></aside>` : "") +
           `<div class="x-auth"><div>
             <form class="x-form" data-portal="login" novalidate aria-labelledby="pl-h">
               <h2 id="pl-h">Sign in</h2>
-              ${tabs([["admin", "College Admin"], ["student", "Student"]], UI.loginRole, "role", "Sign in as")}
-              ${pf("Email", "email", `type="email" autocomplete="username" placeholder="${isA ? "admin@yourcollege.in" : "you@example.com"}"`, true)}
+              ${tabs([["admin", "College Admin"], ["faculty", "Faculty"], ["student", "Student"]], UI.loginRole, "role", "Sign in as")}
+              ${pf("Email", "email", `type="email" autocomplete="username" placeholder="${isA ? "admin@yourcollege.in" : isF ? "faculty@yourcollege.in" : "you@example.com"}"`, true)}
               ${pf("Password", "password", `type="password" autocomplete="current-password"`, true)}
               ${formErr}
-              <div class="x-acts"><button class="x-btn" type="submit">Sign in as ${isA ? "College Admin" : "Student"}</button></div>
+              <div class="x-acts"><button class="x-btn" type="submit">Sign in as ${isA ? "College Admin" : isF ? "Faculty" : "Student"}</button></div>
               <p class="fineprint">New here? <a class="link" href="#/portal/register-college">Register your college</a> or <a class="link" href="#/portal/register-student">register as a student</a>.</p>
             </form>
           </div><div>
             <div class="x-faq"><details open><summary>Try the demo</summary><div class="x-creds">
               <p class="fineprint">Every demo account uses the password <b>Demo@1234</b>. Pick one to fill the form.</p>
               <div class="x-tw"><table><thead><tr><th scope="col">Account</th><th scope="col">Email</th><th scope="col">College</th><th scope="col"><span class="x-sr">Action</span></th></tr></thead><tbody>
-              ${[["admin", "College Admin", "admin@srividya.demo", "Sri Vidya Institute of Technology · SHX-1001"], ["admin", "College Admin", "admin@greenvalley.demo", "Green Valley College of Engineering · SHX-1002"], ["student", "Student, regular", "ravi@srividya.demo", "B.Tech CSE · Year 3 · fees Year 1–4"], ["student", "Student, lateral entry", "lakshmi@srividya.demo", "B.Tech ECE · Year 3 · joined in Year 2, fees Year 2–4"], ["student", "Student, pending", "anil@srividya.demo", "Sri Vidya · waiting for approval"]].map(([r, l, e, c]) => `<tr><th scope="row">${l}</th><td>${e}</td><td class="muted">${c}</td><td><button type="button" class="x-sbtn" data-act="fill" data-role="${r}" data-id="${e}" aria-label="Use ${e}">Use</button></td></tr>`).join("")}
+              ${[["admin", "College Admin", "admin@srividya.demo", "Sri Vidya Institute of Technology · SHX-1001"], ["admin", "College Admin", "admin@greenvalley.demo", "Green Valley College of Engineering · SHX-1002"], ["faculty", "Faculty · CSE (HOD)", "ananya@srividya.demo", "Sri Vidya · Professor & HOD, CSE"], ["faculty", "Faculty · CSE", "kiran@greenvalley.demo", "Green Valley · Professor, CSE"], ["student", "Student, regular", "ravi@srividya.demo", "B.Tech CSE · Year 3 · fees Year 1–4"], ["student", "Student, lateral entry", "lakshmi@srividya.demo", "B.Tech ECE · Year 3 · joined in Year 2, fees Year 2–4"], ["student", "Student, pending", "anil@srividya.demo", "Sri Vidya · waiting for approval"]].map(([r, l, e, c]) => `<tr><th scope="row">${l}</th><td>${e}</td><td class="muted">${c}</td><td><button type="button" class="x-sbtn" data-act="fill" data-role="${r}" data-id="${e}" aria-label="Use ${e}">Use</button></td></tr>`).join("")}
               </tbody></table></div>
             </div></details></div>
-            <div class="cards"><div><h3>What the demo shows</h3><ul><li>Admins approve students, manage full student profiles, collect year-wise B.Tech fees, mark attendance and enter marks.</li><li>Students see only their own fees, attendance, marks and notices.</li><li>Each college sees only its own data.</li></ul></div></div>
+            <div class="cards"><div><h3>What the demo shows</h3><ul><li>Admins approve students, manage full student profiles, collect year-wise B.Tech fees, mark attendance and enter marks.</li><li>Faculty see their own profile and students, and mark attendance and enter marks for their classes.</li><li>Students see only their own fees, attendance, marks and notices.</li><li>Each college sees only its own data.</li></ul></div></div>
           </div></div>`);
       };
 
@@ -2561,7 +2588,7 @@
         </form>`);
 
       /* 4. Admin dashboard */
-      const ADMIN_TABS = [["overview", "Overview"], ["students", "Students"], ["fees", "Fees"], ["payments", "Payments"], ["attendance", "Attendance"], ["marks", "Marks"], ["notices", "Notices"], ["data", "Import / Export"]];
+      const ADMIN_TABS = [["overview", "Overview"], ["students", "Students"], ["faculty", "Faculty"], ["fees", "Fees"], ["payments", "Payments"], ["attendance", "Attendance"], ["marks", "Marks"], ["notices", "Notices"], ["data", "Import / Export"]];
       const classOpts = (all) => [...(all ? [["", all]] : []), ...DB.getClasses()];
       const approved = () => DB.getStudents({ status: "approved" });
       const PANES = {
@@ -2588,6 +2615,21 @@
               ${psel("Class", "", classOpts("All classes"), UI.sCls, `data-ui="sCls"`)}
               ${psel("Status", "", [["", "All"], ["pending", "Pending approval"], ["approved", "Approved"], ["rejected", "Rejected"]], UI.sStatus, `data-ui="sStatus"`)}
             </div>${pv ? "" : okMsg()}<div id="pa-list">${studentsList()}</div>`;
+        },
+        faculty() {
+          const list = DB.getFaculty();
+          return `<h2>Faculty</h2><form class="x-form" data-portal="faculty" novalidate aria-label="Add a faculty member">
+            <h3 class="x-f--full">Add a faculty member</h3>
+            ${pf("Full name", "name", `autocomplete="name"`, true)}
+            ${pf("Email (login)", "email", `type="email" autocomplete="email"`)}
+            ${pf("Mobile", "phone", `type="tel" autocomplete="tel" placeholder="+91"`)}
+            ${psel("Department (branch)", "dept", [["", "Select"], ...BRANCHES], "", "required")}
+            ${pf("Designation", "designation", `placeholder="Assistant Professor"`, false, false)}
+            ${pf("Qualification", "qualification", `placeholder="M.Tech, Ph.D"`, false, false)}
+            ${pf("Subjects (comma separated)", "subjects", `placeholder="DBMS, Operating Systems"`, true, false)}
+            ${pf("Password (optional)", "password", `type="password" autocomplete="new-password" placeholder="Blank = Welcome@123"`, false, false)}
+            ${formErr}<div class="x-acts"><button class="x-btn" type="submit">Add faculty</button></div></form>${okMsg()}`
+            + (list.length ? `<div class="x-tw"><table><caption>${list.length} faculty ${list.length === 1 ? "member" : "members"}</caption><thead><tr><th scope="col">Name</th><th scope="col">Department</th><th scope="col">Designation</th><th scope="col">Subjects</th><th scope="col">Mobile</th><th scope="col"><span class="x-sr">Actions</span></th></tr></thead><tbody>${list.map((x) => `<tr><th scope="row">${esc(x.name)}<small>${esc(x.email)}</small></th><td>${esc(x.dept)}</td><td>${esc(x.designation)}</td><td>${esc(x.subjects || "—")}</td><td>${esc(x.phone)}</td><td><div class="x-acts">${delBtn("facDel", x.id, x.name)}</div></td></tr>`).join("")}</tbody></table></div>` : `<p>No faculty added yet. Add your first faculty member above — they sign in from the Faculty tab on the login page.</p>`);
         },
         fees() {
           const L = DB.lists(), sts = approved(), stuOpts = sts.map((x) => [x.id, `${x.roll} · ${x.name}`]);
@@ -2710,6 +2752,7 @@
       };
 
       /* 5. Student dashboard (read-only) */
+      const STUDENT_TABS = [["overview", "Overview"], ["profile", "Profile"], ["fees", "Fees"], ["payments", "Payments"], ["attendance", "Attendance"], ["marks", "Marks"], ["notices", "Notices"]];
       ROUTES["/portal/student"] = () => {
         const me = DB.me(); if (!me || me.role !== "student") return "/portal";
         const s = me.student, c = me.college;
@@ -2730,13 +2773,19 @@
         const examTot = (e) => { const ms = marks.filter((m) => m.exam === e), sc = ms.reduce((a, m) => a + m.score, 0), mx = ms.reduce((a, m) => a + m.max, 0); return { ms, sc, mx, pct: mx ? Math.round((sc / mx) * 1000) / 10 : 0 }; };
         const latest = exams.length ? examTot(exams[exams.length - 1]) : null;
         const lineRow = (f) => `<tr data-fee="${f.id}"><th scope="row">${esc(f.head)}</th><td>${fmtD(f.due)}${f.balance && f.phase !== "Upcoming" && f.due < todayISO() ? "<small>Overdue</small>" : ""}</td><td class="num">${inr(f.amount)}</td><td class="num">${inr(f.paid)}</td><td class="num">${inr(f.balance)}</td><td>${feeChip(f)}</td><td>${f.balance > 0 ? `<button type="button" class="x-btn" data-act="pmOpen" data-id="${f.id}" aria-label="Pay fee: ${esc(f.label)}">Pay Fee</button>` : `<span class="x-paid">Paid</span>`}</td></tr>`;
-        dyn(top + `<section class="stats" aria-label="At a glance">
+        dyn(top + `<section class="stats${UI.stab === "overview" ? "" : " x-off"}" aria-label="At a glance">
             <div class="stat"><span class="stat__fig">${pctTxt(att.overall.pct)}</span><span class="stat__label">Attendance, ${att.overall.days} days</span></div>
             <div class="stat"><span class="stat__fig">${inr(dueNowAmt)}</span><span class="stat__label">Fees due now${later ? ` · ${inrShort(later)} upcoming` : ""}</span></div>
             <div class="stat"><span class="stat__fig">${latest ? latest.pct + "%" : "—"}</span><span class="stat__label">${latest ? esc(exams[exams.length - 1]) + " · grade " + gradeOf(latest.pct) : "No marks yet"}</span></div>
           </section>
-          <div class="links"><a class="btn" href="#ps-profile">Profile</a><a class="btn" href="#ps-fees">Fees</a><a class="btn" href="#ps-payments">Payments</a><a class="btn" href="#ps-att">Attendance</a><a class="btn" href="#ps-marks">Marks</a><a class="btn" href="#ps-notices">Notices</a></div>
-          <section class="section" id="ps-profile"><div class="head"><h2>Profile</h2><p class="head__sub">${esc(s.roll)} · ${esc(courseLine(s))} · ${esc(c.name)} (${esc(c.code)})</p></div>
+          ${tabs(STUDENT_TABS, UI.stab, "stab", "Dashboard sections")}
+          <div class="x-ov${UI.stab === "overview" ? "" : " x-off"}"><div class="cards">
+              <div><h3>Fees</h3><p>Due now: <b>${inr(dueNowAmt)}</b>${later ? ` · ${inr(later)} upcoming` : ""}<br />${inr(fsum("paid"))} paid of ${inr(fsum("amount"))} so far.</p><p><button type="button" class="x-sbtn" data-act="stab" data-id="fees">Open fees</button></p></div>
+              <div><h3>Attendance</h3><p><b>${pctTxt(att.overall.pct)}</b> overall · ${att.overall.P} present, ${att.overall.A} absent, ${att.overall.L} leave (${att.overall.days} days).</p><p><button type="button" class="x-sbtn" data-act="stab" data-id="attendance">Open attendance</button></p></div>
+              <div><h3>Marks</h3>${latest ? `<p>Latest: <b>${esc(exams[exams.length - 1])}</b> · ${latest.pct}% · grade ${gradeOf(latest.pct)}.</p>` : `<p>No marks published yet.</p>`}<p><button type="button" class="x-sbtn" data-act="stab" data-id="marks">Open marks</button></p></div>
+              <div><h3>Notices</h3>${notices.length ? `<p class="fineprint">${fmtD(notices[0].date)}</p><p><b>${esc(notices[0].title)}</b></p>` : `<p>No notices yet.</p>`}<p><button type="button" class="x-sbtn" data-act="stab" data-id="notices">All notices</button></p></div>
+            </div></div>
+          <section class="section${UI.stab === "profile" ? "" : " x-off"}" id="ps-profile"><div class="head"><h2>Profile</h2><p class="head__sub">${esc(s.roll)} · ${esc(courseLine(s))} · ${esc(c.name)} (${esc(c.code)})</p></div>
             ${UI.pmsg ? `<p class="x-ok" role="status">${esc(UI.pmsg)}</p>` : ""}
             ${UI.contactEdit ? `<form class="x-form" data-portal="myContact" novalidate aria-label="Edit contact details"><h3 class="x-f--full">Edit contact details</h3>
               ${pf("Mobile", "phone", `type="tel" autocomplete="tel" value="${esc(s.phone)}" data-autofocus`)}${pf("Email", "email", `type="email" autocomplete="email" value="${esc(s.email)}"`)}
@@ -2746,22 +2795,61 @@
               : `<div class="x-acts"><button type="button" class="x-sbtn" data-act="contactEdit">Edit contact details</button></div>`}
             ${profileView(s)}
             <p class="fineprint">You can change your mobile, email and address. For any other change, contact your college office.</p></section>
-          <section class="section" id="ps-fees"><div class="head"><h2>Fees</h2><p class="head__sub">${esc(s.course)} ${esc(s.branch)} · ${lat ? "Lateral entry · 3 years, Year 2–4" : "Regular · 4 years, Year 1–4"} · ${inr(fsum("paid"))} paid of ${inr(fsum("amount"))} · ${inr(fsum("balance"))} balance</p></div>
+          <section class="section${UI.stab === "fees" ? "" : " x-off"}" id="ps-fees"><div class="head"><h2>Fees</h2><p class="head__sub">${esc(s.course)} ${esc(s.branch)} · ${lat ? "Lateral entry · 3 years, Year 2–4" : "Regular · 4 years, Year 1–4"} · ${inr(fsum("paid"))} paid of ${inr(fsum("amount"))} · ${inr(fsum("balance"))} balance</p></div>
             ${okMsg()}
             ${fees.length ? `<div class="x-tw x-tw--s"><table data-fee-summary><caption>Year-wise fees · Tuition Fee (Full fee) and Affiliation Fee each year</caption><thead><tr><th scope="col">Year</th><th scope="col">Academic year</th><th scope="col">Total</th><th scope="col">Paid</th><th scope="col">Balance</th><th scope="col">Status</th></tr></thead><tbody>
               ${lat ? `<tr data-year-row="Year 1"><th scope="row">Year 1</th><td colspan="5" class="muted">Not applicable · lateral entry joins directly in Year 2</td></tr>` : ""}
               ${yrs.map((x) => `<tr data-year-row="${x.t}"><th scope="row">${x.t}<small>${PH[x.phase]}</small></th><td>${x.ay}</td><td class="num">${inr(x.amount)}</td><td class="num">${inr(x.paid)}</td><td class="num">${inr(x.balance)}</td><td>${yChip(x)}</td></tr>`).join("")}
               <tr class="x-total" data-course-total><th scope="row">Course total</th><td>${lat ? "3 years" : "4 years"}</td><td class="num">${inr(fsum("amount"))}</td><td class="num">${inr(fsum("paid"))}</td><td class="num">${inr(fsum("balance"))}</td><td></td></tr></tbody></table></div>
               ${yrs.filter((x) => x.l.length).map((x) => `<div class="x-tw"><table data-year="${x.t}"><caption>${x.t} · ${PH[x.phase]} · AY ${x.ay} · total ${inr(x.amount)} · paid ${inr(x.paid)} · balance ${inr(x.balance)}</caption><thead><tr><th scope="col">Fee line</th><th scope="col">Due date</th><th scope="col">Total</th><th scope="col">Paid</th><th scope="col">Balance</th><th scope="col">Status</th><th scope="col"><span class="x-sr">Pay</span></th></tr></thead><tbody>${x.l.map(lineRow).join("")}<tr class="x-total"><th scope="row">${x.t} total</th><td></td><td class="num">${inr(x.amount)}</td><td class="num">${inr(x.paid)}</td><td class="num">${inr(x.balance)}</td><td></td><td></td></tr></tbody></table></div>`).join("")}` : `<p>No fee lines yet.</p>`}</section>
-          <section class="section" id="ps-payments"><div class="head"><h2>Payment history</h2><p class="head__sub">${pays.length} ${pays.length === 1 ? "payment" : "payments"}</p></div>
+          <section class="section${UI.stab === "payments" ? "" : " x-off"}" id="ps-payments"><div class="head"><h2>Payment history</h2><p class="head__sub">${pays.length} ${pays.length === 1 ? "payment" : "payments"}</p></div>
             ${pays.length ? `<div class="x-tw"><table><thead><tr><th scope="col">Date &amp; time</th><th scope="col">Fee</th><th scope="col">Amount</th><th scope="col">Paid via</th><th scope="col">Reference / UTR</th><th scope="col">Receipt no.</th></tr></thead><tbody>${pays.map((p) => `<tr><td>${fmtDT(p.at)}</td><th scope="row">${esc(p.fee_label)}</th><td class="num">${inr(p.amount)}</td><td>${esc(p.mode)}</td><td>${esc(p.ref || "—")}</td><td>${esc(p.id.toUpperCase())}</td></tr>`).join("")}</tbody></table></div>` : `<p>No payments yet. Use Pay Fee next to a fee to pay by UPI.</p>`}</section>
-          <section class="section" id="ps-att"><div class="head"><h2>Attendance</h2><p class="head__sub">${att.overall.P} present, ${att.overall.A} absent, ${att.overall.L} leave</p></div>
+          <section class="section${UI.stab === "attendance" ? "" : " x-off"}" id="ps-att"><div class="head"><h2>Attendance</h2><p class="head__sub">${att.overall.P} present, ${att.overall.A} absent, ${att.overall.L} leave</p></div>
             ${att.months.length ? `<div class="pair"><div class="x-tw x-tw--s"><table><caption>By month</caption><thead><tr><th scope="col">Month</th><th scope="col">Present</th><th scope="col">Absent</th><th scope="col">Leave</th><th scope="col">Attendance</th></tr></thead><tbody>${att.months.map((m) => `<tr><th scope="row">${fmtM(m.month)}</th><td>${m.P}</td><td>${m.A}</td><td>${m.L}</td><td class="num">${pctTxt(m.pct)}</td></tr>`).join("")}</tbody></table></div>
               <div class="x-tw x-tw--s"><table><caption>Recent days</caption><thead><tr><th scope="col">Date</th><th scope="col">Status</th></tr></thead><tbody>${att.recent.map((r) => `<tr><th scope="row">${parseISO(r.date).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })}</th><td>${chipFor(r.status)}</td></tr>`).join("")}</tbody></table></div></div>` : `<p>No attendance recorded yet.</p>`}</section>
-          <section class="section" id="ps-marks"><div class="head"><h2>Marks</h2></div>
+          <section class="section${UI.stab === "marks" ? "" : " x-off"}" id="ps-marks"><div class="head"><h2>Marks</h2></div>
             ${exams.length ? `<div class="pair">${exams.map((e) => { const t = examTot(e); return `<div class="x-tw x-tw--s"><table><caption>${esc(e)} · ${t.pct}% · grade ${gradeOf(t.pct)}</caption><thead><tr><th scope="col">Subject</th><th scope="col">Marks</th><th scope="col">Percent</th><th scope="col">Grade</th></tr></thead><tbody>${t.ms.map((m) => `<tr><th scope="row">${esc(m.subject)}</th><td class="num">${m.score} / ${m.max}</td><td>${m.pct}%</td><td class="num">${m.grade}</td></tr>`).join("")}<tr class="x-total"><th scope="row">Total</th><td class="num">${t.sc} / ${t.mx}</td><td>${t.pct}%</td><td class="num">${gradeOf(t.pct)}</td></tr></tbody></table></div>`; }).join("")}</div>` : `<p>No marks published yet.</p>`}</section>
-          <section class="section" id="ps-notices"><div class="head"><h2>Notices</h2></div>
+          <section class="section${UI.stab === "notices" ? "" : " x-off"}" id="ps-notices"><div class="head"><h2>Notices</h2></div>
             ${notices.length ? `<div class="cards">${notices.map((n) => `<div><p class="fineprint">${fmtD(n.date)}</p><h3>${esc(n.title)}</h3><p>${esc(n.text)}</p></div>`).join("")}</div>` : `<p>No notices yet.</p>`}</section>` + (UI.pm ? payModal(s, c) : ""));
+      };
+
+      /* 6. Faculty dashboard */
+      const FACULTY_TABS = [["overview", "Overview"], ["profile", "My Profile"], ["students", "Students"], ["attendance", "Attendance"], ["marks", "Marks"], ["notices", "Notices"]];
+      ROUTES["/portal/faculty"] = () => {
+        const me = DB.me(); if (!me || me.role !== "faculty" || !me.faculty) return "/portal";
+        const f = me.faculty, c = me.college;
+        const top = portalCrumbs("Faculty dashboard") + `<div class="x-panel">${phead("Faculty · " + esc(c.name), esc(f.name), `${esc(f.designation)} · ${esc(f.dept)} department · ${esc(f.email)}`, logoutBtn)}${demoNote}</div>`;
+        const FP = {
+          overview() {
+            const studs = DB.getStudents({ status: "approved" }), notices = DB.getNotices(), subs = (f.subjects || "").split(",").map((x) => x.trim()).filter(Boolean);
+            return `<h2>Overview</h2><section class="stats" aria-label="At a glance">
+              <div class="stat"><span class="stat__fig">${studs.length}</span><span class="stat__label">Students in ${esc(c.name)}</span></div>
+              <div class="stat"><span class="stat__fig">${DB.getClasses().length}</span><span class="stat__label">Classes</span></div>
+              <div class="stat"><span class="stat__fig">${subs.length}</span><span class="stat__label">Subjects I teach</span></div>
+              <div class="stat"><span class="stat__fig">${notices.length}</span><span class="stat__label">Notices</span></div>
+            </section>
+            <div class="cards">
+              <div><h3>My subjects</h3>${subs.length ? `<ul>${subs.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : `<p>No subjects listed yet.</p>`}<p><button type="button" class="x-sbtn" data-act="ftab" data-id="marks">Enter marks</button></p></div>
+              <div><h3>Today</h3><p>Mark attendance for your class, then enter marks when an exam finishes.</p><p><button type="button" class="x-sbtn" data-act="ftab" data-id="attendance">Mark attendance</button></p></div>
+              <div><h3>Latest notice</h3>${notices.length ? `<p class="fineprint">${fmtD(notices[0].date)}</p><p><b>${esc(notices[0].title)}</b></p><p>${esc(notices[0].text)}</p>` : `<p>No notices yet.</p>`}<p><button type="button" class="x-sbtn" data-act="ftab" data-id="notices">All notices</button></p></div>
+            </div>`;
+          },
+          profile() {
+            const rows = [["Name", f.name], ["Designation", f.designation], ["Department", f.dept], ["Qualification", f.qualification || "—"], ["Subjects", f.subjects || "—"], ["Email", f.email], ["Mobile", f.phone], ["College", `${c.name} (${c.code})`], ["Joined", f.doj ? fmtD(f.doj) : "—"]];
+            return `<h2>My profile</h2><div class="breakdown"><dl>${rows.map(([k, v]) => `<div class="row"><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl></div><p class="fineprint">Your email is your login. For any change to your profile, contact your college office.</p>`;
+          },
+          students() {
+            const rows = DB.getStudents({ status: "approved" });
+            return `<h2>Students</h2>` + (rows.length ? `<div class="x-tw"><table><caption>${rows.length} approved students · ${esc(c.name)}</caption><thead><tr><th scope="col">Student</th><th scope="col">Roll</th><th scope="col">Class</th><th scope="col">Section</th><th scope="col">Mobile</th></tr></thead><tbody>${rows.map((x) => `<tr><th scope="row">${esc(x.name)}<small>${esc(x.email)}</small></th><td>${esc(x.roll)}</td><td>${esc(x.klass)}</td><td>${esc(x.sec)}</td><td>${esc(x.phone)}</td></tr>`).join("")}</tbody></table></div>` : `<p>No approved students yet.</p>`);
+          },
+          attendance() { return PANES.attendance(); },
+          marks() { return PANES.marks(); },
+          notices() {
+            const list = DB.getNotices();
+            return `<h2>Notices</h2>` + (list.length ? `<div class="cards">${list.map((n) => `<div><p class="fineprint">${fmtD(n.date)}</p><h3>${esc(n.title)}</h3><p>${esc(n.text)}</p></div>`).join("")}</div>` : `<p>No notices yet.</p>`);
+          },
+        };
+        dyn(top + tabs(FACULTY_TABS, UI.ftab, "ftab", "Dashboard sections") + `<div class="x-panel" role="tabpanel" id="pf-panel" aria-labelledby="tab-ftab-${UI.ftab}">${FP[UI.ftab]()}</div>`);
       };
 
       /* Pay Fee modal: choose amount -> UPI QR + payment details -> receipt */
@@ -3064,7 +3152,7 @@
         return el;
       };
       const FORMS = {
-        login(f, d) { const s = DB.login(UI.loginRole, d.email, d.password); const role = UI.loginRole; UI = UI0(); UI.loginRole = role; go(s.role === "admin" ? "/portal/admin" : "/portal/student"); },
+        login(f, d) { const s = DB.login(UI.loginRole, d.email, d.password); const role = UI.loginRole; UI = UI0(); UI.loginRole = role; go("/portal/" + s.role); },
         regCollege(f, d) { const c = DB.registerCollege(d); UI = UI0(); UI.flash = c.code; go("/portal/admin"); },
         regStudent(f, d) { DB.registerStudent(d); UI = UI0(); UI.loginRole = "student"; go("/portal/student"); },
         student(f, d) {
@@ -3072,6 +3160,7 @@
           else { const s = DB.updateStudent(UI.edit, d); UI.msg = `${s.name}'s profile saved.`; UI.view = s.id; UI.showAad = false; }
           const back = UI.edit === "new"; UI.edit = null; paint(back ? '[data-act="stuNew"]' : "#v-dyn [data-prof-head]");
         },
+        faculty(f, d) { const r = DB.addFaculty(d); UI.msg = `Faculty added · ${r.name} can sign in with ${r.email}.`; paint('[data-portal="faculty"] [type="submit"]'); },
         fee(f, d) { const r = DB.upsertFee({ ...d, id: UI.feeEdit !== "new" ? UI.feeEdit : undefined, student_id: d.student_id }); UI.msg = `${r.label} saved · ${r.status}.`; UI.feeEdit = null; paint('[data-act="feeNew"]'); },
         pay(f, d) { const r = DB.recordPayment(UI.pay, d.amount); UI.msg = `Payment of ${inr(Number(d.amount))} recorded · ${r.label} is now ${r.status}.`; UI.pay = null; paint('[data-act="feeNew"]'); },
         att(f) {
@@ -3107,6 +3196,9 @@
         role(id) { UI.loginRole = id; paint(`[data-act="role"][data-id="${id}"]`); },
         fill(email, b) { UI.loginRole = b.dataset.role; paint(); const f = document.querySelector('#v-dyn [data-portal="login"]'); f.email.value = email; f.password.value = "Demo@1234"; f.querySelector("[type=submit]").focus(); },
         tab(id) { Object.assign(UI, { tab: id, msg: "", edit: null, confirm: null, feeEdit: null, pay: null, note: "", imp: null, impErr: "", impResult: null, view: null, showAad: false }); paint(`[data-act="tab"][data-id="${id}"]`); },
+        stab(id) { UI.stab = id; UI.msg = ""; paint(`[data-act="stab"][data-id="${id}"]`); },
+        ftab(id) { UI.ftab = id; UI.msg = ""; paint(`[data-act="ftab"][data-id="${id}"]`); },
+        facDel(id) { const f = DB.removeFaculty(id); UI.confirm = null; UI.msg = `${f.name} removed from faculty.`; paint(); },
         goPending() { Object.assign(UI, { tab: "students", sStatus: "pending", sQ: "", sCls: "", msg: "" }); paint('[data-act="tab"][data-id="students"]'); },
         stuNew() { Object.assign(UI, { edit: "new", msg: "", view: null }); paint(); },
         stuEdit(id) { Object.assign(UI, { edit: id, msg: "", view: null }); paint(); },
