@@ -2164,14 +2164,6 @@
             const c = { id: uid("col"), name: C.name, code: C.code, type: C.type, city: C.city, state: C.state, phone: C.phone, created: shiftISO(today, -120), feeTuition: C.feeTuition, feeAffil: C.feeAffil };
             T.colleges.push(c);
             T.users.push({ id: uid("usr"), college_id: c.id, role: "admin", email: C.email, pass: hash("Demo@1234"), name: C.admin });
-            const FAC = ci === 0
-              ? [["Dr. Ananya Sharma", "CSE", "Professor & HOD", "Ph.D, M.Tech", "Data Structures, Operating Systems", "ananya"], ["Prof. Rajesh Varma", "ECE", "Associate Professor", "M.Tech", "Signals & Systems, Digital Electronics", "rajesh"]]
-              : [["Dr. Kiran Reddy", "CSE", "Professor", "Ph.D", "DBMS, Software Engineering", "kiran"], ["Prof. Divya Nair", "IT", "Assistant Professor", "M.Tech", "Web Technologies, Computer Networks", "divya"]];
-            FAC.forEach(([fname, dept, designation, qualification, subjects, local], fi) => {
-              const f = { id: uid("fac"), college_id: c.id, name: fname, email: `${local}@${C.dom}`, phone: `9${String(818000000 + ci * 50000 + fi * 31337).slice(0, 9)}`, dept, designation, qualification, subjects, doj: shiftISO(today, -300 - fi * 60) };
-              T.faculty.push(f);
-              T.users.push({ id: uid("usr"), college_id: c.id, role: "faculty", email: f.email, pass: hash("Demo@1234"), faculty_id: f.id, name: fname });
-            });
             const serial = {};
             const mk = (row, status, i) => {
               const [name, branch, admType, curYear, sec, , , gender, father, mother, dob, blood, religion, category, caste, income, scheme, schStatus, prevPct] = row;
@@ -2544,7 +2536,7 @@
             <div class="x-faq"><details open><summary>Try the demo</summary><div class="x-creds">
               <p class="fineprint">Every demo account uses the password <b>Demo@1234</b>. Pick one to fill the form.</p>
               <div class="x-tw"><table><thead><tr><th scope="col">Account</th><th scope="col">Email</th><th scope="col">College</th><th scope="col"><span class="x-sr">Action</span></th></tr></thead><tbody>
-              ${[["admin", "College Admin", "admin@srividya.demo", "Sri Vidya Institute of Technology · SHX-1001"], ["admin", "College Admin", "admin@greenvalley.demo", "Green Valley College of Engineering · SHX-1002"], ["faculty", "Faculty · CSE (HOD)", "ananya@srividya.demo", "Sri Vidya · Professor & HOD, CSE"], ["faculty", "Faculty · CSE", "kiran@greenvalley.demo", "Green Valley · Professor, CSE"], ["student", "Student, regular", "ravi@srividya.demo", "B.Tech CSE · Year 3 · fees Year 1–4"], ["student", "Student, lateral entry", "lakshmi@srividya.demo", "B.Tech ECE · Year 3 · joined in Year 2, fees Year 2–4"], ["student", "Student, pending", "anil@srividya.demo", "Sri Vidya · waiting for approval"]].map(([r, l, e, c]) => `<tr><th scope="row">${l}</th><td>${e}</td><td class="muted">${c}</td><td><button type="button" class="x-sbtn" data-act="fill" data-role="${r}" data-id="${e}" aria-label="Use ${e}">Use</button></td></tr>`).join("")}
+              ${[["admin", "College Admin", "admin@srividya.demo", "Sri Vidya Institute of Technology · SHX-1001"], ["admin", "College Admin", "admin@greenvalley.demo", "Green Valley College of Engineering · SHX-1002"], ["student", "Student, regular", "ravi@srividya.demo", "B.Tech CSE · Year 3 · fees Year 1–4"], ["student", "Student, lateral entry", "lakshmi@srividya.demo", "B.Tech ECE · Year 3 · joined in Year 2, fees Year 2–4"], ["student", "Student, pending", "anil@srividya.demo", "Sri Vidya · waiting for approval"]].map(([r, l, e, c]) => `<tr><th scope="row">${l}</th><td>${e}</td><td class="muted">${c}</td><td><button type="button" class="x-sbtn" data-act="fill" data-role="${r}" data-id="${e}" aria-label="Use ${e}">Use</button></td></tr>`).join("")}
               </tbody></table></div>
             </div></details></div>
             <div class="cards"><div><h3>What the demo shows</h3><ul><li>Admins approve students, manage full student profiles, collect year-wise B.Tech fees, mark attendance and enter marks.</li><li>Faculty see their own profile and students, and mark attendance and enter marks for their classes.</li><li>Students see only their own fees, attendance, marks and notices.</li><li>Each college sees only its own data.</li></ul></div></div>

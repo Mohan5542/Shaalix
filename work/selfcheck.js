@@ -195,8 +195,11 @@ else {
   DB.login("admin", "admin@srividya.demo", "Demo@1234");
   if (DB.getPayments().filter((p) => p.ref.startsWith("11112222")).length !== 2) fails.push("Admin does not see the student's payments");
 }
-// Faculty: staff access to own college only, no admin powers
-DB.login("faculty", "ananya@srividya.demo", "Demo@1234");
+// Faculty: staff access to own college only, no admin powers.
+// (No demo faculty are seeded; the test creates faculty through the admin API.)
+DB.login("admin", "admin@srividya.demo", "Demo@1234");
+DB.addFaculty({ name: "Test Faculty", email: "faculty.test@srividya.demo", phone: "9876543210", dept: "CSE", designation: "Professor", qualification: "Ph.D", subjects: "DBMS, Operating Systems", password: "Demo@1234" });
+DB.login("faculty", "faculty.test@srividya.demo", "Demo@1234");
 const facMe = DB.me();
 if (!facMe || facMe.role !== "faculty" || !facMe.faculty || facMe.faculty.dept !== "CSE") fails.push("Faculty login/session broken");
 for (const t of ["overview", "profile", "students", "fees", "attendance", "marks", "notices"]) { P.setUI({ ftab: t }); renderAs("faculty/" + t, "/portal/faculty"); }
@@ -213,7 +216,9 @@ if (!fFees.every((f) => f.year >= 1 && f.year <= 4 && f.balance === Math.max(0, 
 expectErr("Faculty cannot write fees", () => DB.upsertFee({ year: 1, type: "Tuition", amount: 1, due: "2026-01-01" }));
 expectErr("Faculty cannot add students", () => DB.addStudent({ name: "Z", roll: "ZZ1", branch: "CSE", sec: "Sec A", email: "z@x.in", phone: "9876543210" }));
 expectErr("Faculty cannot manage faculty", () => DB.getFaculty());
-DB.login("faculty", "kiran@greenvalley.demo", "Demo@1234");
+DB.login("admin", "admin@greenvalley.demo", "Demo@1234");
+DB.addFaculty({ name: "GV Faculty", email: "faculty.test@greenvalley.demo", phone: "9876543210", dept: "CSE", designation: "Professor", qualification: "Ph.D", subjects: "DBMS", password: "Demo@1234" });
+DB.login("faculty", "faculty.test@greenvalley.demo", "Demo@1234");
 expectErr("Faculty isolation: mark other college attendance", () => DB.markAttendance(vm.runInContext("todayISO()", ctx), { [fSid]: "P" }));
 DB.login("student", "ravi@srividya.demo", "Demo@1234");
 expectErr("Student cannot use the staff fees view", () => DB.feesOf(fSid));
