@@ -233,6 +233,7 @@
       .x-auth>div{display:grid;gap:16px;min-width:0}
       @media (max-width:860px){.x-auth{grid-template-columns:minmax(0,1fr)}}
       .x-off{display:none!important}
+.x-yrhead{margin:26px 0 8px;font-size:1.05rem;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}.x-yrhead small{font-weight:400;opacity:.75}
 .x-tabs{display:flex;gap:4px;width:max-content;max-width:100%;padding:4px;border-radius:var(--r-pill);background:var(--fill-tertiary);overflow-x:auto;scrollbar-width:none}
       .x-tab{flex:none;min-height:var(--tap);padding:0 16px;border:0;border-radius:var(--r-pill);background:none;color:var(--text-secondary);font:var(--type-label);white-space:nowrap;cursor:pointer}
       .x-tab:hover{color:var(--x-indigo)}
@@ -2042,6 +2043,7 @@
 
           /* ----- Student: own records only, read-only ----- */
           myFees() { const st = myStudent(); return T.fees.filter((f) => f.student_id === st.id).sort(feeSort).map(feeOut); },
+          feesOf(studentId) { const s = needStaff(); const st = mine(T.students.find((x) => x.id === studentId)); return T.fees.filter((f) => f.student_id === st.id).sort(feeSort).map(feeOut); },
           /* Students see their whole profile but change only their contact details */
           myProfile() { return clone(myStudent()); },
           updateMyContact(d) {
@@ -2456,7 +2458,7 @@
       const fmtM = (ym) => parseISO(ym + "-01").toLocaleDateString("en-IN", { month: "long", year: "numeric" });
       const pctTxt = (p) => (p === null || p === undefined ? "—" : p + "%");
       const lastMonths = (n) => { const out = []; const d = parseISO(todayISO()); for (let i = 0; i < n; i++) { const t = new Date(d.getFullYear(), d.getMonth() - i, 1); out.push(`${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}`); } return out; };
-      const UI0 = () => ({ loginRole: "admin", tab: "overview", stab: "overview", ftab: "overview", flash: null, msg: "", sQ: "", sCls: "", sStatus: "", edit: null, confirm: null, feeStu: "", feeSt: "", feeEdit: null, pay: null, attDate: todayISO(), attCls: "", attMonth: todayISO().slice(0, 7), mExam: "Unit Test 1", mCls: "", mSub: "", mMax: "", payStu: "", pm: null, imp: null, impMode: "merge", impErr: "", impBusy: false, impResult: null, note: "", feeYear: "", view: null, showAad: false, contactEdit: false, pmsg: "" });
+      const UI0 = () => ({ loginRole: "admin", tab: "overview", stab: "overview", ftab: "overview", fFeeStu: "", flash: null, msg: "", sQ: "", sCls: "", sStatus: "", edit: null, confirm: null, feeStu: "", feeSt: "", feeEdit: null, pay: null, attDate: todayISO(), attCls: "", attMonth: todayISO().slice(0, 7), mExam: "Unit Test 1", mCls: "", mSub: "", mMax: "", payStu: "", pm: null, imp: null, impMode: "merge", impErr: "", impBusy: false, impResult: null, note: "", feeYear: "", view: null, showAad: false, contactEdit: false, pmsg: "" });
       let UI = UI0();
       const demoNote = `<p class="x-note" role="note">Demo mode: changes are saved in this browser only. College admins can reset the demo data anytime.</p>`;
       const pf = (label, nm, attrs = "", full = false, req = true) => `<label class="x-f${full ? " x-f--full" : ""}">${label}<input name="${nm}" ${attrs}${req ? " required" : ""} /><small class="x-err"></small></label>`;
@@ -2586,6 +2588,32 @@
           ${formErr}
           <div class="x-acts"><button class="x-btn" type="submit">Register</button><a class="x-sbtn" href="#/portal">I already have an account</a></div>
         </form>`);
+
+      /* Year-wise fees view, shared by the student Fees page and the faculty Fees page:
+         totals strip, all-years summary, then one clearly headed block per year. */
+      const feeYearView = (fees, s, canPay) => {
+        const lat = s.admType === "Lateral Entry", start = lat ? 2 : 1, tsum = (l, k) => l.reduce((a, f) => a + f[k], 0);
+        const PH = { Past: "Completed", Current: "Current year", Upcoming: "Upcoming" };
+        const yrs = [...new Set([1, 2, 3, 4].filter((y) => y >= start).concat(fees.map((f) => f.year)))].sort((a, b) => a - b).map((y) => {
+          const l = fees.filter((f) => f.year === y), ay = s.admYear + (y - start);
+          return { y, t: `Year ${y}`, l, ay: `${ay}–${String(ay + 1).slice(2)}`, phase: y < s.curYear ? "Past" : y === s.curYear ? "Current" : "Upcoming", amount: tsum(l, "amount"), paid: tsum(l, "paid"), balance: tsum(l, "balance") };
+        });
+        const yChip = (x) => (!x.amount ? "—" : chipFor(x.balance <= 0 ? "Paid" : x.paid > 0 ? "Partial" : x.phase === "Upcoming" ? "Upcoming" : "Due"));
+        const fsum = (k) => fees.reduce((a, f) => a + f[k], 0);
+        const dueNowAmt = tsum(fees.filter((f) => f.phase !== "Upcoming"), "balance"), laterAmt = tsum(fees.filter((f) => f.phase === "Upcoming"), "balance");
+        const lineRow = (f) => `<tr data-fee="${f.id}"><th scope="row">${esc(f.head)}</th><td>${fmtD(f.due)}${f.balance && f.phase !== "Upcoming" && f.due < todayISO() ? "<small>Overdue</small>" : ""}</td><td class="num">${inr(f.amount)}</td><td class="num">${inr(f.paid)}</td><td class="num">${inr(f.balance)}</td><td>${feeChip(f)}</td>${canPay ? `<td>${f.balance > 0 ? `<button type="button" class="x-btn" data-act="pmOpen" data-id="${f.id}" aria-label="Pay fee: ${esc(f.label)}">Pay Fee</button>` : `<span class="x-paid">Paid</span>`}</td>` : ""}</tr>`;
+        if (!fees.length) return `<p>No fee lines yet.</p>`;
+        return `<section class="stats" aria-label="Fee totals">
+            <div class="stat"><span class="stat__fig">${inr(fsum("amount"))}</span><span class="stat__label">Course total (${lat ? "3 years" : "4 years"})</span></div>
+            <div class="stat"><span class="stat__fig">${inr(fsum("paid"))}</span><span class="stat__label">Paid so far</span></div>
+            <div class="stat"><span class="stat__fig">${inr(dueNowAmt)}</span><span class="stat__label">Due now${laterAmt ? ` · ${inr(laterAmt)} upcoming` : ""}</span></div>
+          </section>
+          <div class="x-tw x-tw--s"><table data-fee-summary><caption>All years at a glance · Tuition Fee (Full fee) and Affiliation Fee each year</caption><thead><tr><th scope="col">Year</th><th scope="col">Academic year</th><th scope="col">Total</th><th scope="col">Paid</th><th scope="col">Balance</th><th scope="col">Status</th></tr></thead><tbody>
+            ${lat ? `<tr data-year-row="Year 1"><th scope="row">Year 1</th><td colspan="5" class="muted">Not applicable · lateral entry joins directly in Year 2</td></tr>` : ""}
+            ${yrs.map((x) => `<tr data-year-row="${x.t}"><th scope="row">${x.t}<small>${PH[x.phase]}</small></th><td>${x.ay}</td><td class="num">${inr(x.amount)}</td><td class="num">${inr(x.paid)}</td><td class="num">${inr(x.balance)}</td><td>${yChip(x)}</td></tr>`).join("")}
+            <tr class="x-total" data-course-total><th scope="row">Course total</th><td>${lat ? "3 years" : "4 years"}</td><td class="num">${inr(fsum("amount"))}</td><td class="num">${inr(fsum("paid"))}</td><td class="num">${inr(fsum("balance"))}</td><td></td></tr></tbody></table></div>
+          ${yrs.filter((x) => x.l.length).map((x) => `<h3 class="x-yrhead">${x.t} <span class="chip${x.phase === "Current" ? " chip--solid" : ""}">${PH[x.phase]}</span> <small>AY ${x.ay} · Total ${inr(x.amount)} · Paid ${inr(x.paid)} · Balance ${inr(x.balance)}</small></h3><div class="x-tw"><table data-year="${x.t}"><caption>${x.t} fees · Tuition and Affiliation lines</caption><thead><tr><th scope="col">Fee line</th><th scope="col">Due date</th><th scope="col">Total</th><th scope="col">Paid</th><th scope="col">Balance</th><th scope="col">Status</th>${canPay ? `<th scope="col"><span class="x-sr">Pay</span></th>` : ""}</tr></thead><tbody>${x.l.map(lineRow).join("")}<tr class="x-total"><th scope="row">${x.t} total</th><td></td><td class="num">${inr(x.amount)}</td><td class="num">${inr(x.paid)}</td><td class="num">${inr(x.balance)}</td><td></td>${canPay ? "<td></td>" : ""}</tr></tbody></table></div>`).join("")}`;
+      };
 
       /* 4. Admin dashboard */
       const ADMIN_TABS = [["overview", "Overview"], ["students", "Students"], ["faculty", "Faculty"], ["fees", "Fees"], ["payments", "Payments"], ["attendance", "Attendance"], ["marks", "Marks"], ["notices", "Notices"], ["data", "Import / Export"]];
@@ -2795,13 +2823,9 @@
               : `<div class="x-acts"><button type="button" class="x-sbtn" data-act="contactEdit">Edit contact details</button></div>`}
             ${profileView(s)}
             <p class="fineprint">You can change your mobile, email and address. For any other change, contact your college office.</p></section>
-          <section class="section${UI.stab === "fees" ? "" : " x-off"}" id="ps-fees"><div class="head"><h2>Fees</h2><p class="head__sub">${esc(s.course)} ${esc(s.branch)} · ${lat ? "Lateral entry · 3 years, Year 2–4" : "Regular · 4 years, Year 1–4"} · ${inr(fsum("paid"))} paid of ${inr(fsum("amount"))} · ${inr(fsum("balance"))} balance</p></div>
+          <section class="section${UI.stab === "fees" ? "" : " x-off"}" id="ps-fees"><div class="head"><h2>Fees</h2><p class="head__sub">${esc(s.course)} ${esc(s.branch)} · ${lat ? "Lateral entry · 3 years, Year 2–4" : "Regular · 4 years, Year 1–4"} · year-wise Tuition + Affiliation fees</p></div>
             ${okMsg()}
-            ${fees.length ? `<div class="x-tw x-tw--s"><table data-fee-summary><caption>Year-wise fees · Tuition Fee (Full fee) and Affiliation Fee each year</caption><thead><tr><th scope="col">Year</th><th scope="col">Academic year</th><th scope="col">Total</th><th scope="col">Paid</th><th scope="col">Balance</th><th scope="col">Status</th></tr></thead><tbody>
-              ${lat ? `<tr data-year-row="Year 1"><th scope="row">Year 1</th><td colspan="5" class="muted">Not applicable · lateral entry joins directly in Year 2</td></tr>` : ""}
-              ${yrs.map((x) => `<tr data-year-row="${x.t}"><th scope="row">${x.t}<small>${PH[x.phase]}</small></th><td>${x.ay}</td><td class="num">${inr(x.amount)}</td><td class="num">${inr(x.paid)}</td><td class="num">${inr(x.balance)}</td><td>${yChip(x)}</td></tr>`).join("")}
-              <tr class="x-total" data-course-total><th scope="row">Course total</th><td>${lat ? "3 years" : "4 years"}</td><td class="num">${inr(fsum("amount"))}</td><td class="num">${inr(fsum("paid"))}</td><td class="num">${inr(fsum("balance"))}</td><td></td></tr></tbody></table></div>
-              ${yrs.filter((x) => x.l.length).map((x) => `<div class="x-tw"><table data-year="${x.t}"><caption>${x.t} · ${PH[x.phase]} · AY ${x.ay} · total ${inr(x.amount)} · paid ${inr(x.paid)} · balance ${inr(x.balance)}</caption><thead><tr><th scope="col">Fee line</th><th scope="col">Due date</th><th scope="col">Total</th><th scope="col">Paid</th><th scope="col">Balance</th><th scope="col">Status</th><th scope="col"><span class="x-sr">Pay</span></th></tr></thead><tbody>${x.l.map(lineRow).join("")}<tr class="x-total"><th scope="row">${x.t} total</th><td></td><td class="num">${inr(x.amount)}</td><td class="num">${inr(x.paid)}</td><td class="num">${inr(x.balance)}</td><td></td><td></td></tr></tbody></table></div>`).join("")}` : `<p>No fee lines yet.</p>`}</section>
+            ${feeYearView(fees, s, true)}</section>
           <section class="section${UI.stab === "payments" ? "" : " x-off"}" id="ps-payments"><div class="head"><h2>Payment history</h2><p class="head__sub">${pays.length} ${pays.length === 1 ? "payment" : "payments"}</p></div>
             ${pays.length ? `<div class="x-tw"><table><thead><tr><th scope="col">Date &amp; time</th><th scope="col">Fee</th><th scope="col">Amount</th><th scope="col">Paid via</th><th scope="col">Reference / UTR</th><th scope="col">Receipt no.</th></tr></thead><tbody>${pays.map((p) => `<tr><td>${fmtDT(p.at)}</td><th scope="row">${esc(p.fee_label)}</th><td class="num">${inr(p.amount)}</td><td>${esc(p.mode)}</td><td>${esc(p.ref || "—")}</td><td>${esc(p.id.toUpperCase())}</td></tr>`).join("")}</tbody></table></div>` : `<p>No payments yet. Use Pay Fee next to a fee to pay by UPI.</p>`}</section>
           <section class="section${UI.stab === "attendance" ? "" : " x-off"}" id="ps-att"><div class="head"><h2>Attendance</h2><p class="head__sub">${att.overall.P} present, ${att.overall.A} absent, ${att.overall.L} leave</p></div>
@@ -2814,7 +2838,7 @@
       };
 
       /* 6. Faculty dashboard */
-      const FACULTY_TABS = [["overview", "Overview"], ["profile", "My Profile"], ["students", "Students"], ["attendance", "Attendance"], ["marks", "Marks"], ["notices", "Notices"]];
+      const FACULTY_TABS = [["overview", "Overview"], ["profile", "My Profile"], ["students", "Students"], ["fees", "Fees"], ["attendance", "Attendance"], ["marks", "Marks"], ["notices", "Notices"]];
       ROUTES["/portal/faculty"] = () => {
         const me = DB.me(); if (!me || me.role !== "faculty" || !me.faculty) return "/portal";
         const f = me.faculty, c = me.college;
@@ -2841,6 +2865,14 @@
           students() {
             const rows = DB.getStudents({ status: "approved" });
             return `<h2>Students</h2>` + (rows.length ? `<div class="x-tw"><table><caption>${rows.length} approved students · ${esc(c.name)}</caption><thead><tr><th scope="col">Student</th><th scope="col">Roll</th><th scope="col">Class</th><th scope="col">Section</th><th scope="col">Mobile</th></tr></thead><tbody>${rows.map((x) => `<tr><th scope="row">${esc(x.name)}<small>${esc(x.email)}</small></th><td>${esc(x.roll)}</td><td>${esc(x.klass)}</td><td>${esc(x.sec)}</td><td>${esc(x.phone)}</td></tr>`).join("")}</tbody></table></div>` : `<p>No approved students yet.</p>`);
+          },
+          fees() {
+            const sts = DB.getStudents({ status: "approved" });
+            if (!sts.length) return `<h2>Fees</h2><p>No approved students yet.</p>`;
+            const sel = sts.find((x) => x.id === UI.fFeeStu) || sts[0];
+            return `<h2>Fees</h2><div class="x-bar">${psel("Student", "", sts.map((x) => [x.id, `${x.roll} · ${x.name} · ${x.klass}`]), sel.id, `data-ui="fFeeStu"`)}</div>
+            <p class="fineprint">${esc(sel.name)} · ${esc(courseLine(sel))} · ${esc(sel.sec)} — read-only. Fee collection and changes are handled by the college office.</p>
+            ${feeYearView(DB.feesOf(sel.id), sel, false)}`;
           },
           attendance() { return PANES.attendance(); },
           marks() { return PANES.marks(); },
