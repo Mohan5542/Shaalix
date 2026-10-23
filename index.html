@@ -233,6 +233,7 @@
       .x-auth>div{display:grid;gap:16px;min-width:0}
       @media (max-width:860px){.x-auth{grid-template-columns:minmax(0,1fr)}}
       .x-off{display:none!important}
+.x-yrrow th{background:var(--fill-tertiary,#f3f4f6);text-align:left;font-weight:600}
 .x-yrhead{margin:26px 0 8px;font-size:1.05rem;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}.x-yrhead small{font-weight:400;opacity:.75}
 .x-tabs{display:flex;gap:4px;width:max-content;max-width:100%;padding:4px;border-radius:var(--r-pill);background:var(--fill-tertiary);overflow-x:auto;scrollbar-width:none}
       .x-tab{flex:none;min-height:var(--tap);padding:0 16px;border:0;border-radius:var(--r-pill);background:none;color:var(--text-secondary);font:var(--type-label);white-space:nowrap;cursor:pointer}
@@ -1846,7 +1847,7 @@
           T.users.push({ id: uid("usr"), college_id, role: "student", email: st.email, pass: hash(d.password), student_id: st.id, name: st.name });
           return st;
         }
-        function startSession(u) { session = { user_id: u.id, role: u.role, college_id: u.college_id, student_id: u.student_id || null, faculty_id: u.faculty_id || null }; saveSession(); return clone(session); }
+        function startSession(u) { session = { user_id: u.id, role: u.role, college_id: u.college_id, student_id: u.student_id || null }; saveSession(); return clone(session); }
         function dropStudentData(id) {
           T.students = T.students.filter((x) => x.id !== id); T.users = T.users.filter((x) => x.student_id !== id);
           T.fees = T.fees.filter((x) => x.student_id !== id); T.marks = T.marks.filter((x) => x.student_id !== id); T.payments = T.payments.filter((x) => x.student_id !== id);
@@ -1889,7 +1890,7 @@
           me() {
             if (!session) return null;
             const u = T.users.find((x) => x.id === session.user_id);
-            return { role: session.role, name: u.name, email: u.email, college: clone(collegeOf(session.college_id)), student: session.student_id ? clone(T.students.find((s) => s.id === session.student_id)) : null, faculty: session.faculty_id ? clone(T.faculty.find((f) => f.id === session.faculty_id)) : null };
+            return { role: session.role, name: u.name, email: u.email, college: clone(collegeOf(session.college_id)), student: session.student_id ? clone(T.students.find((s) => s.id === session.student_id)) : null };
           },
 
           /* ----- College admin: own college only ----- */
@@ -1938,10 +1939,10 @@
             const s = need("admin");
             req(d, ["name", "email", "phone", "dept"]);
             checkEmail(d.email); checkPhone(d.phone);
-            if (d.password && String(d.password).length < 8) fail("Use at least 8 characters, or leave blank.", "password");
-            const f = { id: uid("fac"), college_id: s.college_id, name: tx(d.name), email: lc(d.email), phone: tx(d.phone), dept: tx(d.dept), designation: tx(d.designation) || "Assistant Professor", qualification: tx(d.qualification), subjects: tx(d.subjects), doj: tx(d.doj) || todayISO() };
+            const sal = tx(d.salary) === "" ? "" : toNum(d.salary);
+            if (sal !== "" && !(sal >= 0)) fail("Enter the monthly salary in rupees.", "salary");
+            const f = { id: uid("fac"), college_id: s.college_id, name: tx(d.name), email: lc(d.email), phone: tx(d.phone), dept: tx(d.dept), designation: tx(d.designation) || "Assistant Professor", qualification: tx(d.qualification), subjects: tx(d.subjects), salary: sal, doj: tx(d.doj) || todayISO() };
             T.faculty.push(f);
-            T.users.push({ id: uid("usr"), college_id: s.college_id, role: "faculty", email: f.email, pass: hash(d.password || "Welcome@123"), faculty_id: f.id, name: f.name });
             return clone(f);
           },
           removeFaculty(id) {
@@ -2043,7 +2044,6 @@
 
           /* ----- Student: own records only, read-only ----- */
           myFees() { const st = myStudent(); return T.fees.filter((f) => f.student_id === st.id).sort(feeSort).map(feeOut); },
-          feesOf(studentId) { const s = needStaff(); const st = mine(T.students.find((x) => x.id === studentId)); return T.fees.filter((f) => f.student_id === st.id).sort(feeSort).map(feeOut); },
           /* Students see their whole profile but change only their contact details */
           myProfile() { return clone(myStudent()); },
           updateMyContact(d) {
@@ -2410,12 +2410,11 @@
       })();
 
       /* ---------- Portal UI: renders from DB only ---------- */
-      PAGES["/portal"] = { t: "Portal login", d: "Sign in as a college admin, faculty or a student." };
+      PAGES["/portal"] = { t: "Portal login", d: "Sign in as a college admin or a student." };
       PAGES["/portal/register-college"] = { t: "Register your college", d: "Create a college account on the Shaalix demo portal." };
       PAGES["/portal/register-student"] = { t: "Student registration", d: "Join your college on the Shaalix demo portal." };
       PAGES["/portal/admin"] = { t: "College admin dashboard", d: "Students, fees, attendance, marks and notices." };
       PAGES["/portal/student"] = { t: "Student dashboard", d: "Your fees, attendance, marks and notices." };
-      PAGES["/portal/faculty"] = { t: "Faculty dashboard", d: "Your profile, students, attendance, marks and notices." };
       const EXAMS = ["Unit Test 1", "Mid-1", "Unit Test 2", "Mid-2", "Final"];
       const BRANCHES = ["CSE", "ECE", "EEE", "MECH", "CIVIL", "IT", "CSM", "CSD"];
       const YEAR_OPTS = [1, 2, 3, 4].map((y) => [y, `Year ${y}`]);
@@ -2450,7 +2449,7 @@
       const fmtM = (ym) => parseISO(ym + "-01").toLocaleDateString("en-IN", { month: "long", year: "numeric" });
       const pctTxt = (p) => (p === null || p === undefined ? "—" : p + "%");
       const lastMonths = (n) => { const out = []; const d = parseISO(todayISO()); for (let i = 0; i < n; i++) { const t = new Date(d.getFullYear(), d.getMonth() - i, 1); out.push(`${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}`); } return out; };
-      const UI0 = () => ({ loginRole: "admin", tab: "overview", stab: "overview", ftab: "overview", fFeeStu: "", flash: null, msg: "", sQ: "", sCls: "", sStatus: "", edit: null, confirm: null, feeStu: "", feeSt: "", feeEdit: null, pay: null, attDate: todayISO(), attCls: "", attMonth: todayISO().slice(0, 7), mExam: "Unit Test 1", mCls: "", mSub: "", mMax: "", payStu: "", pm: null, imp: null, impMode: "merge", impErr: "", impBusy: false, impResult: null, note: "", feeYear: "", view: null, showAad: false, contactEdit: false, pmsg: "" });
+      const UI0 = () => ({ loginRole: "admin", tab: "overview", stab: "overview", flash: null, msg: "", sQ: "", sCls: "", sStatus: "", edit: null, confirm: null, feeStu: "", feeSt: "", feeEdit: null, pay: null, attDate: todayISO(), attCls: "", attMonth: todayISO().slice(0, 7), mExam: "Unit Test 1", mCls: "", mSub: "", mMax: "", payStu: "", pm: null, imp: null, impMode: "merge", impErr: "", impBusy: false, impResult: null, note: "", feeYear: "", view: null, showAad: false, contactEdit: false, pmsg: "" });
       let UI = UI0();
       const demoNote = `<p class="x-note" role="note">Demo mode: changes are saved in this browser only. College admins can reset the demo data anytime.</p>`;
       const pf = (label, nm, attrs = "", full = false, req = true) => `<label class="x-f${full ? " x-f--full" : ""}">${label}<input name="${nm}" ${attrs}${req ? " required" : ""} /><small class="x-err"></small></label>`;
@@ -2519,17 +2518,17 @@
 
       /* 1. Login */
       ROUTES["/portal"] = () => {
-        const me = DB.me(), isA = UI.loginRole === "admin", isF = UI.loginRole === "faculty";
-        dyn(portalCrumbs("Login") + titleHero("Shaalix Portal · Demo", "Sign in to your portal", "College admins run students, fees, attendance, marks and notices. Faculty mark attendance and enter marks. Students see their own records.") + demoNote +
+        const me = DB.me(), isA = UI.loginRole === "admin";
+        dyn(portalCrumbs("Login") + titleHero("Shaalix Portal · Demo", "Sign in to your portal", "College admins run students, fees, attendance, marks and notices. Students see their own records.") + demoNote +
           (me ? `<aside class="callout" aria-label="Signed in"><p class="callout__head">Signed in</p><p class="callout__lead"><strong>You are signed in as ${esc(me.name)}.</strong> ${esc(me.college.name)}</p><div class="links"><a class="btn" href="#/portal/${me.role}">Open my dashboard</a><button type="button" class="btn" data-act="logout">Log out</button></div></aside>` : "") +
           `<div class="x-auth"><div>
             <form class="x-form" data-portal="login" novalidate aria-labelledby="pl-h">
               <h2 id="pl-h">Sign in</h2>
-              ${tabs([["admin", "College Admin"], ["faculty", "Faculty"], ["student", "Student"]], UI.loginRole, "role", "Sign in as")}
-              ${pf("Email", "email", `type="email" autocomplete="username" placeholder="${isA ? "admin@yourcollege.in" : isF ? "faculty@yourcollege.in" : "you@example.com"}"`, true)}
+              ${tabs([["admin", "College Admin"], ["student", "Student"]], UI.loginRole, "role", "Sign in as")}
+              ${pf("Email", "email", `type="email" autocomplete="username" placeholder="${isA ? "admin@yourcollege.in" : "you@example.com"}"`, true)}
               ${pf("Password", "password", `type="password" autocomplete="current-password"`, true)}
               ${formErr}
-              <div class="x-acts"><button class="x-btn" type="submit">Sign in as ${isA ? "College Admin" : isF ? "Faculty" : "Student"}</button></div>
+              <div class="x-acts"><button class="x-btn" type="submit">Sign in as ${isA ? "College Admin" : "Student"}</button></div>
               <p class="fineprint">New here? <a class="link" href="#/portal/register-college">Register your college</a> or <a class="link" href="#/portal/register-student">register as a student</a>.</p>
             </form>
           </div><div>
@@ -2539,7 +2538,7 @@
               ${[["admin", "College Admin", "admin@srividya.demo", "Sri Vidya Institute of Technology · SHX-1001"], ["admin", "College Admin", "admin@greenvalley.demo", "Green Valley College of Engineering · SHX-1002"], ["student", "Student, regular", "ravi@srividya.demo", "B.Tech CSE · Year 3 · fees Year 1–4"], ["student", "Student, lateral entry", "lakshmi@srividya.demo", "B.Tech ECE · Year 3 · joined in Year 2, fees Year 2–4"], ["student", "Student, pending", "anil@srividya.demo", "Sri Vidya · waiting for approval"]].map(([r, l, e, c]) => `<tr><th scope="row">${l}</th><td>${e}</td><td class="muted">${c}</td><td><button type="button" class="x-sbtn" data-act="fill" data-role="${r}" data-id="${e}" aria-label="Use ${e}">Use</button></td></tr>`).join("")}
               </tbody></table></div>
             </div></details></div>
-            <div class="cards"><div><h3>What the demo shows</h3><ul><li>Admins approve students, manage full student profiles, collect year-wise B.Tech fees, mark attendance and enter marks.</li><li>Faculty see their own profile and students, and mark attendance and enter marks for their classes.</li><li>Students see only their own fees, attendance, marks and notices.</li><li>Each college sees only its own data.</li></ul></div></div>
+            <div class="cards"><div><h3>What the demo shows</h3><ul><li>Admins approve students, manage full student profiles, collect year-wise B.Tech fees, mark attendance and enter marks.</li><li>Admins keep faculty records — education, position and salary — in the Faculty tab. Faculty do not sign in.</li><li>Students see only their own fees, attendance, marks and notices.</li><li>Each college sees only its own data.</li></ul></div></div>
           </div></div>`);
       };
 
@@ -2581,7 +2580,7 @@
           <div class="x-acts"><button class="x-btn" type="submit">Register</button><a class="x-sbtn" href="#/portal">I already have an account</a></div>
         </form>`);
 
-      /* Year-wise fees view, shared by the student Fees page and the faculty Fees page:
+      /* Year-wise fees view for the student Fees page:
          totals strip, all-years summary, then one clearly headed block per year. */
       const feeYearView = (fees, s, canPay) => {
         const lat = s.admType === "Lateral Entry", start = lat ? 2 : 1, tsum = (l, k) => l.reduce((a, f) => a + f[k], 0);
@@ -2638,24 +2637,27 @@
         },
         faculty() {
           const list = DB.getFaculty();
-          return `<h2>Faculty</h2><form class="x-form" data-portal="faculty" novalidate aria-label="Add a faculty member">
+          return `<h2>Faculty</h2><p class="fineprint">Your college's teaching staff records — education, position and salary. Faculty do not sign in to the portal; the college office maintains these records.</p><form class="x-form" data-portal="faculty" novalidate aria-label="Add a faculty member">
             <h3 class="x-f--full">Add a faculty member</h3>
             ${pf("Full name", "name", `autocomplete="name"`, true)}
-            ${pf("Email (login)", "email", `type="email" autocomplete="email"`)}
+            ${pf("Email", "email", `type="email" autocomplete="email"`)}
             ${pf("Mobile", "phone", `type="tel" autocomplete="tel" placeholder="+91"`)}
             ${psel("Department (branch)", "dept", [["", "Select"], ...BRANCHES], "", "required")}
-            ${pf("Designation", "designation", `placeholder="Assistant Professor"`, false, false)}
-            ${pf("Qualification", "qualification", `placeholder="M.Tech, Ph.D"`, false, false)}
+            ${pf("Position / designation", "designation", `placeholder="Assistant Professor"`, false, false)}
+            ${pf("Education / qualification", "qualification", `placeholder="M.Tech, Ph.D"`, false, false)}
             ${pf("Subjects (comma separated)", "subjects", `placeholder="DBMS, Operating Systems"`, true, false)}
-            ${pf("Password (optional)", "password", `type="password" autocomplete="new-password" placeholder="Blank = Welcome@123"`, false, false)}
+            ${pf("Monthly salary (₹)", "salary", `type="number" min="0" step="1" inputmode="numeric" placeholder="45000"`, false, false)}
+            ${pf("Date of joining", "doj", `type="date"`, false, false)}
             ${formErr}<div class="x-acts"><button class="x-btn" type="submit">Add faculty</button></div></form>${okMsg()}`
-            + (list.length ? `<div class="x-tw"><table><caption>${list.length} faculty ${list.length === 1 ? "member" : "members"}</caption><thead><tr><th scope="col">Name</th><th scope="col">Department</th><th scope="col">Designation</th><th scope="col">Subjects</th><th scope="col">Mobile</th><th scope="col"><span class="x-sr">Actions</span></th></tr></thead><tbody>${list.map((x) => `<tr><th scope="row">${esc(x.name)}<small>${esc(x.email)}</small></th><td>${esc(x.dept)}</td><td>${esc(x.designation)}</td><td>${esc(x.subjects || "—")}</td><td>${esc(x.phone)}</td><td><div class="x-acts">${delBtn("facDel", x.id, x.name)}</div></td></tr>`).join("")}</tbody></table></div>` : `<p>No faculty added yet. Add your first faculty member above — they sign in from the Faculty tab on the login page.</p>`);
+            + (list.length ? `<div class="x-tw"><table><caption>${list.length} faculty ${list.length === 1 ? "member" : "members"}</caption><thead><tr><th scope="col">Name</th><th scope="col">Department</th><th scope="col">Position</th><th scope="col">Education</th><th scope="col">Subjects</th><th scope="col">Salary / month</th><th scope="col">Mobile</th><th scope="col"><span class="x-sr">Actions</span></th></tr></thead><tbody>${list.map((x) => `<tr><th scope="row">${esc(x.name)}<small>${esc(x.email)}</small></th><td>${esc(x.dept)}</td><td>${esc(x.designation)}</td><td>${esc(x.qualification || "—")}</td><td>${esc(x.subjects || "—")}</td><td class="num">${x.salary ? inr(x.salary) : "—"}</td><td>${esc(x.phone)}</td><td><div class="x-acts">${delBtn("facDel", x.id, x.name)}</div></td></tr>`).join("")}</tbody></table></div>` : `<p>No faculty added yet. Add your college's faculty above.</p>`);
         },
         fees() {
           const L = DB.lists(), sts = approved(), stuOpts = sts.map((x) => [x.id, `${x.roll} · ${x.name}`]);
           const f = UI.feeEdit && UI.feeEdit !== "new" ? DB.getFees().find((x) => x.id === UI.feeEdit) : null;
           const p = UI.pay ? DB.getFees().find((x) => x.id === UI.pay) : null, pStu = p && sts.find((x) => x.id === p.student_id);
-          const rows = DB.getFees(UI.feeStu).filter((x) => (!UI.feeSt || (UI.feeSt === "Upcoming" ? x.status === "Due" && x.phase === "Upcoming" : x.status === UI.feeSt)) && (!UI.feeYear || String(x.year) === UI.feeYear)), name = Object.fromEntries(sts.map((x) => [x.id, x]));
+          const rowsAll = DB.getFees(UI.feeStu).filter((x) => (!UI.feeSt || (UI.feeSt === "Upcoming" ? x.status === "Due" && x.phase === "Upcoming" : x.status === UI.feeSt))), name = Object.fromEntries(sts.map((x) => [x.id, x]));
+          const rows = rowsAll.filter((x) => !UI.feeYear || String(x.year) === UI.feeYear).sort((a, b) => a.year - b.year || ((name[a.student_id] || {}).roll || "").localeCompare((name[b.student_id] || {}).roll || "") || (a.type === b.type ? 0 : a.type === "Tuition" ? -1 : 1));
+          const ySum = (y, k) => rows.filter((r) => r.year === y).reduce((a, r) => a + r[k], 0);
           const sum = (k) => rows.reduce((a, r) => a + r[k], 0);
           return `<div class="x-phead"><div><h2>Fees</h2><p>B.Tech fees are year-wise: a Tuition Fee (Full fee) line and an Affiliation Fee line for each year. Regular students pay Year 1–4; lateral entry students pay Year 2–4.</p></div><button type="button" class="x-btn" data-act="feeNew">Add fee line</button></div>` +
             (UI.feeEdit ? `<form class="x-form" data-portal="fee" novalidate aria-label="${f ? "Edit fee line" : "Add fee line"}"><h3 class="x-f--full">${f ? "Edit fee line" : "Add a fee line"}</h3>
@@ -2671,10 +2673,9 @@
               <p class="x-f--full">${esc(pStu ? pStu.name : "")} · ${esc(p.label)} · balance <b>${inr(p.balance)}</b></p>
               ${pf("Amount received (₹)", "amount", `type="number" min="1" max="${p.balance}" step="1" inputmode="numeric" value="${p.balance}" data-autofocus`)}
               ${formErr}<div class="x-acts"><button class="x-btn" type="submit">Record payment</button><button type="button" class="x-sbtn" data-act="cancel">Cancel</button></div></form>` : "") +
-            `<div class="x-bar">${psel("Student", "", [["", "All students"], ...stuOpts], UI.feeStu, `data-ui="feeStu"`)}${psel("Year", "", [["", "All years"], ...YEAR_OPTS], UI.feeYear, `data-ui="feeYear"`)}${psel("Status", "", [["", "All"], "Due", "Partial", "Paid", "Upcoming"], UI.feeSt, `data-ui="feeSt"`)}</div>${okMsg()}` +
-            (rows.length ? `<div class="x-tw"><table data-admin-fees><caption>${rows.length} fee ${rows.length === 1 ? "line" : "lines"} · billed ${inr(sum("amount"))} · collected ${inr(sum("paid"))} · balance ${inr(sum("balance"))}</caption><thead><tr><th scope="col">Student</th><th scope="col">Year</th><th scope="col">Fee line</th><th scope="col">Amount</th><th scope="col">Due date</th><th scope="col">Paid</th><th scope="col">Balance</th><th scope="col">Status</th><th scope="col"><span class="x-sr">Actions</span></th></tr></thead><tbody>${rows.map((r) => {
-              const st = name[r.student_id]; return `<tr data-fee="${r.id}"><th scope="row">${esc(st ? st.name : "")}<small>${esc(st ? `${st.roll} · ${st.branch} · ${st.admType}` : "")}</small></th><td>${esc(r.yearLabel)}<small>${r.phase === "Current" ? "Current year" : r.phase}</small></td><td>${esc(r.head)}</td><td class="num">${inr(r.amount)}</td><td>${fmtD(r.due)}${r.balance && r.phase !== "Upcoming" && r.due < todayISO() ? "<small>Overdue</small>" : ""}</td><td class="num">${inr(r.paid)}</td><td class="num">${inr(r.balance)}</td><td>${feeChip(r)}</td><td><div class="x-acts">${r.balance ? `<button type="button" class="x-sbtn" data-act="pay" data-id="${r.id}">Record payment</button>` : ""}<button type="button" class="x-sbtn" data-act="feeEdit" data-id="${r.id}">Edit</button>${delBtn("feeDel", r.id, r.label)}</div></td></tr>`;
-            }).join("")}</tbody></table></div>` : `<p>No fee lines match.</p>`);
+            `<div class="x-bar">${psel("Fee year", "", [["", "All years"], ...YEAR_OPTS], UI.feeYear, `data-ui="feeYear"`)}${psel("Student", "", [["", "All students"], ...stuOpts], UI.feeStu, `data-ui="feeStu"`)}${psel("Status", "", [["", "All"], "Due", "Partial", "Paid", "Upcoming"], UI.feeSt, `data-ui="feeSt"`)}</div>`
+            + `<p class="x-chips">${[1, 2, 3, 4].map((y) => { const yl = rowsAll.filter((r) => r.year === y); return yl.length ? `<span class="chip${String(UI.feeYear) === String(y) ? " chip--solid" : ""}">Year ${y} · billed ${inr(yl.reduce((a2, r) => a2 + r.amount, 0))} · collected ${inr(yl.reduce((a2, r) => a2 + r.paid, 0))} · balance ${inr(yl.reduce((a2, r) => a2 + r.balance, 0))}</span>` : ""; }).join("")}</p>${okMsg()}`
+            + (rows.length ? `<div class="x-tw"><table data-admin-fees><caption>${UI.feeYear ? `Year ${UI.feeYear} fees` : "Fees by year"} · ${rows.length} fee ${rows.length === 1 ? "line" : "lines"} · billed ${inr(sum("amount"))} · collected ${inr(sum("paid"))} · balance ${inr(sum("balance"))}</caption><thead><tr><th scope="col">Student</th><th scope="col">Year</th><th scope="col">Fee line</th><th scope="col">Amount</th><th scope="col">Due date</th><th scope="col">Paid</th><th scope="col">Balance</th><th scope="col">Status</th><th scope="col"><span class="x-sr">Actions</span></th></tr></thead><tbody>${(() => { let lastY = null; return rows.map((r) => { const st = name[r.student_id]; const hd = r.year !== lastY ? `<tr class="x-yrrow"><th colspan="9" scope="colgroup">Year ${r.year} · billed ${inr(ySum(r.year, "amount"))} · collected ${inr(ySum(r.year, "paid"))} · balance ${inr(ySum(r.year, "balance"))}</th></tr>` : ""; lastY = r.year; return hd + `<tr data-fee="${r.id}"><th scope="row">${esc(st ? st.name : "")}<small>${esc(st ? `${st.roll} · ${st.branch} · ${st.admType}` : "")}</small></th><td>${esc(r.yearLabel)}<small>${r.phase === "Current" ? "Current year" : r.phase}</small></td><td>${esc(r.head)}</td><td class="num">${inr(r.amount)}</td><td>${fmtD(r.due)}${r.balance && r.phase !== "Upcoming" && r.due < todayISO() ? "<small>Overdue</small>" : ""}</td><td class="num">${inr(r.paid)}</td><td class="num">${inr(r.balance)}</td><td>${feeChip(r)}</td><td><div class="x-acts">${r.balance ? `<button type="button" class="x-sbtn" data-act="pay" data-id="${r.id}">Record payment</button>` : ""}<button type="button" class="x-sbtn" data-act="feeEdit" data-id="${r.id}">Edit</button>${delBtn("feeDel", r.id, r.label)}</div></td></tr>`; }).join(""); })()}</tbody></table></div>` : `<p>No fee lines match.</p>`);
         },
         attendance() {
           const cls = UI.attCls || DB.getClasses()[0] || "", rows = cls ? DB.getAttendance(UI.attDate, cls) : [];
@@ -2827,53 +2828,6 @@
             ${exams.length ? `<div class="pair">${exams.map((e) => { const t = examTot(e); return `<div class="x-tw x-tw--s"><table><caption>${esc(e)} · ${t.pct}% · grade ${gradeOf(t.pct)}</caption><thead><tr><th scope="col">Subject</th><th scope="col">Marks</th><th scope="col">Percent</th><th scope="col">Grade</th></tr></thead><tbody>${t.ms.map((m) => `<tr><th scope="row">${esc(m.subject)}</th><td class="num">${m.score} / ${m.max}</td><td>${m.pct}%</td><td class="num">${m.grade}</td></tr>`).join("")}<tr class="x-total"><th scope="row">Total</th><td class="num">${t.sc} / ${t.mx}</td><td>${t.pct}%</td><td class="num">${gradeOf(t.pct)}</td></tr></tbody></table></div>`; }).join("")}</div>` : `<p>No marks published yet.</p>`}</section>
           <section class="section${UI.stab === "notices" ? "" : " x-off"}" id="ps-notices"><div class="head"><h2>Notices</h2></div>
             ${notices.length ? `<div class="cards">${notices.map((n) => `<div><p class="fineprint">${fmtD(n.date)}</p><h3>${esc(n.title)}</h3><p>${esc(n.text)}</p></div>`).join("")}</div>` : `<p>No notices yet.</p>`}</section>` + (UI.pm ? payModal(s, c) : ""));
-      };
-
-      /* 6. Faculty dashboard */
-      const FACULTY_TABS = [["overview", "Overview"], ["profile", "My Profile"], ["students", "Students"], ["fees", "Fees"], ["attendance", "Attendance"], ["marks", "Marks"], ["notices", "Notices"]];
-      ROUTES["/portal/faculty"] = () => {
-        const me = DB.me(); if (!me || me.role !== "faculty" || !me.faculty) return "/portal";
-        const f = me.faculty, c = me.college;
-        const top = portalCrumbs("Faculty dashboard") + `<div class="x-panel">${phead("Faculty · " + esc(c.name), esc(f.name), `${esc(f.designation)} · ${esc(f.dept)} department · ${esc(f.email)}`, logoutBtn)}${demoNote}</div>`;
-        const FP = {
-          overview() {
-            const studs = DB.getStudents({ status: "approved" }), notices = DB.getNotices(), subs = (f.subjects || "").split(",").map((x) => x.trim()).filter(Boolean);
-            return `<h2>Overview</h2><section class="stats" aria-label="At a glance">
-              <div class="stat"><span class="stat__fig">${studs.length}</span><span class="stat__label">Students in ${esc(c.name)}</span></div>
-              <div class="stat"><span class="stat__fig">${DB.getClasses().length}</span><span class="stat__label">Classes</span></div>
-              <div class="stat"><span class="stat__fig">${subs.length}</span><span class="stat__label">Subjects I teach</span></div>
-              <div class="stat"><span class="stat__fig">${notices.length}</span><span class="stat__label">Notices</span></div>
-            </section>
-            <div class="cards">
-              <div><h3>My subjects</h3>${subs.length ? `<ul>${subs.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : `<p>No subjects listed yet.</p>`}<p><button type="button" class="x-sbtn" data-act="ftab" data-id="marks">Enter marks</button></p></div>
-              <div><h3>Today</h3><p>Mark attendance for your class, then enter marks when an exam finishes.</p><p><button type="button" class="x-sbtn" data-act="ftab" data-id="attendance">Mark attendance</button></p></div>
-              <div><h3>Latest notice</h3>${notices.length ? `<p class="fineprint">${fmtD(notices[0].date)}</p><p><b>${esc(notices[0].title)}</b></p><p>${esc(notices[0].text)}</p>` : `<p>No notices yet.</p>`}<p><button type="button" class="x-sbtn" data-act="ftab" data-id="notices">All notices</button></p></div>
-            </div>`;
-          },
-          profile() {
-            const rows = [["Name", f.name], ["Designation", f.designation], ["Department", f.dept], ["Qualification", f.qualification || "—"], ["Subjects", f.subjects || "—"], ["Email", f.email], ["Mobile", f.phone], ["College", `${c.name} (${c.code})`], ["Joined", f.doj ? fmtD(f.doj) : "—"]];
-            return `<h2>My profile</h2><div class="breakdown"><dl>${rows.map(([k, v]) => `<div class="row"><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl></div><p class="fineprint">Your email is your login. For any change to your profile, contact your college office.</p>`;
-          },
-          students() {
-            const rows = DB.getStudents({ status: "approved" });
-            return `<h2>Students</h2>` + (rows.length ? `<div class="x-tw"><table><caption>${rows.length} approved students · ${esc(c.name)}</caption><thead><tr><th scope="col">Student</th><th scope="col">Roll</th><th scope="col">Class</th><th scope="col">Section</th><th scope="col">Mobile</th></tr></thead><tbody>${rows.map((x) => `<tr><th scope="row">${esc(x.name)}<small>${esc(x.email)}</small></th><td>${esc(x.roll)}</td><td>${esc(x.klass)}</td><td>${esc(x.sec)}</td><td>${esc(x.phone)}</td></tr>`).join("")}</tbody></table></div>` : `<p>No approved students yet.</p>`);
-          },
-          fees() {
-            const sts = DB.getStudents({ status: "approved" });
-            if (!sts.length) return `<h2>Fees</h2><p>No approved students yet.</p>`;
-            const sel = sts.find((x) => x.id === UI.fFeeStu) || sts[0];
-            return `<h2>Fees</h2><div class="x-bar">${psel("Student", "", sts.map((x) => [x.id, `${x.roll} · ${x.name} · ${x.klass}`]), sel.id, `data-ui="fFeeStu"`)}</div>
-            <p class="fineprint">${esc(sel.name)} · ${esc(courseLine(sel))} · ${esc(sel.sec)} — read-only. Fee collection and changes are handled by the college office.</p>
-            ${feeYearView(DB.feesOf(sel.id), sel, false)}`;
-          },
-          attendance() { return PANES.attendance(); },
-          marks() { return PANES.marks(); },
-          notices() {
-            const list = DB.getNotices();
-            return `<h2>Notices</h2>` + (list.length ? `<div class="cards">${list.map((n) => `<div><p class="fineprint">${fmtD(n.date)}</p><h3>${esc(n.title)}</h3><p>${esc(n.text)}</p></div>`).join("")}</div>` : `<p>No notices yet.</p>`);
-          },
-        };
-        dyn(top + tabs(FACULTY_TABS, UI.ftab, "ftab", "Dashboard sections") + `<div class="x-panel" role="tabpanel" id="pf-panel" aria-labelledby="tab-ftab-${UI.ftab}">${FP[UI.ftab]()}</div>`);
       };
 
       /* Pay Fee modal: choose amount -> UPI QR + payment details -> receipt */
@@ -3184,7 +3138,7 @@
           else { const s = DB.updateStudent(UI.edit, d); UI.msg = `${s.name}'s profile saved.`; UI.view = s.id; UI.showAad = false; }
           const back = UI.edit === "new"; UI.edit = null; paint(back ? '[data-act="stuNew"]' : "#v-dyn [data-prof-head]");
         },
-        faculty(f, d) { const r = DB.addFaculty(d); UI.msg = `Faculty added · ${r.name} can sign in with ${r.email}.`; paint('[data-portal="faculty"] [type="submit"]'); },
+        faculty(f, d) { const r = DB.addFaculty(d); UI.msg = `Faculty record added · ${r.name} · ${r.dept}.`; paint('[data-portal="faculty"] [type="submit"]'); },
         fee(f, d) { const r = DB.upsertFee({ ...d, id: UI.feeEdit !== "new" ? UI.feeEdit : undefined, student_id: d.student_id }); UI.msg = `${r.label} saved · ${r.status}.`; UI.feeEdit = null; paint('[data-act="feeNew"]'); },
         pay(f, d) { const r = DB.recordPayment(UI.pay, d.amount); UI.msg = `Payment of ${inr(Number(d.amount))} recorded · ${r.label} is now ${r.status}.`; UI.pay = null; paint('[data-act="feeNew"]'); },
         att(f) {
@@ -3221,7 +3175,6 @@
         fill(email, b) { UI.loginRole = b.dataset.role; paint(); const f = document.querySelector('#v-dyn [data-portal="login"]'); f.email.value = email; f.password.value = "Demo@1234"; f.querySelector("[type=submit]").focus(); },
         tab(id) { Object.assign(UI, { tab: id, msg: "", edit: null, confirm: null, feeEdit: null, pay: null, note: "", imp: null, impErr: "", impResult: null, view: null, showAad: false }); paint(`[data-act="tab"][data-id="${id}"]`); },
         stab(id) { UI.stab = id; UI.msg = ""; paint(`[data-act="stab"][data-id="${id}"]`); },
-        ftab(id) { UI.ftab = id; UI.msg = ""; paint(`[data-act="ftab"][data-id="${id}"]`); },
         facDel(id) { const f = DB.removeFaculty(id); UI.confirm = null; UI.msg = `${f.name} removed from faculty.`; paint(); },
         goPending() { Object.assign(UI, { tab: "students", sStatus: "pending", sQ: "", sCls: "", msg: "" }); paint('[data-act="tab"][data-id="students"]'); },
         stuNew() { Object.assign(UI, { edit: "new", msg: "", view: null }); paint(); },

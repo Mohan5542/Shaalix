@@ -195,34 +195,16 @@ else {
   DB.login("admin", "admin@srividya.demo", "Demo@1234");
   if (DB.getPayments().filter((p) => p.ref.startsWith("11112222")).length !== 2) fails.push("Admin does not see the student's payments");
 }
-// Faculty: staff access to own college only, no admin powers.
-// (No demo faculty are seeded; the test creates faculty through the admin API.)
+// Faculty: admin-managed staff records (education, position, salary). There is NO faculty login.
 DB.login("admin", "admin@srividya.demo", "Demo@1234");
-DB.addFaculty({ name: "Test Faculty", email: "faculty.test@srividya.demo", phone: "9876543210", dept: "CSE", designation: "Professor", qualification: "Ph.D", subjects: "DBMS, Operating Systems", password: "Demo@1234" });
-DB.login("faculty", "faculty.test@srividya.demo", "Demo@1234");
-const facMe = DB.me();
-if (!facMe || facMe.role !== "faculty" || !facMe.faculty || facMe.faculty.dept !== "CSE") fails.push("Faculty login/session broken");
-for (const t of ["overview", "profile", "students", "fees", "attendance", "marks", "notices"]) { P.setUI({ ftab: t }); renderAs("faculty/" + t, "/portal/faculty"); }
-P.setUI({ ftab: "overview" });
-if (!DB.getStudents({ status: "approved" }).length) fails.push("Faculty cannot list students");
-const fStu = DB.getStudents({ status: "approved" })[0];
-const fRows = DB.getAttendance(vm.runInContext("todayISO()", ctx), fStu.klass);
-if (!fRows.length) fails.push("Faculty attendance roster empty");
-const fSid = fStu.id;
-DB.markAttendance(vm.runInContext("todayISO()", ctx), { [fSid]: "P" });
-const fFees = DB.feesOf(fSid);
-if (!fFees.length || fFees.length % 2) fails.push("Faculty feesOf should return year-wise fee lines");
-if (!fFees.every((f) => f.year >= 1 && f.year <= 4 && f.balance === Math.max(0, f.amount - f.paid) && f.head && f.yearLabel)) fails.push("Faculty feesOf lines malformed");
-expectErr("Faculty cannot write fees", () => DB.upsertFee({ year: 1, type: "Tuition", amount: 1, due: "2026-01-01" }));
-expectErr("Faculty cannot add students", () => DB.addStudent({ name: "Z", roll: "ZZ1", branch: "CSE", sec: "Sec A", email: "z@x.in", phone: "9876543210" }));
-expectErr("Faculty cannot manage faculty", () => DB.getFaculty());
-DB.login("admin", "admin@greenvalley.demo", "Demo@1234");
-DB.addFaculty({ name: "GV Faculty", email: "faculty.test@greenvalley.demo", phone: "9876543210", dept: "CSE", designation: "Professor", qualification: "Ph.D", subjects: "DBMS", password: "Demo@1234" });
-DB.login("faculty", "faculty.test@greenvalley.demo", "Demo@1234");
-expectErr("Faculty isolation: mark other college attendance", () => DB.markAttendance(vm.runInContext("todayISO()", ctx), { [fSid]: "P" }));
-DB.login("student", "ravi@srividya.demo", "Demo@1234");
-expectErr("Student cannot use the staff fees view", () => DB.feesOf(fSid));
-DB.logout();
+const facRec = DB.addFaculty({ name: "Test Faculty", email: "faculty.test@srividya.demo", phone: "9876543210", dept: "CSE", designation: "Professor", qualification: "Ph.D", subjects: "DBMS", salary: "85000", doj: "2024-06-01" });
+if (!facRec || facRec.salary !== 85000 || facRec.qualification !== "Ph.D" || facRec.designation !== "Professor") fails.push("Faculty record fields (education/position/salary) not saved");
+if (DB.getFaculty().length !== 1) fails.push("Admin faculty list broken");
+expectErr("Faculty record must not create a login", () => DB.login("faculty", "faculty.test@srividya.demo", "Welcome@123"));
+expectErr("Student cannot manage faculty records", () => { DB.login("student", "ravi@srividya.demo", "Demo@1234"); DB.getFaculty(); });
+DB.login("admin", "admin@srividya.demo", "Demo@1234");
+DB.removeFaculty(facRec.id);
+if (DB.getFaculty().length !== 0) fails.push("Faculty record removal broken");
 // Green Valley is year-wise too
 DB.login("admin", "admin@greenvalley.demo", "Demo@1234");
 const gvf = DB.getFees();
