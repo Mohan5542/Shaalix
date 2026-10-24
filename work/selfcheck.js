@@ -171,6 +171,7 @@ P.setUI({ edit: null, tab: "overview" });
 
 // Student fee payment on a Year line: amount checks, partial then full, receipt, admin sees it
 DB.login("student", "ravi@srividya.demo", "Demo@1234");
+const payBase = DB.myPayments().length; // the seed already carries payment records; the flow below must add exactly 2
 const due = DB.myFees().find((f) => f.balance > 0 && f.year === 3 && f.type === "Tuition");
 if (!due) fails.push("Ravi should have a Year 3 Tuition fee with a balance");
 else {
@@ -191,7 +192,7 @@ else {
   if (!/Payment Done/.test(rc) || !/Year 3 · Tuition Fee \(Full fee\)/.test(rc) || !/B\.Tech CSE · Regular/.test(rc)) fails.push("Receipt step missing year-wise fee or course");
   P.setUI({ pm: null }); const sh = renderAs("student/after-pay", "/portal/student");
   if (!new RegExp(`data-fee="${due.id}"[\\s\\S]*?x-paid`).test(sh) || new RegExp(`data-act="pmOpen" data-id="${due.id}"`).test(sh)) fails.push("Paid fee should show Paid without a Pay Fee button");
-  if (DB.myPayments().length !== 2) fails.push("Student payment history should have 2 payments");
+  if (DB.myPayments().length !== payBase + 2) fails.push("Student payment history should grow by the 2 test payments");
   DB.login("admin", "admin@srividya.demo", "Demo@1234");
   if (DB.getPayments().filter((p) => p.ref.startsWith("11112222")).length !== 2) fails.push("Admin does not see the student's payments");
 }
@@ -379,6 +380,44 @@ if (!feesTable(fq2).includes(lakA.name) || feesTable(fq2).includes(raviA.name)) 
 P.setUI({ feeQ: "zzz-no-match" });
 if (!renderAs("admin/fees-search-none", "/portal/admin").includes("No fees match")) fails.push("Fees search: empty state missing");
 P.setUI({ feeQ: "", tab: "overview" });
+// ---- Build #3: seeded payment records, admin memo print, real ID card design ----
+// After a reset, the seed itself carries payment records that add up to the fees' paid totals
+DB.login("admin", "admin@srividya.demo", "Demo@1234");
+DB.resetDemo();
+const seedPays = DB.getPayments(), todayStr = vm.runInContext("todayISO()", ctx);
+if (!seedPays.length) fails.push("Seed: Payments tab should not start empty");
+if (seedPays.reduce((a, p) => a + p.amount, 0) !== DB.getFees().reduce((a, f) => a + f.paid, 0)) fails.push("Seed: payment records do not add up to the fees' paid totals");
+if (!seedPays.some((p) => p.mode === "Cash / office" && p.by === "College office") || !seedPays.some((p) => p.by === "Student (UPI)" && p.mode === "PhonePe" && /^\d{12}$/.test(p.ref))) fails.push("Seed: payments should mix office cash records and student UPI records with 12-digit UTRs");
+if (seedPays.some((p) => p.at.slice(0, 10) >= todayStr)) fails.push("Seed: payment dates should be in the past");
+P.setUI({ tab: "payments" }); const seedPayHtml = renderAs("admin/seed-payments", "/portal/admin");
+if (!seedPayHtml.includes('data-act="rcptOpen"')) fails.push("Admin Payments: seeded rows should carry Receipt buttons");
+P.setUI({ tab: "overview" });
+DB.login("student", "ravi@srividya.demo", "Demo@1234");
+if (!DB.myPayments().length) fails.push("Seed: student should start with a payment history");
+P.setUI({ stab: "payments" }); const stuPayHtml = renderAs("student/seed-payments", "/portal/student");
+if (!stuPayHtml.includes('data-act="rcptOpen"')) fails.push("Student Payments: seeded rows should carry Receipt buttons");
+P.setUI({ stab: "overview" });
+// Admin memo print: student picker + Print control in the Marks pane; the memo carries college + student
+DB.login("admin", "admin@srividya.demo", "Demo@1234");
+const raviAdm = DB.getStudents().find((x) => x.email === "ravi@srividya.demo");
+P.setUI({ tab: "marks", mExam: "Mid-1", mCls: raviAdm.klass, memoStu: raviAdm.id });
+const admMarksHtml = renderAs("admin/marks-memo", "/portal/admin");
+if (!admMarksHtml.includes('data-ui="memoStu"') || !admMarksHtml.includes('data-act="memoPrintAdm"')) fails.push("Admin Marks: memo student picker or Print control missing");
+P.setUI({ tab: "overview", memoStu: "", mCls: "" });
+const memoFn = vm.runInContext("memoHTML", ctx);
+const raviMid1 = DB.getMarks({ exam: "Mid-1" }).filter((m) => m.student_id === raviAdm.id);
+const memoOut = memoFn("Mid-1", raviMid1, raviAdm, DB.me().college);
+if (!raviMid1.length || !memoOut.includes("Sri Vidya Institute of Technology") || !memoOut.includes(raviAdm.name)) fails.push("Admin memo: college or student name missing from the memo");
+// ID card design: identity strip, roll number and Principal footer — photo branch on the
+// renderer itself, initials-placeholder branch on a rendered student profile
+DB.setStudentPhoto(raviAdm.id, PNG1);
+const idCardFn = vm.runInContext("idCardHTML", ctx);
+const cardOut = idCardFn(DB.getStudents().find((x) => x.id === raviAdm.id), DB.me().college);
+if (!cardOut.includes("STUDENT IDENTITY CARD") || !cardOut.includes(raviAdm.roll) || !cardOut.includes("Principal") || !cardOut.includes(PNG1)) fails.push("ID card: identity strip, roll number, Principal footer or photo missing");
+DB.login("student", "harika@srividya.demo", "Demo@1234");
+const profCardHtml = renderAs("student/idcard-design", "/portal/student");
+if (!profCardHtml.includes("STUDENT IDENTITY CARD") || !profCardHtml.includes(DB.me().student.roll)) fails.push("Student profile: ID card missing the identity strip or the student's roll number");
+console.log("portal: seeded payments, admin memo print and ID card design checked");
 console.log("portal: receipt template + words + download, college-issued ID card and fees search checked");
 console.log("portal: logo, photo, documents, receipts, supplies, certificates, ID card and notice attachments checked");
 console.log("portal: admin tabs, forms, student views, year-wise B.Tech fees, profiles, isolation, fee payment and Excel import checked");

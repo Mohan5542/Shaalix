@@ -2243,6 +2243,7 @@
               pending: ["Fatima Begum", "CSE", "Regular", 1, "Sec B", 0, [0, 0], "Female", "Abdul Kareem", "Rukhsana Begum", "2008-02-02", "B+", "Muslim", "BC-E", "Shaik", 140000, "TS ePASS Post-Matric (RTF)", "Not applied", 88.0],
               notices: [["Affiliation fee reminder", "The university affiliation fee for this academic year is due by 15 December. Pay it by UPI from the student portal, or at the accounts office.", -1], ["Industrial visit to Genome Valley", "B.Tech 2nd Year students visit Genome Valley next Friday. Submit the consent form to your class teacher by Wednesday.", -8]] },
           ];
+          let payN = 0;
           COLS.forEach((C, ci) => {
             const c = { id: uid("col"), name: C.name, code: C.code, type: C.type, city: C.city, state: C.state, phone: C.phone, created: shiftISO(today, -120), feeTuition: C.feeTuition, feeAffil: C.feeAffil };
             T.colleges.push(c);
@@ -2272,6 +2273,13 @@
               genFees(st);
               /* Past years paid in full, the current year partly or wholly unpaid, future years upcoming */
               T.fees.filter((f) => f.student_id === st.id).forEach((f) => { f.paid = f.year < st.curYear ? f.amount : f.year === st.curYear ? (f.type === "Tuition" ? tPaid : aPaid) : 0; });
+              /* One payment record per fee already paid, so the Payments tabs agree with the fee totals:
+                 office cash and student UPI alternate, on past dates, with unique UTRs for the UPI ones */
+              T.fees.filter((f) => f.student_id === st.id && f.paid > 0).forEach((f) => {
+                const n = payN++, at = `${shiftISO(today, -(2 + (n * 13) % 115))} ${String(9 + (n % 8)).padStart(2, "0")}:${String((n * 7) % 60).padStart(2, "0")}`;
+                if (n % 2) T.payments.push({ id: uid("pay"), college_id: c.id, student_id: st.id, fee_id: f.id, fee_label: feeLabel(f), amount: r2(f.paid), at, payer: st.name, mode: "PhonePe", ref: `4021${String(50000000 + n * 7919).slice(0, 8)}`, by: "Student (UPI)" });
+                else T.payments.push({ id: uid("pay"), college_id: c.id, student_id: st.id, fee_id: f.id, fee_label: feeLabel(f), amount: r2(f.paid), at, payer: "", mode: "Cash / office", ref: "", by: "College office" });
+              });
               days.forEach((d) => { const x = rnd(); T.attendance[`${st.id}|${d}`] = { college_id: c.id, student_id: st.id, date: d, status: x < 0.06 + (1 - ability) * 0.15 ? "A" : x > 0.965 ? "L" : "P" }; });
               [["Unit Test 1", 25], ["Mid-1", 100]].forEach(([exam, max]) => SUBJ[st.branch].forEach((subject) => {
                 const score = Math.max(0, Math.min(max, Math.round(max * (ability + (rnd() - 0.5) * 0.18))));
@@ -2558,7 +2566,7 @@
       const fmtM = (ym) => parseISO(ym + "-01").toLocaleDateString("en-IN", { month: "long", year: "numeric" });
       const pctTxt = (p) => (p === null || p === undefined ? "—" : p + "%");
       const lastMonths = (n) => { const out = []; const d = parseISO(todayISO()); for (let i = 0; i < n; i++) { const t = new Date(d.getFullYear(), d.getMonth() - i, 1); out.push(`${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}`); } return out; };
-      const UI0 = () => ({ loginRole: "admin", tab: "overview", stab: "overview", flash: null, msg: "", sQ: "", sCls: "", sStatus: "", edit: null, confirm: null, feeStu: "", feeSt: "", feeEdit: null, pay: null, attDate: todayISO(), attCls: "", attMonth: todayISO().slice(0, 7), mExam: "Unit Test 1", mCls: "", mSub: "", mMax: "", mAtt: "Regular", payStu: "", pm: null, rcpt: null, noticeAtt: null, noticeTitle: "", noticeText: "", imp: null, impMode: "merge", impErr: "", impBusy: false, impResult: null, note: "", feeYear: "", feeQ: "", view: null, showAad: false, contactEdit: false, pmsg: "" });
+      const UI0 = () => ({ loginRole: "admin", tab: "overview", stab: "overview", flash: null, msg: "", sQ: "", sCls: "", sStatus: "", edit: null, confirm: null, feeStu: "", feeSt: "", feeEdit: null, pay: null, attDate: todayISO(), attCls: "", attMonth: todayISO().slice(0, 7), mExam: "Unit Test 1", mCls: "", mSub: "", mMax: "", mAtt: "Regular", memoStu: "", payStu: "", pm: null, rcpt: null, noticeAtt: null, noticeTitle: "", noticeText: "", imp: null, impMode: "merge", impErr: "", impBusy: false, impResult: null, note: "", feeYear: "", feeQ: "", view: null, showAad: false, contactEdit: false, pmsg: "" });
       let UI = UI0();
       const demoNote = `<p class="x-note" role="note">Demo mode: changes are saved in this browser only. College admins can reset the demo data anytime.</p>`;
       const pf = (label, nm, attrs = "", full = false, req = true) => `<label class="x-f${full ? " x-f--full" : ""}">${label}<input name="${nm}" ${attrs}${req ? " required" : ""} /><small class="x-err"></small></label>`;
@@ -2626,9 +2634,37 @@
       function receiptModalHTML(p, s, c, balance) {
         return `<div class="x-modal" data-modal><div class="x-modal__box" role="dialog" aria-modal="true" aria-labelledby="rc-h"><div class="x-phead"><div><p class="x-kicker">Fee receipt</p><h2 id="rc-h">${esc(p.fee_label)}</h2></div><button type="button" class="x-sbtn" data-act="rcptClose" aria-label="Close">Close</button></div>${receiptHTML(p, s, c, balance)}<div class="x-acts"><button type="button" class="x-btn" data-act="rcptPrint" data-id="${p.id}">Print / Save PDF</button><button type="button" class="x-sbtn" data-act="rcptDownload" data-id="${p.id}">Download</button><button type="button" class="x-sbtn" data-act="rcptClose">Close</button></div></div></div>`;
       }
+      /* Real college ID card: deep-blue header band with the college logo on a white chip,
+         identity strip, photo + details body and a validity / Principal footer.
+         Fully inline-styled so the printed copy (printDoc) looks the same as on screen. */
       function idCardHTML(s, c) {
-        const yrs = s.admType === "Lateral Entry" ? 3 : 4, valid = s.admYear ? `${s.admYear} – ${Number(s.admYear) + yrs}` : "—";
-        return `<div class="x-idcard" data-idcard><div class="x-idcard__row">${logoImg(c, "x-logo--sm")}<div><b>${esc(c.name)}</b><br /><span class="muted">Student ID Card</span></div></div><div class="x-idcard__row">${photoHTML(s)}<dl><div class="row"><dt>Name</dt><dd>${esc(s.name)}</dd></div><div class="row"><dt>Roll no.</dt><dd>${esc(s.roll)}</dd></div><div class="row"><dt>Course</dt><dd>${esc(courseLine(s))}</dd></div><div class="row"><dt>Section</dt><dd>${esc(s.sec)}</dd></div><div class="row"><dt>Valid</dt><dd>${valid}</dd></div></dl></div></div>`;
+        const yrs = s.admType === "Lateral Entry" ? 3 : 4, valid = s.admYear ? `${s.admYear} – ${Number(s.admYear) + yrs}` : "—", navy = "#14315e";
+        const pic = s.photo
+          ? `<img src="${s.photo}" alt="Photo of ${esc(s.name)}" style="width:84px;height:104px;object-fit:cover;border:1px solid #8a97a8;border-radius:6px;display:block" />`
+          : `<span style="width:84px;height:104px;display:flex;align-items:center;justify-content:center;background:#e6edf7;border:1px solid #8a97a8;border-radius:6px;font-size:26px;font-weight:bold;color:${navy}">${initials(s)}</span>`;
+        const row = (k, v) => `<div style="display:flex;gap:8px;margin:3px 0;font-size:13px"><span style="width:84px;color:#5a6a80;flex:none">${k}</span><b>${v}</b></div>`;
+        return `<div class="x-idcard" data-idcard aria-label="Student ID Card" style="width:340px;max-width:100%;border:2px solid ${navy};border-radius:12px;overflow:hidden;background:#fff;color:#14202e;font-family:Arial,sans-serif">
+          <div style="background:${navy};color:#fff;padding:10px 12px;display:flex;align-items:center;gap:10px">
+            ${c.logo ? `<span style="background:#fff;border-radius:6px;padding:3px;display:inline-flex;flex:none"><img src="${c.logo}" alt="" style="max-height:32px;max-width:58px;display:block" /></span>` : ""}
+            <span><span style="font-size:15px;font-weight:bold;line-height:1.25;display:block">${esc(c.name)}</span><span style="font-size:11px;opacity:.85">${esc(c.city)}, ${esc(c.state)}</span></span>
+          </div>
+          <div style="background:#dbe7f5;color:${navy};text-align:center;font-size:12px;font-weight:bold;letter-spacing:3px;padding:5px 8px">STUDENT IDENTITY CARD</div>
+          <div style="display:flex;gap:12px;padding:12px">
+            <div style="flex:none">${pic}</div>
+            <div style="min-width:0">
+              ${row("Name", esc(s.name))}
+              ${row("Roll No.", esc(s.roll))}
+              ${row("Course", `${esc(s.course)} · ${esc(s.branch)}`)}
+              ${row("Year / Sec.", `Year ${s.curYear} · ${esc(s.sec)}`)}
+              ${s.dob ? row("DOB", fmtD(s.dob)) : ""}
+              ${s.blood ? row("Blood group", esc(s.blood)) : ""}
+            </div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;border-top:1px solid #c9d4e2;padding:8px 12px;font-size:12px">
+            <span>Validity: <b>${valid}</b></span>
+            <span style="text-align:center"><span style="display:block;height:16px"></span><span style="display:block;border-top:1px solid #333;padding-top:2px;min-width:84px">Principal</span></span>
+          </div>
+        </div>`;
       }
       function memoHTML(e, ms, s, c) {
         const sc = ms.reduce((a, m) => a + m.score, 0), mx = ms.reduce((a, m) => a + m.max, 0), pct = mx ? Math.round((sc / mx) * 1000) / 10 : 0, pass = ms.length && ms.every((m) => m.pct >= 50);
@@ -2869,6 +2905,7 @@
           const cls = UI.mCls || DB.getClasses()[0] || "", subs = cls ? DB.subjects(cls) : [], sub = UI.mSub || subs[0] || "";
           const existing = sub ? DB.getMarks({ exam: UI.mExam, cls, subject: sub }).filter((m) => (m.attempt || "Regular") === UI.mAtt) : [], byS = Object.fromEntries(existing.map((m) => [m.student_id, m]));
           const max = UI.mMax || (existing[0] && existing[0].max) || 100, sts = approved().filter((x) => x.klass === cls);
+          const memoStu = sts.find((x) => x.id === UI.memoStu) || sts[0] || null;
           return `<h2>Marks</h2><form class="x-stack" data-portal="marks" novalidate aria-label="Enter marks">
             <div class="x-bar">${psel("Exam", "exam", EXAMS, UI.mExam, `data-ui="mExam"`)}${psel("Attempt", "", [["Regular", "Regular"], ["Supplementary", "Supplementary"]], UI.mAtt, `data-ui="mAtt"`)}${psel("Class", "", classOpts(), cls, `data-ui="mCls"`)}
               ${pf("Subject", "subject", `value="${esc(sub)}" list="pa-subs" data-ui="mSub"`)}<datalist id="pa-subs">${subs.map((s) => `<option value="${esc(s)}">`).join("")}</datalist>
@@ -2876,6 +2913,7 @@
             ${sts.length ? `<div class="x-tw"><table><caption>${esc(UI.mExam)} · ${esc(cls)} · ${esc(sub || "pick a subject")}${existing.length ? "" : " · not entered yet"}</caption><thead><tr><th scope="col">Roll</th><th scope="col">Student</th><th scope="col">Marks</th><th scope="col">Percent</th><th scope="col">Grade</th></tr></thead><tbody>${sts.map((s) => { const m = byS[s.id]; return `<tr><td>${esc(s.roll)}</td><th scope="row">${esc(s.name)}</th><td><input name="m_${s.id}" type="number" min="0" step="0.5" inputmode="decimal" value="${m ? m.score : ""}" aria-label="Marks for ${esc(s.name)}" data-mk="${s.id}" /></td><td class="num" id="mp_${s.id}">${m ? m.pct + "%" : "—"}</td><td class="num" id="mg_${s.id}">${m ? m.grade : "—"}</td></tr>`; }).join("")}</tbody></table></div>` : `<p>No approved students in this class.</p>`}
             <p class="fineprint">Grades: A+ 90% and above · A 80% · B 70% · C 60% · D 50% · F below 50%. Regular and Supplementary attempts are saved separately; pick Supplementary for supply exams. Leave a box empty to clear that mark.</p>
             ${formErr}${okMsg()}${sts.length ? `<div class="x-acts"><button class="x-btn" type="submit">Save marks</button></div>` : ""}
+            ${sts.length ? `<div class="x-bar">${psel("Memo for student", "", sts.map((x) => [x.id, `${x.roll} · ${x.name}`]), memoStu ? memoStu.id : "", `data-ui="memoStu"`)}<label class="x-f">Marks memo · ${esc(UI.mExam)}<span><button type="button" class="x-sbtn" data-act="memoPrintAdm">Print marks memo</button></span></label></div>` : ""}
           </form>`;
         },
         payments() {
@@ -3493,6 +3531,14 @@
           const ms = DB.myMarks().filter((m) => m.exam === exam); if (!ms.length) return;
           printDoc(`Marks Memo · ${exam}`, memoHTML(exam, ms, me.student, me.college));
         },
+        memoPrintAdm() {
+          const me = DB.me(); if (!me || me.role !== "admin") return;
+          const cls = UI.mCls || DB.getClasses()[0] || "", sts = DB.getStudents({ status: "approved" }).filter((x) => x.klass === cls);
+          const st = sts.find((x) => x.id === UI.memoStu) || sts[0]; if (!st) return;
+          const ms = DB.getMarks({ exam: UI.mExam }).filter((m) => m.student_id === st.id);
+          if (!ms.length) { UI.msg = `No ${UI.mExam} marks entered for ${st.name} yet.`; paint(); return; }
+          printDoc(`Marks Memo · ${UI.mExam}`, memoHTML(UI.mExam, ms, st, me.college));
+        },
         rcptOpen(id) { UI.rcpt = id; paint(); },
         rcptClose() { UI.rcpt = null; paint(); },
         rcptPrint(id) {
@@ -3529,7 +3575,7 @@
         const el = e.target.closest && e.target.closest("#v-dyn [data-ui]"); if (!el || el.dataset.live) return;
         const k = el.dataset.ui; UI[k] = el.value; UI.msg = ""; UI.confirm = null;
         if (k === "attDate" && el.value > todayISO()) UI.attDate = todayISO();
-        if (k === "mCls" || k === "mExam") { if (k === "mCls") UI.mSub = ""; UI.mMax = ""; }
+        if (k === "mCls" || k === "mExam") { if (k === "mCls") { UI.mSub = ""; UI.memoStu = ""; } UI.mMax = ""; }
         if (k === "mSub") UI.mMax = "";
         if (el.dataset.norender !== undefined) return;
         paint(`#v-dyn [data-ui="${k}"]`);
