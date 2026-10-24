@@ -250,6 +250,8 @@
       .x-photo{width:110px;height:110px;object-fit:cover;border-radius:12px}
       .x-photo--ph{display:grid;place-items:center;background:var(--x-surface);font-size:34px;font-weight:700}
       .x-idcard{border:1px solid var(--line, #ccc);border-radius:14px;padding:16px;max-width:430px;display:grid;gap:8px}
+      .x-receipt{box-shadow:0 1px 6px rgba(0,0,0,.12);border-radius:6px}
+      .x-idimg{max-width:340px;width:100%;border:1px solid var(--line, #ccc);border-radius:10px}
       .x-idcard__row{display:flex;gap:14px;align-items:center}
       .x-file{display:inline-flex;align-items:center;gap:8px;cursor:pointer}
       .x-phead{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 24px}
@@ -1955,6 +1957,15 @@
           /* ----- Student photo (data URL, already resized by the UI) ----- */
           setStudentPhoto(id, data) { need("admin"); const st = mine(T.students.find((x) => x.id === id)); if (data && (typeof data !== "string" || !data.startsWith("data:image"))) fail("The photo must be an image.", "photo"); st.photo = data || ""; return clone(st); },
           setMyPhoto(data) { const st = myStudent(); if (data && (typeof data !== "string" || !data.startsWith("data:image"))) fail("The photo must be an image.", "photo"); st.photo = data || ""; return clone(st); },
+          /* ----- College-issued ID card: the college office uploads the real card photo/scan.
+                 Students only view it — there is deliberately no student-side setter. ----- */
+          setStudentIdCard(id, file) {
+            need("admin"); const st = mine(T.students.find((x) => x.id === id));
+            if (!file || !tx(file.name)) fail("The file has no name.", "name");
+            st.idCard = { name: tx(file.name), size: Number(file.size) || 0, mime: tx(file.mime), data: typeof file.data === "string" && file.data.length <= 500000 ? file.data : null, at: nowStamp() };
+            return clone(st);
+          },
+          removeStudentIdCard(id) { need("admin"); const st = mine(T.students.find((x) => x.id === id)); st.idCard = null; return clone(st); },
           /* ----- Admission documents ----- */
           docKinds: () => DOC_KINDS.slice(),
           certTypes: () => CERT_TYPES.slice(),
@@ -2486,7 +2497,7 @@
         if (!load()) seed();
         try { const ss = storage("sessionStorage"), sv = ss && JSON.parse(ss.getItem(SESSION_KEY) || "null"); if (sv && T.users.some((u) => u.id === sv.user_id && u.role === sv.role)) session = sv; } catch (_) { /* no saved session */ }
         /* Every write is saved right away */
-        ["registerCollege", "registerStudent", "addFaculty", "removeFaculty", "addStudent", "updateStudent", "updateMyContact", "setStudentStatus", "removeStudent", "updateCollege", "setStudentPhoto", "setMyPhoto", "addDocument", "removeDocument", "verifyDocument", "issueCertificate", "issueCertRequest", "requestCertificate", "upsertFee", "recordPayment", "removeFee", "markAttendance", "upsertMarks", "postNotice", "removeNotice", "payMyFee", "applyImport", "resetDemo"].forEach((k) => {
+        ["registerCollege", "registerStudent", "addFaculty", "removeFaculty", "addStudent", "updateStudent", "updateMyContact", "setStudentStatus", "removeStudent", "updateCollege", "setStudentPhoto", "setMyPhoto", "setStudentIdCard", "removeStudentIdCard", "addDocument", "removeDocument", "verifyDocument", "issueCertificate", "issueCertRequest", "requestCertificate", "upsertFee", "recordPayment", "removeFee", "markAttendance", "upsertMarks", "postNotice", "removeNotice", "payMyFee", "applyImport", "resetDemo"].forEach((k) => {
           const fn = api[k]; api[k] = (...args) => { const r = fn(...args); save(); return r; };
         });
         return api;
@@ -2525,6 +2536,21 @@
         .map(([k, v]) => `${k}=${encodeURIComponent(v).replace(/%40/g, "@")}`).join("&");
       const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
       const inr = (n) => "₹" + (Math.round(n * 100) / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+      /* Amount in words, Indian numbering: "Eighty-Five Thousand", "One Lakh", "One Crore" */
+      function inrWords(n) {
+        n = Math.floor(Math.abs(Number(n) || 0));
+        if (n === 0) return "Zero";
+        const ones = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+        const tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+        const two = (x) => (x < 20 ? ones[x] : tens[Math.floor(x / 10)] + (x % 10 ? "-" + ones[x % 10] : ""));
+        const three = (x) => (Math.floor(x / 100) ? ones[Math.floor(x / 100)] + " Hundred" + (x % 100 ? " " : "") : "") + (x % 100 ? two(x % 100) : "");
+        const parts = [];
+        const cr = Math.floor(n / 1e7); if (cr) { parts.push(three(cr) + " Crore"); n %= 1e7; }
+        const lk = Math.floor(n / 1e5); if (lk) { parts.push(two(lk) + " Lakh"); n %= 1e5; }
+        const th = Math.floor(n / 1e3); if (th) { parts.push(two(th) + " Thousand"); n %= 1e3; }
+        if (n) parts.push(three(n));
+        return parts.join(" ");
+      }
       const inrShort = (n) => (n >= 100000 ? "₹" + (Math.round(n / 10000) / 10).toLocaleString("en-IN") + "L" : inr(n));
       const parseISO = (iso) => { const [y, m, d] = iso.split("-").map(Number); return new Date(y, m - 1, d); };
       const fmtD = (iso) => parseISO(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
@@ -2532,7 +2558,7 @@
       const fmtM = (ym) => parseISO(ym + "-01").toLocaleDateString("en-IN", { month: "long", year: "numeric" });
       const pctTxt = (p) => (p === null || p === undefined ? "—" : p + "%");
       const lastMonths = (n) => { const out = []; const d = parseISO(todayISO()); for (let i = 0; i < n; i++) { const t = new Date(d.getFullYear(), d.getMonth() - i, 1); out.push(`${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}`); } return out; };
-      const UI0 = () => ({ loginRole: "admin", tab: "overview", stab: "overview", flash: null, msg: "", sQ: "", sCls: "", sStatus: "", edit: null, confirm: null, feeStu: "", feeSt: "", feeEdit: null, pay: null, attDate: todayISO(), attCls: "", attMonth: todayISO().slice(0, 7), mExam: "Unit Test 1", mCls: "", mSub: "", mMax: "", mAtt: "Regular", payStu: "", pm: null, rcpt: null, noticeAtt: null, noticeTitle: "", noticeText: "", imp: null, impMode: "merge", impErr: "", impBusy: false, impResult: null, note: "", feeYear: "", view: null, showAad: false, contactEdit: false, pmsg: "" });
+      const UI0 = () => ({ loginRole: "admin", tab: "overview", stab: "overview", flash: null, msg: "", sQ: "", sCls: "", sStatus: "", edit: null, confirm: null, feeStu: "", feeSt: "", feeEdit: null, pay: null, attDate: todayISO(), attCls: "", attMonth: todayISO().slice(0, 7), mExam: "Unit Test 1", mCls: "", mSub: "", mMax: "", mAtt: "Regular", payStu: "", pm: null, rcpt: null, noticeAtt: null, noticeTitle: "", noticeText: "", imp: null, impMode: "merge", impErr: "", impBusy: false, impResult: null, note: "", feeYear: "", feeQ: "", view: null, showAad: false, contactEdit: false, pmsg: "" });
       let UI = UI0();
       const demoNote = `<p class="x-note" role="note">Demo mode: changes are saved in this browser only. College admins can reset the demo data anytime.</p>`;
       const pf = (label, nm, attrs = "", full = false, req = true) => `<label class="x-f${full ? " x-f--full" : ""}">${label}<input name="${nm}" ${attrs}${req ? " required" : ""} /><small class="x-err"></small></label>`;
@@ -2559,14 +2585,46 @@
           w.document.close(); if (w.focus) w.focus();
         } catch (_) { /* printing unavailable in this context */ }
       }
-      /* One shared fee receipt: college logo, receipt number and the balance after this payment */
+      /* Download a standalone HTML document (receipt etc.) in the browser. Never called during render. */
+      function downloadDoc(title, inner, filename) {
+        try {
+          const docHtml = `<!DOCTYPE html><html><head><meta charset="utf-8" /><title>${esc(title)}</title></head><body style="margin:24px;background:#f4f4f4">${inner}</body></html>`;
+          const url = URL.createObjectURL(new Blob([docHtml], { type: "text/html" }));
+          const a = document.createElement("a"); a.href = url; a.download = filename;
+          document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        } catch (_) { /* downloads unavailable in this context */ }
+      }
+      /* One shared fee receipt, styled with inline styles so it looks the same in the portal,
+         in the print window and as a downloaded file: logo header, student details, charges
+         table, amount in words, and an authorised-signatory footer. */
       function receiptHTML(p, s, c, balance) {
-        const rows = [["Receipt no.", p.id.toUpperCase()], ["College", c.name], ["Student", `${s.name} (${s.roll})`], ["Course", courseLine(s)], ["Fee", p.fee_label], ["Amount paid", inr(p.amount)], ["Date & time", fmtDT(p.at)], ["Paid via", p.mode + (p.payer ? ` · ${p.payer}` : "")], ["Reference / UTR", p.ref || "—"], ["Recorded by", p.by]];
-        if (balance !== undefined && balance !== null) rows.push(["Balance on this fee line", Number(balance) > 0 ? inr(balance) : "₹0 · Paid in full"]);
-        return `<div data-receipt>${logoImg(c)}<h2>${esc(c.name)}</h2><p class="muted">Fee Receipt</p><div class="breakdown"><dl>${rows.map(([k, v]) => `<div class="row"><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl></div><p class="muted">This is a computer-generated receipt from the Shaalix demo portal.</p></div>`;
+        const dateStr = String(p.at || p.date || "").slice(0, 10);
+        const td = "border:1px solid #999;padding:6px 8px", th = td + ";background:#eee;text-align:left";
+        const det = [["Student Name", s.name], ["Roll No.", s.roll], ["Course", courseLine(s)], ["Fee", p.fee_label]];
+        return `<div class="x-receipt" data-receipt style="border:2px solid #333;padding:20px 22px;max-width:640px;margin:0 auto;background:#fff;color:#111;font-family:Arial,sans-serif">
+          <div style="text-align:center;border-bottom:2px solid #333;padding-bottom:12px;margin-bottom:12px">
+            ${c && c.logo ? `<img src="${c.logo}" alt="" style="max-height:56px;max-width:180px" /><br />` : ""}
+            <span style="font-size:22px;font-weight:bold">${esc(c.name)}</span>
+            <div style="margin-top:2px">${esc(c.city)}, ${esc(c.state)}${c.phone ? ` · Phone: ${esc(c.phone)}` : ""}</div>
+            <div style="margin-top:8px;font-size:15px;font-weight:bold;letter-spacing:3px">FEE RECEIPT</div>
+          </div>
+          <p style="display:flex;justify-content:space-between;gap:16px;margin:0 0 10px"><span><b>Receipt No.:</b> ${esc(p.id.toUpperCase())}</span><span><b>Date:</b> ${dateStr ? fmtD(dateStr) : "—"}</span></p>
+          <table style="width:100%;border-collapse:collapse;margin-bottom:12px"><tbody>${det.map(([k, v]) => `<tr><th style="${th};width:150px">${k}</th><td style="${td}">${esc(v)}</td></tr>`).join("")}</tbody></table>
+          <table style="width:100%;border-collapse:collapse"><thead><tr><th style="${th}">Description</th><th style="${th};text-align:right;width:160px">Amount</th></tr></thead><tbody><tr><td style="${td}">${esc(p.fee_label)}</td><td style="${td};text-align:right">${inr(p.amount)}</td></tr></tbody></table>
+          <p style="margin:12px 0 4px"><b>Amount in words:</b> ${inrWords(p.amount)} Only</p>
+          <p style="margin:4px 0"><b>Payment mode:</b> ${esc(p.mode)}${p.app ? ` (${esc(p.app)})` : ""}</p>
+          ${p.ref ? `<p style="margin:4px 0"><b>UTR / Ref:</b> ${esc(p.ref)}</p>` : ""}
+          ${p.payer ? `<p style="margin:4px 0"><b>Received from:</b> ${esc(p.payer)}</p>` : ""}
+          ${balance !== undefined && balance !== null ? `<p style="margin:4px 0"><b>Balance remaining:</b> ${Number(balance) > 0 ? inr(balance) : "₹0 · Paid in full"}</p>` : ""}
+          <div style="display:flex;justify-content:space-between;gap:24px;margin-top:28px">
+            <p style="margin:0;color:#555">This is a computer-generated receipt.</p>
+            <p style="margin:0;text-align:right">For ${esc(c.name)}<br /><br /><br /><b>Authorised Signatory</b></p>
+          </div>
+        </div>`;
       }
       function receiptModalHTML(p, s, c, balance) {
-        return `<div class="x-modal" data-modal><div class="x-modal__box" role="dialog" aria-modal="true" aria-labelledby="rc-h"><div class="x-phead"><div><p class="x-kicker">Fee receipt</p><h2 id="rc-h">${esc(p.fee_label)}</h2></div><button type="button" class="x-sbtn" data-act="rcptClose" aria-label="Close">Close</button></div>${receiptHTML(p, s, c, balance)}<div class="x-acts"><button type="button" class="x-btn" data-act="rcptPrint" data-id="${p.id}">Print / Save PDF</button><button type="button" class="x-sbtn" data-act="rcptClose">Close</button></div></div></div>`;
+        return `<div class="x-modal" data-modal><div class="x-modal__box" role="dialog" aria-modal="true" aria-labelledby="rc-h"><div class="x-phead"><div><p class="x-kicker">Fee receipt</p><h2 id="rc-h">${esc(p.fee_label)}</h2></div><button type="button" class="x-sbtn" data-act="rcptClose" aria-label="Close">Close</button></div>${receiptHTML(p, s, c, balance)}<div class="x-acts"><button type="button" class="x-btn" data-act="rcptPrint" data-id="${p.id}">Print / Save PDF</button><button type="button" class="x-sbtn" data-act="rcptDownload" data-id="${p.id}">Download</button><button type="button" class="x-sbtn" data-act="rcptClose">Close</button></div></div></div>`;
       }
       function idCardHTML(s, c) {
         const yrs = s.admType === "Lateral Entry" ? 3 : 4, valid = s.admYear ? `${s.admYear} – ${Number(s.admYear) + yrs}` : "—";
@@ -2751,7 +2809,7 @@
           const s = UI.edit && UI.edit !== "new" ? DB.getStudents().find((x) => x.id === UI.edit) : null, pv = !UI.edit && UI.view ? DB.getStudents().find((x) => x.id === UI.view) : null;
           return `<div class="x-phead"><div><h2>Students</h2></div><button type="button" class="x-btn" data-act="stuNew">Add student</button></div>` +
             (UI.edit ? studentForm(s) : "") +
-            (pv ? `<section class="x-stack x-profbox" data-admin-profile aria-labelledby="pa-prof-h"><div class="x-phead"><div><p class="x-kicker">Student profile</p><h3 id="pa-prof-h" tabindex="-1" data-prof-head>${esc(pv.name)}</h3><p>${esc(pv.roll)} · ${esc(courseLine(pv))}</p></div><div class="x-acts"><button type="button" class="x-btn" data-act="stuEdit" data-id="${pv.id}">Edit profile</button><button type="button" class="x-sbtn" data-act="viewClose">Close</button></div></div>${okMsg()}${photoHTML(pv)}<p><label class="x-sbtn x-file">${pv.photo ? "Replace photo" : "Upload photo"}<input type="file" class="x-sr" accept="image/*" data-upload="stuPhoto" aria-label="Upload photo for ${esc(pv.name)}" /></label></p>${profileView(pv)}${adminDocsHTML(pv)}<h3>ID Card</h3>${idCardHTML(pv, DB.me().college)}<p><button type="button" class="x-sbtn" data-act="idPrint" data-id="${pv.id}">Print ID card</button></p></section>` : "") +
+            (pv ? `<section class="x-stack x-profbox" data-admin-profile aria-labelledby="pa-prof-h"><div class="x-phead"><div><p class="x-kicker">Student profile</p><h3 id="pa-prof-h" tabindex="-1" data-prof-head>${esc(pv.name)}</h3><p>${esc(pv.roll)} · ${esc(courseLine(pv))}</p></div><div class="x-acts"><button type="button" class="x-btn" data-act="stuEdit" data-id="${pv.id}">Edit profile</button><button type="button" class="x-sbtn" data-act="viewClose">Close</button></div></div>${okMsg()}${photoHTML(pv)}<p><label class="x-sbtn x-file">${pv.photo ? "Replace photo" : "Upload photo"}<input type="file" class="x-sr" accept="image/*" data-upload="stuPhoto" aria-label="Upload photo for ${esc(pv.name)}" /></label></p>${profileView(pv)}${adminDocsHTML(pv)}${adminIdCardHTML(pv)}</section>` : "") +
             `<div class="x-bar">
               <label class="x-f">Search<input type="search" data-ui="sQ" data-live="students" value="${esc(UI.sQ)}" placeholder="Name, roll, email or phone" /></label>
               ${psel("Class", "", classOpts("All classes"), UI.sCls, `data-ui="sCls"`)}
@@ -2778,10 +2836,7 @@
           const L = DB.lists(), sts = approved(), stuOpts = sts.map((x) => [x.id, `${x.roll} · ${x.name}`]);
           const f = UI.feeEdit && UI.feeEdit !== "new" ? DB.getFees().find((x) => x.id === UI.feeEdit) : null;
           const p = UI.pay ? DB.getFees().find((x) => x.id === UI.pay) : null, pStu = p && sts.find((x) => x.id === p.student_id);
-          const rowsAll = DB.getFees(UI.feeStu).filter((x) => (!UI.feeSt || (UI.feeSt === "Upcoming" ? x.status === "Due" && x.phase === "Upcoming" : x.status === UI.feeSt))), name = Object.fromEntries(sts.map((x) => [x.id, x]));
-          const rows = rowsAll.filter((x) => !UI.feeYear || String(x.year) === UI.feeYear).sort((a, b) => a.year - b.year || ((name[a.student_id] || {}).roll || "").localeCompare((name[b.student_id] || {}).roll || "") || (a.type === b.type ? 0 : a.type === "Tuition" ? -1 : 1));
-          const ySum = (y, k) => rows.filter((r) => r.year === y).reduce((a, r) => a + r[k], 0);
-          const sum = (k) => rows.reduce((a, r) => a + r[k], 0);
+          const name = Object.fromEntries(sts.map((x) => [x.id, x]));
           return `<div class="x-phead"><div><h2>Fees</h2><p>B.Tech fees are year-wise: a Tuition Fee (Full fee) line and an Affiliation Fee line for each year. Regular students pay Year 1–4; lateral entry students pay Year 2–4.</p></div><button type="button" class="x-btn" data-act="feeNew">Add fee line</button></div>` +
             (UI.feeEdit ? `<form class="x-form" data-portal="fee" novalidate aria-label="${f ? "Edit fee line" : "Add fee line"}"><h3 class="x-f--full">${f ? "Edit fee line" : "Add a fee line"}</h3>
               ${f ? `<p class="x-f">Student<b>${esc(name[f.student_id] ? name[f.student_id].name : "")}</b></p>` : psel("Student", "student_id", [["", "Select"], ...stuOpts], UI.feeStu, "required")}
@@ -2796,9 +2851,8 @@
               <p class="x-f--full">${esc(pStu ? pStu.name : "")} · ${esc(p.label)} · balance <b>${inr(p.balance)}</b></p>
               ${pf("Amount received (₹)", "amount", `type="number" min="1" max="${p.balance}" step="1" inputmode="numeric" value="${p.balance}" data-autofocus`)}
               ${formErr}<div class="x-acts"><button class="x-btn" type="submit">Record payment</button><button type="button" class="x-sbtn" data-act="cancel">Cancel</button></div></form>` : "") +
-            `<div class="x-bar">${psel("Fee year", "", [["", "All years"], ...YEAR_OPTS], UI.feeYear, `data-ui="feeYear"`)}${psel("Student", "", [["", "All students"], ...stuOpts], UI.feeStu, `data-ui="feeStu"`)}${psel("Status", "", [["", "All"], "Due", "Partial", "Paid", "Upcoming"], UI.feeSt, `data-ui="feeSt"`)}</div>`
-            + `<p class="x-chips">${[1, 2, 3, 4].map((y) => { const yl = rowsAll.filter((r) => r.year === y); return yl.length ? `<span class="chip${String(UI.feeYear) === String(y) ? " chip--solid" : ""}">Year ${y} · billed ${inr(yl.reduce((a2, r) => a2 + r.amount, 0))} · collected ${inr(yl.reduce((a2, r) => a2 + r.paid, 0))} · balance ${inr(yl.reduce((a2, r) => a2 + r.balance, 0))}</span>` : ""; }).join("")}</p>${okMsg()}`
-            + (rows.length ? `<div class="x-tw"><table data-admin-fees><caption>${UI.feeYear ? `Year ${UI.feeYear} fees` : "Fees by year"} · ${rows.length} fee ${rows.length === 1 ? "line" : "lines"} · billed ${inr(sum("amount"))} · collected ${inr(sum("paid"))} · balance ${inr(sum("balance"))}</caption><thead><tr><th scope="col">Student</th><th scope="col">Year</th><th scope="col">Fee line</th><th scope="col">Amount</th><th scope="col">Due date</th><th scope="col">Paid</th><th scope="col">Balance</th><th scope="col">Status</th><th scope="col"><span class="x-sr">Actions</span></th></tr></thead><tbody>${(() => { let lastY = null; return rows.map((r) => { const st = name[r.student_id]; const hd = r.year !== lastY ? `<tr class="x-yrrow"><th colspan="9" scope="colgroup">Year ${r.year} · billed ${inr(ySum(r.year, "amount"))} · collected ${inr(ySum(r.year, "paid"))} · balance ${inr(ySum(r.year, "balance"))}</th></tr>` : ""; lastY = r.year; return hd + `<tr data-fee="${r.id}"><th scope="row">${esc(st ? st.name : "")}<small>${esc(st ? `${st.roll} · ${st.branch} · ${st.admType}` : "")}</small></th><td>${esc(r.yearLabel)}<small>${r.phase === "Current" ? "Current year" : r.phase}</small></td><td>${esc(r.head)}</td><td class="num">${inr(r.amount)}</td><td>${fmtD(r.due)}${r.balance && r.phase !== "Upcoming" && r.due < todayISO() ? "<small>Overdue</small>" : ""}</td><td class="num">${inr(r.paid)}</td><td class="num">${inr(r.balance)}</td><td>${feeChip(r)}</td><td><div class="x-acts">${r.balance ? `<button type="button" class="x-sbtn" data-act="pay" data-id="${r.id}">Record payment</button>` : ""}<button type="button" class="x-sbtn" data-act="feeEdit" data-id="${r.id}">Edit</button>${delBtn("feeDel", r.id, r.label)}</div></td></tr>`; }).join(""); })()}</tbody></table></div>` : `<p>No fee lines match.</p>`);
+            `<div class="x-bar">${psel("Fee year", "", [["", "All years"], ...YEAR_OPTS], UI.feeYear, `data-ui="feeYear"`)}${psel("Student", "", [["", "All students"], ...stuOpts], UI.feeStu, `data-ui="feeStu"`)}${psel("Status", "", [["", "All"], "Due", "Partial", "Paid", "Upcoming"], UI.feeSt, `data-ui="feeSt"`)}<label class="x-f">Search student<input type="search" data-ui="feeQ" data-live="fees" value="${esc(UI.feeQ)}" placeholder="Name or roll number" /></label></div>`
+            + `<div id="pa-fees-list">${feesResults()}</div>`;
         },
         attendance() {
           const cls = UI.attCls || DB.getClasses()[0] || "", rows = cls ? DB.getAttendance(UI.attDate, cls) : [];
@@ -2910,6 +2964,17 @@
         return `<aside class="callout x-callout-wide" aria-label="Import finished" data-imp-done tabindex="-1"><p class="callout__head">Import finished · ${rep ? "replaced existing data" : "added into existing data"}</p><p class="callout__lead"><strong>${esc(x.file)}</strong> Every tab now shows the imported data.</p>
           <div class="x-tw x-tw--s"><table><thead><tr><th scope="col">Data</th><th scope="col">Added</th><th scope="col">Updated</th><th scope="col">Skipped</th>${rep ? `<th scope="col">Removed</th>` : ""}</tr></thead><tbody>${rows.map((t) => `<tr><th scope="row">${esc(t.label)}</th><td class="num">${nIN(t.added)}</td><td class="num">${nIN(t.updated)}</td><td class="num">${nIN(t.skipped)}</td>${rep ? `<td class="num">${nIN(t.removed)}</td>` : ""}</tr>`).join("")}</tbody></table></div></aside>`;
       }
+      /* Fees results block (per-year chips + table), shared by the Fees pane and its live search */
+      function feesResults() {
+        const sts = approved(), name = Object.fromEntries(sts.map((x) => [x.id, x]));
+        const q = (UI.feeQ || "").trim().toLowerCase();
+        const rowsAll = DB.getFees(UI.feeStu).filter((x) => (!UI.feeSt || (UI.feeSt === "Upcoming" ? x.status === "Due" && x.phase === "Upcoming" : x.status === UI.feeSt))).filter((x) => { if (!q) return true; const st = name[x.student_id]; return !!st && (st.name.toLowerCase().includes(q) || st.roll.toLowerCase().includes(q)); });
+        const rows = rowsAll.filter((x) => !UI.feeYear || String(x.year) === UI.feeYear).sort((a, b) => a.year - b.year || ((name[a.student_id] || {}).roll || "").localeCompare((name[b.student_id] || {}).roll || "") || (a.type === b.type ? 0 : a.type === "Tuition" ? -1 : 1));
+        const ySum = (y, k) => rows.filter((r) => r.year === y).reduce((a, r) => a + r[k], 0);
+        const sum = (k) => rows.reduce((a, r) => a + r[k], 0);
+        return `<p class="x-chips">${[1, 2, 3, 4].map((y) => { const yl = rowsAll.filter((r) => r.year === y); return yl.length ? `<span class="chip${String(UI.feeYear) === String(y) ? " chip--solid" : ""}">Year ${y} · billed ${inr(yl.reduce((a2, r) => a2 + r.amount, 0))} · collected ${inr(yl.reduce((a2, r) => a2 + r.paid, 0))} · balance ${inr(yl.reduce((a2, r) => a2 + r.balance, 0))}</span>` : ""; }).join("")}</p>${okMsg()}`
+            + (rows.length ? `<div class="x-tw"><table data-admin-fees><caption>${UI.feeYear ? `Year ${UI.feeYear} fees` : "Fees by year"} · ${rows.length} fee ${rows.length === 1 ? "line" : "lines"} · billed ${inr(sum("amount"))} · collected ${inr(sum("paid"))} · balance ${inr(sum("balance"))}</caption><thead><tr><th scope="col">Student</th><th scope="col">Year</th><th scope="col">Fee line</th><th scope="col">Amount</th><th scope="col">Due date</th><th scope="col">Paid</th><th scope="col">Balance</th><th scope="col">Status</th><th scope="col"><span class="x-sr">Actions</span></th></tr></thead><tbody>${(() => { let lastY = null; return rows.map((r) => { const st = name[r.student_id]; const hd = r.year !== lastY ? `<tr class="x-yrrow"><th colspan="9" scope="colgroup">Year ${r.year} · billed ${inr(ySum(r.year, "amount"))} · collected ${inr(ySum(r.year, "paid"))} · balance ${inr(ySum(r.year, "balance"))}</th></tr>` : ""; lastY = r.year; return hd + `<tr data-fee="${r.id}"><th scope="row">${esc(st ? st.name : "")}<small>${esc(st ? `${st.roll} · ${st.branch} · ${st.admType}` : "")}</small></th><td>${esc(r.yearLabel)}<small>${r.phase === "Current" ? "Current year" : r.phase}</small></td><td>${esc(r.head)}</td><td class="num">${inr(r.amount)}</td><td>${fmtD(r.due)}${r.balance && r.phase !== "Upcoming" && r.due < todayISO() ? "<small>Overdue</small>" : ""}</td><td class="num">${inr(r.paid)}</td><td class="num">${inr(r.balance)}</td><td>${feeChip(r)}</td><td><div class="x-acts">${r.balance ? `<button type="button" class="x-sbtn" data-act="pay" data-id="${r.id}">Record payment</button>` : ""}<button type="button" class="x-sbtn" data-act="feeEdit" data-id="${r.id}">Edit</button>${delBtn("feeDel", r.id, r.label)}</div></td></tr>`; }).join(""); })()}</tbody></table></div>` : (q ? `<p>No fees match “${esc((UI.feeQ || "").trim())}”.</p>` : `<p>No fee lines match.</p>`));
+      }
       function studentsList() {
         const rows = DB.getStudents({ q: UI.sQ, cls: UI.sCls, status: UI.sStatus });
         if (!rows.length) return `<p>No students match.</p>`;
@@ -2921,6 +2986,22 @@
         const st = DB.getStudents().find((x) => x.id === p.student_id); if (!st) return "";
         const f = DB.getFees().find((x) => x.id === p.fee_id);
         return receiptModalHTML(p, st, DB.me().college, f ? f.balance : undefined);
+      }
+      /* Admin side of the ID card: the college-issued card (uploaded by the office) above the generated digital card */
+      function adminIdCardHTML(pv) {
+        const up = (label) => `<label class="x-sbtn x-file">${label}<input type="file" class="x-sr" accept="image/*" data-upload="stuIdCard" aria-label="Upload college-issued ID card for ${esc(pv.name)}" /></label>`;
+        const issued = pv.idCard
+          ? `<div class="breakdown"><h4>College-issued ID card</h4>${pv.idCard.data ? `<p><img class="x-idimg" src="${pv.idCard.data}" alt="College-issued ID card of ${esc(pv.name)}" /></p>` : `<p><span class="chip">${esc(pv.idCard.name)} · ${fmtSize(pv.idCard.size)}</span></p><p class="fineprint">The file was large, so only its details are kept here; the original is with the college office.</p>`}<p class="fineprint">Uploaded ${fmtDT(pv.idCard.at)}. The student sees this card in their profile; students cannot upload or change it.</p><div class="x-acts">${up("Replace ID card")}<button type="button" class="x-sbtn" data-act="idCardRemove">Remove ID card</button></div></div>`
+          : `<div class="breakdown"><h4>College-issued ID card</h4><p class="fineprint">Upload a photo or scan of the ID card your college issued to this student. The student will see it in their profile; students cannot upload or change it themselves.</p><p>${up("Upload ID card")}</p></div>`;
+        return `${issued}<h3>Digital ID card</h3>${idCardHTML(pv, DB.me().college)}<p><button type="button" class="x-sbtn" data-act="idPrint" data-id="${pv.id}">Print ID card</button></p>`;
+      }
+      /* Student side of the ID card: the college-issued card when the office uploaded one, else the generated digital card. View only. */
+      function studentIdCardHTML(s, c) {
+        if (s.idCard) {
+          if (s.idCard.data) return `<h3>ID Card</h3><div class="breakdown"><p class="x-kicker">College-issued ID card</p><p><img class="x-idimg" src="${s.idCard.data}" alt="College-issued ID card" /></p><p class="fineprint">College-issued ID card · uploaded by your college${s.idCard.at ? ` · ${fmtDT(s.idCard.at)}` : ""}.</p><p><a class="x-sbtn" href="${s.idCard.data}" download="${esc(s.idCard.name || "id-card")}">Download ID card</a></p></div>`;
+          return `<h3>ID Card</h3><div class="breakdown"><p class="x-kicker">College-issued ID card</p><p><span class="chip">${esc(s.idCard.name)} · ${fmtSize(s.idCard.size)}</span></p><p class="fineprint">College-issued ID card · uploaded by your college. The file was large, so ask the college office for the original copy.</p></div>`;
+        }
+        return `<h3>ID Card</h3>${idCardHTML(s, c)}<p><button type="button" class="x-sbtn" data-act="idPrint" data-id="${s.id}">Print ID card</button></p>`;
       }
       ROUTES["/portal/admin"] = () => {
         const me = DB.me(); if (!me || me.role !== "admin") return "/portal";
@@ -2991,7 +3072,7 @@
             <p class="fineprint">You can change your mobile, email and address. For any other change, contact your college office.</p>
             ${studentDocsHTML()}
             ${studentCertsHTML()}
-            <h3>ID Card</h3>${idCardHTML(s, c)}<p><button type="button" class="x-sbtn" data-act="idPrint" data-id="${s.id}">Print ID card</button></p></section>
+            ${studentIdCardHTML(s, c)}</section>
           <section class="section${UI.stab === "fees" ? "" : " x-off"}" id="ps-fees"><div class="head"><h2>Fees</h2><p class="head__sub">${esc(s.course)} ${esc(s.branch)} · ${lat ? "Lateral entry · 3 years, Year 2–4" : "Regular · 4 years, Year 1–4"} · year-wise Tuition + Affiliation fees</p></div>
             ${okMsg()}
             ${feeYearView(fees, s, true)}</section>
@@ -3039,7 +3120,7 @@
           body = `<div class="x-done" role="status"><span class="x-done__tick" aria-hidden="true">✓</span><h3>Payment Done</h3><p>${inr(p.amount)} paid towards ${esc(p.fee_label)}.</p></div>
             ${logoImg(college)}
             <div class="breakdown" data-receipt><dl>${[["Receipt no.", p.id.toUpperCase()], ["Amount paid", inr(p.amount)], ["Fee", p.fee_label], ["Student", `${st.name} (${st.roll})`], ["Course", `${st.course} ${st.branch} · ${st.admType}`], ["Date & time", fmtDT(p.at)], ["Reference (UTR)", p.ref], ["Paid via", p.mode], ["Payer", p.payer], ["Paid to", `${college.name} · ${UPI_CONFIG.UPI_ID}`], ["New balance", nf.balance > 0 ? inr(nf.balance) : "₹0 · Paid in full"]].map(([k, v]) => `<div class="row"><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl></div>
-            <div class="x-acts"><button type="button" class="x-sbtn" data-act="pmPrint">Print / Save PDF</button><button type="button" class="x-btn" data-act="pmClose" data-autofocus>Done</button></div>`;
+            <div class="x-acts"><button type="button" class="x-sbtn" data-act="pmPrint">Print / Save PDF</button><button type="button" class="x-sbtn" data-act="rcptDownload" data-id="${p.id}">Download receipt</button><button type="button" class="x-btn" data-act="pmClose" data-autofocus>Done</button></div>`;
         }
         return `<div class="x-modal" data-modal><div class="x-modal__box" role="dialog" aria-modal="true" aria-labelledby="pm-h">
           <div class="x-phead"><div><p class="x-kicker">${pm.step === "done" ? "Receipt" : pm.step === "qr" ? "Step 2 of 2 · Pay by UPI" : "Step 1 of 2 · Pay fee"}</p><h2 id="pm-h">${esc(label)}</h2></div><button type="button" class="x-sbtn" data-act="pmClose" aria-label="Close">Close</button></div>
@@ -3402,6 +3483,7 @@
           const st = me.role === "admin" ? DB.getStudents().find((x) => x.id === ct.student_id) : me.student; if (!st) return;
           printDoc(ct.type, certHTML(ct, st, me.college));
         },
+        idCardRemove() { DB.removeStudentIdCard(UI.view); UI.msg = "College-issued ID card removed."; paint(); },
         idPrint(id) {
           const me = DB.me(), st = me.role === "admin" ? DB.getStudents().find((x) => x.id === id) : me.student; if (!st) return;
           printDoc("Student ID Card", idCardHTML(st, me.college));
@@ -3421,6 +3503,13 @@
           printDoc("Fee Receipt", receiptHTML(p, st, me.college, f ? f.balance : undefined));
         },
         pmPrint() { if (UI.pm && UI.pm.receipt) { const me = DB.me(); printDoc("Fee Receipt", receiptHTML(UI.pm.receipt.payment, me.student, me.college, UI.pm.receipt.fee.balance)); } },
+        rcptDownload(id) {
+          const me = DB.me(); if (!me) return;
+          const list = me.role === "admin" ? DB.getPayments() : DB.myPayments(), p = list.find((x) => x.id === id); if (!p) return;
+          const st = me.role === "admin" ? DB.getStudents().find((x) => x.id === p.student_id) : me.student; if (!st) return;
+          const fees = me.role === "admin" ? DB.getFees() : DB.myFees(), f = fees.find((x) => x.id === p.fee_id);
+          downloadDoc("Fee Receipt", receiptHTML(p, st, me.college, f ? f.balance : undefined), `Fee-Receipt-${p.id.toUpperCase()}.html`);
+        },
       };
       document.addEventListener("click", (e) => {
         const b = e.target.closest("#v-dyn [data-act]"); if (!b || !ACTS[b.dataset.act]) return;
@@ -3475,6 +3564,7 @@
             if (kind === "logo") { if (!data) return fail("That image could not be read. Try a PNG or JPG logo."); DB.updateCollege({ logo: data }); UI.msg = "College logo saved. It now appears on receipts, memos, ID cards and certificates."; }
             else if (kind === "myPhoto") { if (!data) return fail("That image could not be read. Try a JPG or PNG photo."); DB.setMyPhoto(data); UI.pmsg = "Your photo is saved."; }
             else if (kind === "stuPhoto") { if (!data) return fail("That image could not be read. Try a JPG or PNG photo."); DB.setStudentPhoto(UI.view, data); UI.msg = "Student photo saved."; }
+            else if (kind === "stuIdCard") { DB.setStudentIdCard(UI.view, { name: file.name, size: file.size, mime: file.type, data }); UI.msg = data ? "College-issued ID card saved. The student can now see it in their profile." : "ID card details saved. The file was large, so the student sees its name and size; keep the original with the college office."; }
             else if (kind === "doc") { DB.addDocument({ kind: el.dataset.kind, name: file.name, size: file.size, mime: file.type, data }); if (UI.tab) UI.msg = "Document uploaded."; else UI.pmsg = `${el.dataset.kind} uploaded. It is waiting for the college office to verify it.`; }
             else if (kind === "noticeAtt") { const f = document.querySelector('#v-dyn [data-portal="notice"]'); if (f) { UI.noticeTitle = f.title.value; UI.noticeText = f.text.value; } UI.noticeAtt = { name: file.name, size: file.size, mime: file.type, data }; }
             paint();
@@ -3489,6 +3579,7 @@
         const el = e.target;
         if (!el.closest || !el.closest("#v-dyn")) return;
         if (el.dataset.live === "students") { UI.sQ = el.value; document.querySelector("#pa-list").innerHTML = studentsList(); return; }
+        if (el.dataset.live === "fees") { UI.feeQ = el.value; const t = document.querySelector("#pa-fees-list"); if (t) t.innerHTML = feesResults(); return; }
         /* Live grade while typing marks */
         if (el.dataset.mk !== undefined || el.name === "max") {
           const f = el.form, max = Number(f.max.value);

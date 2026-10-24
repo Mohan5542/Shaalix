@@ -330,6 +330,56 @@ P.setUI({ tab: "notices" }); const nHtml = renderAs("admin/notices-att", "/porta
 if (!nHtml.includes("timetable.pdf")) fails.push("Admin notices: attachment name not rendered");
 DB.removeNotice(nAtt.id);
 P.setUI({ tab: "overview" });
+// ---- Build #2: proper receipt template + amount in words + download, college-issued ID card, fees search ----
+// Receipt template + inrWords via rendered receipts (inrWords is not exported to this harness)
+DB.login("student", "ravi@srividya.demo", "Demo@1234");
+const y4t = DB.myFees().find((f) => f.year === 4 && f.type === "Tuition");
+const bigPay = DB.payMyFee(y4t.id, { amount: String(y4t.balance), payer: "Ravi Kumar", app: "PhonePe", ref: "343434343434" });
+if (bigPay.payment.amount !== 85000) fails.push("Receipt check setup: expected an 85,000 payment, got " + bigPay.payment.amount);
+P.setUI({ rcpt: bigPay.payment.id }); const tplHtml = renderAs("student/receipt-template", "/portal/student");
+for (const want of ["FEE RECEIPT", "Authorised Signatory", "This is a computer-generated receipt", "Sri Vidya Institute of Technology", "Amount in words", "Eighty-Five Thousand Only", "Balance remaining", "Paid in full", 'data-act="rcptDownload"', DB.me().student.name, DB.me().student.roll, bigPay.payment.id.toUpperCase()])
+  if (!tplHtml.includes(want)) fails.push("Receipt template: missing " + want);
+P.setUI({ rcpt: payR.payment.id }); const smallRc = renderAs("student/receipt-words-1000", "/portal/student");
+if (!smallRc.includes("One Thousand Only")) fails.push("Receipt words: a 1,000 payment should read 'One Thousand Only'");
+P.setUI({ rcpt: null });
+// College-issued ID card: admin uploads, student only views; no student-side setter exists
+DB.login("admin", "admin@srividya.demo", "Demo@1234");
+DB.setStudentIdCard(raviA.id, { name: "ravi-id.png", size: 54321, mime: "image/png", data: PNG1 });
+const withCard = DB.getStudents().find((x) => x.id === raviA.id);
+if (!withCard.idCard || withCard.idCard.data !== PNG1 || withCard.idCard.name !== "ravi-id.png") fails.push("setStudentIdCard not saved");
+const bigCard = DB.setStudentIdCard(raviA.id, { name: "big.pdf", size: 900000, mime: "application/pdf", data: "data:application/pdf;base64," + "A".repeat(600000) });
+if (!bigCard.idCard || bigCard.idCard.data !== null || bigCard.idCard.size !== 900000) fails.push("Oversized ID card: data should drop, metadata kept");
+DB.setStudentIdCard(raviA.id, { name: "ravi-id.png", size: 54321, mime: "image/png", data: PNG1 });
+P.setUI({ tab: "students", view: raviA.id }); const admId = renderAs("admin/idcard-issued", "/portal/admin");
+if (!admId.includes("College-issued ID card") || !admId.includes(PNG1) || !admId.includes('data-upload="stuIdCard"') || !admId.includes("Digital ID card")) fails.push("Admin profile: college-issued ID card block missing");
+P.setUI({ view: null, tab: "overview" });
+if (typeof DB.setMyIdCard !== "undefined") fails.push("There must be no student-side ID card setter");
+DB.login("student", "ravi@srividya.demo", "Demo@1234");
+expectErr("Student cannot set an ID card", () => DB.setStudentIdCard(raviA.id, { name: "x.png", size: 1, mime: "image/png", data: PNG1 }));
+expectErr("Student cannot remove an ID card", () => DB.removeStudentIdCard(raviA.id));
+const stuId = renderAs("student/idcard-issued", "/portal/student");
+if (!stuId.includes("College-issued ID card") || !stuId.includes("uploaded by your college") || !stuId.includes(PNG1)) fails.push("Student profile: college-issued ID card not shown");
+if (stuId.includes('data-upload="stuIdCard"')) fails.push("Student profile must not contain an ID card upload input");
+DB.login("admin", "admin@srividya.demo", "Demo@1234");
+DB.removeStudentIdCard(raviA.id);
+if (DB.getStudents().find((x) => x.id === raviA.id).idCard !== null) fails.push("removeStudentIdCard did not clear the card");
+DB.login("student", "ravi@srividya.demo", "Demo@1234");
+if (!/data-idcard/.test(renderAs("student/idcard-generated", "/portal/student"))) fails.push("Student profile: generated ID card should return once the issued card is removed");
+// Fees search by roll, then by name (assertions scoped to the table: the filter bar's Student select lists every name)
+DB.login("admin", "admin@srividya.demo", "Demo@1234");
+const lakA = DB.getStudents().find((x) => x.email === "lakshmi@srividya.demo");
+const feesTable = (h) => h.slice(h.indexOf("data-admin-fees"));
+P.setUI({ tab: "fees", feeQ: raviA.roll.slice(0, -2) });
+const fq1 = renderAs("admin/fees-search-roll", "/portal/admin");
+if (!fq1.includes('data-live="fees"')) fails.push("Fees search input missing");
+if (!feesTable(fq1).includes(raviA.name) || feesTable(fq1).includes(lakA.name)) fails.push("Fees search by roll: wrong rows shown");
+P.setUI({ feeQ: lakA.name.split(" ")[0] });
+const fq2 = renderAs("admin/fees-search-name", "/portal/admin");
+if (!feesTable(fq2).includes(lakA.name) || feesTable(fq2).includes(raviA.name)) fails.push("Fees search by name: wrong rows shown");
+P.setUI({ feeQ: "zzz-no-match" });
+if (!renderAs("admin/fees-search-none", "/portal/admin").includes("No fees match")) fails.push("Fees search: empty state missing");
+P.setUI({ feeQ: "", tab: "overview" });
+console.log("portal: receipt template + words + download, college-issued ID card and fees search checked");
 console.log("portal: logo, photo, documents, receipts, supplies, certificates, ID card and notice attachments checked");
 console.log("portal: admin tabs, forms, student views, year-wise B.Tech fees, profiles, isolation, fee payment and Excel import checked");
 const checked = new Set();
