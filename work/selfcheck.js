@@ -419,7 +419,7 @@ const profCardHtml = renderAs("student/idcard-design", "/portal/student");
 if (!profCardHtml.includes("STUDENT IDENTITY CARD") || !profCardHtml.includes(DB.me().student.roll)) fails.push("Student profile: ID card missing the identity strip or the student's roll number");
 // ---- Build #4: ensureDemoData backfill — old saved browsers get the rich demo too ----
 // After a reset, EVERY college (not just Sri Vidya) has: payments adding up to fees paid,
-// the two demo documents on its first approved student (lowest roll), and a supply demo.
+// the two demo documents on EVERY approved student, and a supply demo.
 DB.login("admin", "admin@srividya.demo", "Demo@1234");
 DB.resetDemo();
 const demoAdmins = [["admin@srividya.demo", "Sri Vidya"], ["admin@greenvalley.demo", "Green Valley"]];
@@ -427,18 +427,37 @@ for (const [em, label] of demoAdmins) {
   DB.login("admin", em, "Demo@1234");
   const cPays = DB.getPayments(), cFees = DB.getFees();
   if (!cPays.length || cPays.reduce((a, p) => a + p.amount, 0) !== cFees.reduce((a, f) => a + f.paid, 0)) fails.push(`Backfill reset (${label}): payments do not add up to the fees' paid totals`);
-  const firstStu = DB.getStudents().filter((s) => s.status === "approved").sort((a, b) => a.roll.localeCompare(b.roll))[0];
-  const docs = DB.getDocuments(firstStu.id);
-  if (!docs.some((d) => d.kind === "Aadhaar Card" && d.status === "Verified") || !docs.some((d) => d.kind === "SSC Memo" && d.status === "Pending")) fails.push(`Backfill reset (${label}): demo documents missing for the first approved student (${firstStu.name})`);
-  P.setUI({ tab: "students", view: firstStu.id }); const docProf = renderAs("admin/backfill-docs-" + label, "/portal/admin");
-  if (!docProf.includes('data-act="docVerify"') || !docProf.includes('data-act="docReject"')) fails.push(`Backfill reset (${label}): admin profile lacks Verify / Reject controls for the pending document`);
-  P.setUI({ view: null, tab: "overview" });
+  const admStudents = DB.getStudents().filter((s) => s.status === "approved");
+  if (!admStudents.length) fails.push(`Backfill reset (${label}): no approved students after reset`);
+  for (const stu of admStudents) {
+    const docs = DB.getDocuments(stu.id);
+    if (!docs.some((d) => d.kind === "Aadhaar Card" && d.status === "Verified") || !docs.some((d) => d.kind === "SSC Memo" && d.status === "Pending")) fails.push(`Backfill reset (${label}): demo documents missing for ${stu.name} (${stu.roll})`);
+  }
   if (!DB.getMarks({}).some((m) => m.attempt === "Supplementary")) fails.push(`Backfill reset (${label}): no supplementary mark after reset`);
+  for (const stu of admStudents) {
+    DB.login("student", stu.email, "Demo@1234");
+    const myDocs = DB.myDocuments();
+    if (!myDocs.some((d) => d.status === "Verified") || !myDocs.some((d) => d.status === "Pending")) fails.push(`Backfill reset (${label}): ${stu.name}'s own documents lack a Verified and a Pending entry`);
+  }
+  const firstStu = admStudents.slice().sort((a, b) => a.roll.localeCompare(b.roll))[0];
   DB.login("student", firstStu.email, "Demo@1234");
-  const myDocs = DB.myDocuments();
-  if (!myDocs.some((d) => d.status === "Verified") || !myDocs.some((d) => d.status === "Pending")) fails.push(`Backfill reset (${label}): the student's documents lack a Verified and a Pending entry`);
   const myDocHtml = renderAs("student/backfill-docs-" + label, "/portal/student");
   if (!/Admission documents/.test(myDocHtml) || !myDocHtml.includes("Verified") || !myDocHtml.includes("Pending")) fails.push(`Backfill reset (${label}): student render does not show both document statuses`);
+}
+// The demo-login student (Ravi Kumar Varma, 24SV1A0501) is NOT the lowest roll, but his
+// documents must still be there — and the office must get Verify / Reject on his profile.
+DB.login("admin", "admin@srividya.demo", "Demo@1234");
+const raviDemo = DB.getStudents().find((s) => s.roll === "24SV1A0501") || DB.getStudents().find((s) => /Ravi Kumar Varma/.test(s.name));
+if (!raviDemo) fails.push("Backfill reset: demo-login student Ravi Kumar Varma (24SV1A0501) not found after reset");
+else {
+  const rDocs = DB.getDocuments(raviDemo.id);
+  if (!rDocs.some((d) => d.kind === "Aadhaar Card" && d.status === "Verified") || !rDocs.some((d) => d.kind === "SSC Memo" && d.status === "Pending")) fails.push("Backfill reset: Ravi's demo documents are missing after reset");
+  P.setUI({ tab: "students", view: raviDemo.id }); const raviProf = renderAs("admin/ravi-backfill-docs", "/portal/admin");
+  if (!raviProf.includes('data-act="docVerify"') || !raviProf.includes('data-act="docReject"')) fails.push("Backfill reset: admin profile for Ravi lacks Verify / Reject controls for his pending document");
+  P.setUI({ view: null, tab: "overview" });
+  DB.login("student", raviDemo.email, "Demo@1234");
+  const raviMyDocs = DB.myDocuments();
+  if (!raviMyDocs.some((d) => d.status === "Verified") || !raviMyDocs.some((d) => d.status === "Pending")) fails.push("Backfill reset: Ravi's own documents lack a Verified and a Pending entry");
 }
 // Migration: boot the page script again over a saved v2 DB stripped of payments, documents
 // and supplementary marks — exactly what an older build left in a returning visitor's browser —
@@ -478,9 +497,10 @@ else {
     if (p2.reduce((a, p) => a + p.amount, 0) !== f2.reduce((a, f) => a + f.paid, 0)) fails.push(`Migration (${label}): backfilled payments do not add up to the fees' paid totals`);
     const refs2 = p2.map((p) => p.ref).filter(Boolean);
     if (new Set(refs2).size !== refs2.length || refs2.some((r) => !/^4021\d{8}$/.test(r))) fails.push(`Migration (${label}): backfilled UTRs are not unique 4021-prefixed 12-digit numbers`);
-    const first2 = DB2.getStudents().filter((s) => s.status === "approved").sort((a, b) => a.roll.localeCompare(b.roll))[0];
-    const docs2 = DB2.getDocuments(first2.id);
-    if (!docs2.some((d) => d.kind === "Aadhaar Card" && d.status === "Verified") || !docs2.some((d) => d.kind === "SSC Memo" && d.status === "Pending")) fails.push(`Migration (${label}): demo documents were not backfilled on the second boot`);
+    for (const stu2 of DB2.getStudents().filter((s) => s.status === "approved")) {
+      const docs2 = DB2.getDocuments(stu2.id);
+      if (!docs2.some((d) => d.kind === "Aadhaar Card" && d.status === "Verified") || !docs2.some((d) => d.kind === "SSC Memo" && d.status === "Pending")) fails.push(`Migration (${label}): demo documents were not backfilled for ${stu2.name} on the second boot`);
+    }
     if (!DB2.getMarks({}).some((m) => m.attempt === "Supplementary")) fails.push(`Migration (${label}): supplementary mark was not backfilled on the second boot`);
   }
   // Idempotence: a third boot over the backfilled DB must add nothing

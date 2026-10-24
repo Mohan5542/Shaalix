@@ -2310,8 +2310,9 @@
         /* ----- Backfill for browsers whose saved demo predates the richer seed -----
            seed() only runs on a first visit, so anyone with a saved demo DB would otherwise never
            see seeded payment records (Receipt buttons), demo admission documents or the supply
-           demo. Each piece is guarded per college and skipped when it already exists, which makes
-           this a no-op for up-to-date data. Returns true when anything was added. */
+           demo. Each piece is guarded (per college; documents per student) and skipped when
+           it already exists, which makes this a no-op for up-to-date data.
+           Returns true when anything was added. */
         function ensureDemoData() {
           let changed = false;
           const today = todayISO();
@@ -2329,18 +2330,22 @@
               T.payments.push(rec); changed = true;
             });
           });
-          /* (2) Demo documents: a college with none gets two for its first approved student
-                 (lowest roll) — one already Verified, one still Pending, so the office
-                 Verify / Reject controls and the student's statuses show in the demo. */
+          /* (2) Demo documents: EVERY approved student who has no documents of their own
+                 gets two — an Aadhaar Card already Verified and an SSC Memo still Pending —
+                 so whichever student a visitor signs in as, their documents table shows real
+                 statuses and the office sees Verify / Reject controls on their profile.
+                 The upload day drifts a little per student so the stamps are not identical. */
+          let docN = 0;
           T.colleges.forEach((c) => {
-            if (T.documents.some((d) => d.college_id === c.id)) return;
-            const st = T.students.filter((x) => x.college_id === c.id && x.status === "approved").sort((a, b) => a.roll.localeCompare(b.roll))[0];
-            if (!st) return;
-            T.documents.push(
-              { id: uid("doc"), college_id: c.id, student_id: st.id, kind: "Aadhaar Card", name: "aadhaar-card.jpg", size: 184320, mime: "image/jpeg", data: null, status: "Verified", at: `${shiftISO(today, -45)} 10:24` },
-              { id: uid("doc"), college_id: c.id, student_id: st.id, kind: "SSC Memo", name: "ssc-memo.pdf", size: 237568, mime: "application/pdf", data: null, status: "Pending", at: `${shiftISO(today, -45)} 10:26` }
-            );
-            changed = true;
+            T.students.filter((x) => x.college_id === c.id && x.status === "approved").forEach((st) => {
+              if (T.documents.some((d) => d.student_id === st.id)) return;
+              const day = -(30 + (docN % 40)), hr = 9 + (docN % 9); docN++;
+              T.documents.push(
+                { id: uid("doc"), college_id: c.id, student_id: st.id, kind: "Aadhaar Card", name: "aadhaar-card.jpg", size: 184320, mime: "image/jpeg", data: null, status: "Verified", at: `${shiftISO(today, day)} ${String(hr).padStart(2, "0")}:24` },
+                { id: uid("doc"), college_id: c.id, student_id: st.id, kind: "SSC Memo", name: "ssc-memo.pdf", size: 237568, mime: "application/pdf", data: null, status: "Pending", at: `${shiftISO(today, day)} ${String(hr).padStart(2, "0")}:26` }
+              );
+              changed = true;
+            });
           });
           /* (3) Supply demo: a college with marks but no supplementary attempt gets one — the
                  weakest approved student (lowest average) has their weakest Mid-1 regular mark
