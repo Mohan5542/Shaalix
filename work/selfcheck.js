@@ -308,6 +308,27 @@ const venkMs = DB.myMarks(), sup = venkMs.find((m) => m.attempt === "Supplementa
 if (!sup || sup.exam !== "Mid-1" || !(sup.pct >= 50)) fails.push("Seed: weakest student has no passing supplementary Mid-1 mark");
 else { const reg = venkMs.find((m) => m.exam === sup.exam && m.subject === sup.subject && (m.attempt || "Regular") === "Regular"); if (!reg || !(reg.pct < 50)) fails.push("Seed: supplementary subject's regular attempt should be below 50%"); }
 if (!/Supply/.test(renderAs("student/supply-marks", "/portal/student"))) fails.push("Student marks: Supply chip not rendered");
+// Memo summary: one EFFECTIVE result per subject — a passing supply supersedes the failed regular attempt (no double-counting)
+const memoFnV = vm.runInContext("memoHTML", ctx);
+const vMid1 = venkMs.filter((m) => m.exam === "Mid-1");
+const bySubV = {}; vMid1.forEach((m) => { (bySubV[m.subject] = bySubV[m.subject] || []).push(m); });
+let eSc = 0, eMx = 0, eAllPass = true;
+Object.values(bySubV).forEach((rows) => { const sp = rows.filter((m) => m.attempt === "Supplementary" && m.pct >= 50); const regs = rows.filter((m) => (m.attempt || "Regular") === "Regular"); const e2 = sp.length ? sp[sp.length - 1] : (regs.length ? regs[regs.length - 1] : rows[rows.length - 1]); eSc += e2.score; eMx += e2.max; if (e2.pct < 50) eAllPass = false; });
+const naiveSc = vMid1.reduce((a, m) => a + m.score, 0), naiveMx = vMid1.reduce((a, m) => a + m.max, 0);
+const memoV = memoFnV("Mid-1", vMid1, DB.me().student, DB.me().college);
+if ((memoV.split("<td>" + sup.subject + "</td>").length - 1) !== 2) fails.push("Memo summary: both Regular and Supplementary rows for the supply subject should still be listed");
+if (!eAllPass) fails.push("Memo summary setup: Venkatesh's effective Mid-1 results should all be passing");
+if (!memoV.includes("Overall result: <b>Pass</b>")) fails.push("Memo summary: a passed supply should make the overall result Pass");
+if (!memoV.includes(`${eSc} / ${eMx}`)) fails.push(`Memo summary: total should use effective scores ${eSc} / ${eMx}`);
+if (naiveSc !== eSc && memoV.includes(`${naiveSc} / ${naiveMx}`)) fails.push("Memo summary: total double-counts the supply subject");
+// Memo for a genuine unrecovered failure still says Fail / Backlog
+DB.login("admin", "admin@srividya.demo", "Demo@1234");
+DB.upsertMarks("Final", "Zeta Probe Subject", 100, { [raviA.id]: 30 });
+const probeMs = DB.getMarks({ exam: "Final" }).filter((m) => m.student_id === raviA.id);
+const memoF = memoFnV("Final", probeMs, raviA, DB.me().college);
+if (!memoF.includes("Overall result: <b>Fail / Backlog</b>")) fails.push("Memo summary: an unrecovered failure should say Fail / Backlog");
+DB.upsertMarks("Final", "Zeta Probe Subject", 100, { [raviA.id]: "" });
+DB.login("student", "venkatesh@srividya.demo", "Demo@1234");
 // Certificates: student requests -> admin issues (serial assigned) -> both sides list it
 DB.login("student", "ravi@srividya.demo", "Demo@1234");
 const reqC = DB.requestCertificate({ type: "Bonafide Certificate", note: "Bank account" });

@@ -2738,7 +2738,16 @@
         </div>`;
       }
       function memoHTML(e, ms, s, c) {
-        const sc = ms.reduce((a, m) => a + m.score, 0), mx = ms.reduce((a, m) => a + m.max, 0), pct = mx ? Math.round((sc / mx) * 1000) / 10 : 0, pass = ms.length && ms.every((m) => m.pct >= 50);
+        /* Summary uses one EFFECTIVE result per subject: a passing Supplementary attempt supersedes the Regular attempt; the rows below still list every attempt. */
+        const bySub = {};
+        ms.forEach((m) => { (bySub[m.subject] = bySub[m.subject] || []).push(m); });
+        const eff = Object.values(bySub).map((rows) => {
+          const sup = rows.filter((m) => m.attempt === "Supplementary" && m.pct >= 50);
+          if (sup.length) return sup[sup.length - 1];
+          const regs = rows.filter((m) => (m.attempt || "Regular") === "Regular");
+          return regs.length ? regs[regs.length - 1] : rows[rows.length - 1];
+        });
+        const sc = eff.reduce((a, m) => a + m.score, 0), mx = eff.reduce((a, m) => a + m.max, 0), pct = mx ? Math.round((sc / mx) * 1000) / 10 : 0, pass = eff.length && eff.every((m) => m.pct >= 50);
         return `<div data-memo>${logoImg(c)}<h2>${esc(c.name)}</h2><p class="muted">Marks Memo · ${esc(e)}</p><p><b>${esc(s.name)}</b> · Roll ${esc(s.roll)} · ${esc(courseLine(s))} · ${esc(s.sec)}</p><table><thead><tr><th>Subject</th><th>Marks</th><th>Percent</th><th>Grade</th><th>Attempt</th></tr></thead><tbody>${ms.map((m) => `<tr><td>${esc(m.subject)}</td><td class="num">${m.score} / ${m.max}</td><td class="num">${m.pct}%</td><td>${m.grade}</td><td>${esc(m.attempt || "Regular")}</td></tr>`).join("")}<tr><th>Total</th><td class="num">${sc} / ${mx}</td><td class="num">${pct}%</td><td>${gradeOf(pct)}</td><td></td></tr></tbody></table><p>Overall result: <b>${pass ? "Pass" : "Fail / Backlog"}</b> (pass mark is 50% in every subject).</p></div>`;
       }
       function certHTML(ct, s, c) {
