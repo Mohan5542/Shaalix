@@ -260,6 +260,77 @@ if (!/shaalix-demo-db-v2/.test(code) || /shaalix-demo-db-v1"\s*,\s*SESSION/.test
 for (const [label, h] of sources.filter(([w]) => /^portal /.test(w) && !/data\+preview/.test(w))) if (/\bSem(ester)?\b|\bTerm\b|term\s?\d/i.test(h)) fails.push(`${label}: still says semester/term`);
 // No entrance-rank field anywhere
 if (/rank|EAMCET|ECET/i.test(code.slice(code.indexOf("DEMO PORTAL"))) || stuCols.some((h) => /rank/i.test(h)) || "rank" in lkMe) fails.push("Entrance rank (EAMCET/ECET) must not exist");
+
+// ---- New features: college logo, student photo, admission documents, fee receipts,
+//      marks supplies, certificates, ID card, notice attachments ----
+const PNG1 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+DB.login("admin", "admin@srividya.demo", "Demo@1234");
+const colUp = DB.updateCollege({ logo: PNG1, feeTuition: 90000 });
+if (colUp.logo !== PNG1 || colUp.feeTuition !== 90000 || colUp.feeAffil !== 6000) fails.push("updateCollege: logo / fee structure not saved");
+P.setUI({ tab: "college" }); const colHtml = renderAs("admin/college", "/portal/admin");
+if (!colHtml.includes(PNG1) || !/College information/.test(colHtml) || !/feeTuition/.test(colHtml)) fails.push("College pane: logo or fee form missing");
+DB.updateCollege({ feeTuition: 85000 });
+const raviA = DB.getStudents().find((x) => x.email === "ravi@srividya.demo");
+DB.setStudentPhoto(raviA.id, PNG1);
+if (DB.getStudents().find((x) => x.id === raviA.id).photo !== PNG1) fails.push("Admin setStudentPhoto not saved");
+expectErr("Student cannot set another student's photo", () => { DB.login("student", "ravi@srividya.demo", "Demo@1234"); DB.setStudentPhoto(raviA.id, PNG1); });
+DB.setMyPhoto(PNG1);
+if (DB.myProfile().photo !== PNG1) fails.push("Student setMyPhoto not saved");
+const doc1 = DB.addDocument({ kind: "Aadhaar Card", name: "aadhaar.png", size: 12345, mime: "image/png", data: PNG1 });
+if (doc1.status !== "Pending" || doc1.data !== PNG1) fails.push("addDocument: wrong defaults");
+const docBig = DB.addDocument({ kind: "SSC Memo", name: "ssc.pdf", size: 900000, mime: "application/pdf", data: "data:application/pdf;base64," + "A".repeat(600000) });
+if (docBig.data !== null || docBig.size !== 900000) fails.push("Oversized document: data should drop, metadata kept");
+DB.login("admin", "admin@srividya.demo", "Demo@1234");
+DB.verifyDocument(doc1.id, "Verified");
+if (!DB.getDocuments(raviA.id).some((d) => d.id === doc1.id && d.status === "Verified")) fails.push("verifyDocument not reflected for admin");
+P.setUI({ tab: "students", view: raviA.id }); const admProf = renderAs("admin/profile-docs-id", "/portal/admin");
+if (!/Admission documents/.test(admProf) || !/Verified/.test(admProf) || !/ID Card/.test(admProf)) fails.push("Admin profile: documents or ID card missing");
+P.setUI({ view: null });
+DB.login("student", "ravi@srividya.demo", "Demo@1234");
+if (!DB.myDocuments().some((d) => d.id === doc1.id && d.status === "Verified")) fails.push("Student does not see the Verified document");
+const profHtml2 = renderAs("student/profile-docs", "/portal/student");
+if (!/Admission documents/.test(profHtml2) || !/ID Card/.test(profHtml2) || !profHtml2.includes(PNG1)) fails.push("Student profile: documents, ID card or photo missing");
+// Receipt anytime: make a payment, then open its receipt from the Payments tab data
+const dueF = DB.myFees().find((f) => f.balance > 0);
+const payR = DB.payMyFee(dueF.id, { amount: 1000, payer: "Ravi", app: "PhonePe", ref: "999988887777" });
+P.setUI({ rcpt: payR.payment.id }); const rcHtml = renderAs("student/receipt-modal", "/portal/student");
+if (!/data-receipt/.test(rcHtml) || !rcHtml.includes("Sri Vidya Institute of Technology") || !rcHtml.includes(payR.payment.id.toUpperCase())) fails.push("Receipt modal: college name or receipt number missing");
+if (!rcHtml.includes(PNG1)) fails.push("Receipt modal: college logo missing");
+P.setUI({ rcpt: null });
+DB.login("admin", "admin@srividya.demo", "Demo@1234");
+P.setUI({ tab: "payments", rcpt: payR.payment.id }); const admRc = renderAs("admin/receipt-modal", "/portal/admin");
+if (!/data-receipt/.test(admRc) || !admRc.includes(payR.payment.id.toUpperCase())) fails.push("Admin receipt modal broken");
+P.setUI({ rcpt: null, tab: "overview" });
+// Supplies: the weakest seeded student (Venkatesh, ability 0.58) has a passing supplementary Mid-1 mark over a failed regular one
+DB.login("student", "venkatesh@srividya.demo", "Demo@1234");
+const venkMs = DB.myMarks(), sup = venkMs.find((m) => m.attempt === "Supplementary");
+if (!sup || sup.exam !== "Mid-1" || !(sup.pct >= 50)) fails.push("Seed: weakest student has no passing supplementary Mid-1 mark");
+else { const reg = venkMs.find((m) => m.exam === sup.exam && m.subject === sup.subject && (m.attempt || "Regular") === "Regular"); if (!reg || !(reg.pct < 50)) fails.push("Seed: supplementary subject's regular attempt should be below 50%"); }
+if (!/Supply/.test(renderAs("student/supply-marks", "/portal/student"))) fails.push("Student marks: Supply chip not rendered");
+// Certificates: student requests -> admin issues (serial assigned) -> both sides list it
+DB.login("student", "ravi@srividya.demo", "Demo@1234");
+const reqC = DB.requestCertificate({ type: "Bonafide Certificate", note: "Bank account" });
+if (reqC.status !== "Requested" || reqC.serial !== "") fails.push("requestCertificate: wrong defaults");
+DB.login("admin", "admin@srividya.demo", "Demo@1234");
+const issuedC = DB.issueCertRequest(reqC.id);
+if (issuedC.status !== "Issued" || !/^SHX-1001\/CERT\/\d{4}\/\d{3}$/.test(issuedC.serial)) fails.push("issueCertRequest: serial wrong: " + issuedC.serial);
+const directC = DB.issueCertificate({ student_id: raviA.id, type: "Course Completion Certificate" });
+if (!directC.serial || directC.status !== "Issued") fails.push("issueCertificate: not issued with a serial");
+P.setUI({ tab: "certs" }); const certHtml = renderAs("admin/certs", "/portal/admin");
+if (!certHtml.includes("Course Completion Certificate") || !certHtml.includes(issuedC.serial)) fails.push("Admin certificates pane: issued rows missing");
+P.setUI({ tab: "overview" });
+DB.login("student", "ravi@srividya.demo", "Demo@1234");
+const myCertHtml = renderAs("student/certs", "/portal/student");
+if (!myCertHtml.includes("Bonafide Certificate") || !myCertHtml.includes(issuedC.serial)) fails.push("Student certificates: issued certificate not shown");
+// Notice with an attachment (metadata only; data dropped when too large is covered above)
+DB.login("admin", "admin@srividya.demo", "Demo@1234");
+const nAtt = DB.postNotice({ title: "Exam timetable attached", text: "See the attached timetable.", attachment: { name: "timetable.pdf", size: 45678, mime: "application/pdf", data: null } });
+if (!nAtt.attachment || nAtt.attachment.name !== "timetable.pdf") fails.push("postNotice dropped the attachment");
+P.setUI({ tab: "notices" }); const nHtml = renderAs("admin/notices-att", "/portal/admin");
+if (!nHtml.includes("timetable.pdf")) fails.push("Admin notices: attachment name not rendered");
+DB.removeNotice(nAtt.id);
+P.setUI({ tab: "overview" });
+console.log("portal: logo, photo, documents, receipts, supplies, certificates, ID card and notice attachments checked");
 console.log("portal: admin tabs, forms, student views, year-wise B.Tech fees, profiles, isolation, fee payment and Excel import checked");
 const checked = new Set();
 for (const [where, h] of sources) {

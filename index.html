@@ -244,6 +244,14 @@
       .x-panel{display:grid;gap:16px;align-content:start;padding:clamp(16px,3vw,28px);background:var(--x-surface);border:1px solid var(--stroke-secondary);border-radius:var(--r-l);min-width:0}
       .x-panel h2,.x-panel h3{font:var(--type-heading)}
       .x-panel>p{color:var(--text-secondary)}
+      .x-logo{max-height:56px;max-width:180px;object-fit:contain;border-radius:8px}
+      .x-logo--sm{max-height:36px;max-width:120px}
+      .x-thumb{width:34px;height:34px;object-fit:cover;border-radius:50%;vertical-align:middle;margin-right:8px}
+      .x-photo{width:110px;height:110px;object-fit:cover;border-radius:12px}
+      .x-photo--ph{display:grid;place-items:center;background:var(--x-surface);font-size:34px;font-weight:700}
+      .x-idcard{border:1px solid var(--line, #ccc);border-radius:14px;padding:16px;max-width:430px;display:grid;gap:8px}
+      .x-idcard__row{display:flex;gap:14px;align-items:center}
+      .x-file{display:inline-flex;align-items:center;gap:8px;cursor:pointer}
       .x-phead{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 24px}
       .x-phead>div{display:grid;gap:4px;min-width:0}
       .x-phead h1{font:var(--type-title);overflow-wrap:break-word}
@@ -1675,7 +1683,9 @@
       //       admins: college_id = auth.jwt() ->> 'college_id'; students: student_id = auth.uid(), status = 'approved'
       //   The UI only ever talks to DB, so swapping the body of this module is the whole migration.
       const DB = (() => {
-        const blank = () => ({ colleges: [], users: [], students: [], fees: [], payments: [], attendance: {}, marks: [], notices: [], faculty: [] });
+        const blank = () => ({ colleges: [], users: [], students: [], fees: [], payments: [], attendance: {}, marks: [], notices: [], faculty: [], documents: [], certificates: [] });
+        const DOC_KINDS = ["Aadhaar Card", "SSC Memo", "Inter Memo", "Caste Certificate", "Income Certificate", "Transfer Certificate"];
+        const CERT_TYPES = ["Bonafide Certificate", "Study & Conduct Certificate", "Course Completion Certificate", "Transfer Certificate (TC)"];
         let T = blank(), session = null, seq = 1000;
         const uid = (p) => `${p}_${(++seq).toString(36)}`;
         const clone = (x) => (x === undefined ? x : JSON.parse(JSON.stringify(x)));
@@ -1724,7 +1734,7 @@
           { type: "fees", sheet: "Fees", label: "Fees", alias: ["fee", "feeitems", "feestructure"], cols: [["id", "Fee ID", "text", 0, []], ["roll", "Roll No", "text", 1, ROLL], ["name", "Student Name", "info", 0, []], ["year", "Year", "text", 1, ["courseyear", "yearofstudy", "btechyear"]], ["type", "Fee Type", "text", 1, ["feetype", "type", "feehead", "particulars"]], ["head", "Fee Line", "info", 0, []], ["amount", "Amount (₹)", "money", 1, ["totalamount", "feeamount", "total"]], ["due", "Due Date", "date", 1, ["due"]], ["paid", "Paid (₹)", "money", 0, ["amountpaid", "paidamount"]], ["balance", "Balance (₹)", "info-money", 0, []], ["status", "Status", "info", 0, []]] },
           { type: "payments", sheet: "Payments", label: "Payments", alias: ["payment", "feepayments", "transactions", "receipts"], cols: [["id", "Payment ID", "text", 0, ["receiptno", "receiptid"]], ["at", "Date & Time", "datetime", 1, ["date", "datetime", "paidon", "paymentdate"]], ["roll", "Roll No", "text", 1, ROLL], ["name", "Student Name", "info", 0, []], ["fee_id", "Fee ID", "text", 0, []], ["fee_label", "Fee", "text", 0, ["feehead", "feelabel", "particulars"]], ["amount", "Amount (₹)", "money", 1, ["amountpaid"]], ["payer", "Payer", "text", 0, ["payername", "paidby"]], ["mode", "Mode / UPI App", "text", 0, ["mode", "paymentmode", "upiapp", "app"]], ["ref", "Reference / UTR", "text", 0, ["utr", "utrno", "utrnumber", "reference", "referenceno", "transactionid", "txnid"]], ["by", "Recorded By", "text", 0, ["recordedby"]]] },
           { type: "attendance", sheet: "Attendance", label: "Attendance", alias: ["attendancerecords"], cols: [["roll", "Roll No", "text", 1, ROLL], ["name", "Student Name", "info", 0, []], ["date", "Date", "date", 1, []], ["status", "Status", "text", 1, ["attendance"]]] },
-          { type: "marks", sheet: "Marks", label: "Marks", alias: ["mark", "results", "exammarks"], cols: [["id", "Mark ID", "text", 0, []], ["roll", "Roll No", "text", 1, ROLL], ["name", "Student Name", "info", 0, []], ["exam", "Exam", "text", 1, ["examname", "test"]], ["subject", "Subject", "text", 1, []], ["max", "Max Marks", "num", 1, ["max", "outof", "maximummarks"]], ["score", "Marks", "num", 1, ["score", "marksobtained", "obtained"]], ["pct", "Percent", "info", 0, []], ["grade", "Grade", "info", 0, []]] },
+          { type: "marks", sheet: "Marks", label: "Marks", alias: ["mark", "results", "exammarks"], cols: [["id", "Mark ID", "text", 0, []], ["roll", "Roll No", "text", 1, ROLL], ["name", "Student Name", "info", 0, []], ["exam", "Exam", "text", 1, ["examname", "test"]], ["subject", "Subject", "text", 1, []], ["max", "Max Marks", "num", 1, ["max", "outof", "maximummarks"]], ["score", "Marks", "num", 1, ["score", "marksobtained", "obtained"]], ["attempt", "Attempt", "text", 0, ["attempt", "attempttype"]], ["pct", "Percent", "info", 0, []], ["grade", "Grade", "info", 0, []]] },
           { type: "notices", sheet: "Notices", label: "Notices", alias: ["notice", "announcements"], cols: [["id", "Notice ID", "text", 0, []], ["date", "Date", "date", 1, ["posted", "postedon"]], ["title", "Title", "text", 1, ["subject", "heading"]], ["text", "Notice", "text", 1, ["text", "message", "body", "details", "description"]]] },
         ];
         const INFO_SHEETS = ["college", "instructions", "readme", "about"];
@@ -1830,7 +1840,7 @@
         const feeOut = (f) => { const cy = curYearOf(f.student_id); return { ...clone(f), head: FEE_TYPES[f.type] || f.type, yearLabel: `Year ${f.year}`, label: feeLabel(f), balance: Math.max(0, r2(f.amount - f.paid)), status: f.paid >= f.amount ? "Paid" : f.paid > 0 ? "Partial" : "Due", phase: f.year < cy ? "Past" : f.year === cy ? "Current" : "Upcoming" }; };
         const feeSort = (a, b) => a.year - b.year || (a.type === b.type ? 0 : a.type === "Tuition" ? -1 : 1) || a.due.localeCompare(b.due);
         const dueNow = (f) => f.year <= curYearOf(f.student_id);
-        const markOut = (m) => { const pct = Math.round((m.score / m.max) * 1000) / 10; return { ...clone(m), pct, grade: gradeOf(pct) }; };
+        const markOut = (m) => { const pct = Math.round((m.score / m.max) * 1000) / 10; return { ...clone(m), attempt: m.attempt || "Regular", pct, grade: gradeOf(pct) }; };
         const newCode = () => { let c; do c = "SHX-" + (1000 + Math.floor(Math.random() * 9000)); while (T.colleges.some((x) => x.code === c)); return c; };
         const collegeOf = (id) => T.colleges.find((c) => c.id === id);
         const studentsIn = (cid) => T.students.filter((s) => s.college_id === cid);
@@ -1851,6 +1861,7 @@
         function dropStudentData(id) {
           T.students = T.students.filter((x) => x.id !== id); T.users = T.users.filter((x) => x.student_id !== id);
           T.fees = T.fees.filter((x) => x.student_id !== id); T.marks = T.marks.filter((x) => x.student_id !== id); T.payments = T.payments.filter((x) => x.student_id !== id);
+          T.documents = T.documents.filter((x) => x.student_id !== id); T.certificates = T.certificates.filter((x) => x.student_id !== id);
           for (const k of Object.keys(T.attendance)) if (T.attendance[k].student_id === id) delete T.attendance[k];
         }
 
@@ -1902,6 +1913,13 @@
             const bal = (l) => l.reduce((a, f) => a + Math.max(0, f.amount - f.paid), 0);
             return { students: ok.length, pending: all.filter((x) => x.status === "pending").length, billed: fees.reduce((a, f) => a + f.amount, 0), collected: fees.reduce((a, f) => a + f.paid, 0), due: bal(fees.filter(dueNow)), upcoming: bal(fees.filter((f) => !dueNow(f))), todayPct: t.pct, todayMarked: t.days };
           },
+          /* ----- College settings: logo + fee structure (admin) ----- */
+          updateCollege(d) {
+            const s = need("admin"), c = collegeOf(s.college_id); if (!c) fail("College not found.");
+            if (d.logo !== undefined) { if (d.logo && (typeof d.logo !== "string" || !d.logo.startsWith("data:image"))) fail("The logo must be an image.", "logo"); c.logo = d.logo || ""; }
+            ["feeTuition", "feeAffil"].forEach((k) => { if (d[k] !== undefined) { const v = Number(d[k]); if (!(v > 0)) fail("Enter a fee amount above zero.", k); c[k] = Math.round(v); } });
+            return clone(c);
+          },
           getClasses() { const s = needStaff(); return [...new Set(studentsIn(s.college_id).map(classOf))].sort(); },
           getStudents({ q = "", cls = "", status = "" } = {}) {
             const s = needStaff(), k = lc(q);
@@ -1934,6 +1952,59 @@
             need("admin"); mine(T.students.find((x) => x.id === id));
             dropStudentData(id);
           },
+          /* ----- Student photo (data URL, already resized by the UI) ----- */
+          setStudentPhoto(id, data) { need("admin"); const st = mine(T.students.find((x) => x.id === id)); if (data && (typeof data !== "string" || !data.startsWith("data:image"))) fail("The photo must be an image.", "photo"); st.photo = data || ""; return clone(st); },
+          setMyPhoto(data) { const st = myStudent(); if (data && (typeof data !== "string" || !data.startsWith("data:image"))) fail("The photo must be an image.", "photo"); st.photo = data || ""; return clone(st); },
+          /* ----- Admission documents ----- */
+          docKinds: () => DOC_KINDS.slice(),
+          certTypes: () => CERT_TYPES.slice(),
+          addDocument(d) {
+            let st;
+            if (session && session.role === "student") st = myStudent();
+            else { need("admin"); st = mine(T.students.find((x) => x.id === d.student_id)); }
+            if (!DOC_KINDS.includes(d.kind)) fail("Pick a document type.", "kind");
+            if (!tx(d.name)) fail("The file has no name.", "name");
+            const rec = { id: uid("doc"), college_id: st.college_id, student_id: st.id, kind: d.kind, name: tx(d.name), size: Number(d.size) || 0, mime: tx(d.mime), data: typeof d.data === "string" && d.data.length <= 500000 ? d.data : null, status: "Pending", at: nowStamp() };
+            T.documents.push(rec); return clone(rec);
+          },
+          removeDocument(id) {
+            const rec = T.documents.find((x) => x.id === id); if (!rec) fail("Document not found.");
+            if (session && session.role === "student") { const st = myStudent(); if (rec.student_id !== st.id) fail("Document not found."); }
+            else { need("admin"); mine(rec); }
+            T.documents = T.documents.filter((x) => x.id !== id); return clone(rec);
+          },
+          verifyDocument(id, status) {
+            need("admin"); const rec = mine(T.documents.find((x) => x.id === id));
+            if (!["Verified", "Rejected"].includes(status)) fail("Unknown status.");
+            rec.status = status; return clone(rec);
+          },
+          myDocuments() { const st = myStudent(); return clone(T.documents.filter((x) => x.student_id === st.id).sort((a, b) => a.kind.localeCompare(b.kind) || b.at.localeCompare(a.at))); },
+          getDocuments(studentId) { need("admin"); const st = mine(T.students.find((x) => x.id === studentId)); return clone(T.documents.filter((x) => x.student_id === st.id).sort((a, b) => a.kind.localeCompare(b.kind) || b.at.localeCompare(a.at))); },
+          /* ----- Certificates ----- */
+          issueCertificate(d) {
+            const s = need("admin"), st = mine(T.students.find((x) => x.id === d.student_id));
+            if (!CERT_TYPES.includes(d.type)) fail("Pick a certificate type.", "type");
+            const u = T.users.find((x) => x.id === s.user_id);
+            const seqN = T.certificates.filter((x) => x.college_id === s.college_id).length + 1;
+            const rec = { id: uid("crt"), college_id: s.college_id, student_id: st.id, type: d.type, serial: `${collegeOf(s.college_id).code}/CERT/${new Date().getFullYear()}/${String(seqN).padStart(3, "0")}`, date: todayISO(), note: tx(d.note), status: "Issued", issuedBy: u ? u.name : "College office" };
+            T.certificates.push(rec); return clone(rec);
+          },
+          issueCertRequest(id) {
+            const s = need("admin"), rec = mine(T.certificates.find((x) => x.id === id));
+            if (rec.status !== "Requested") fail("This request is already issued.");
+            const u = T.users.find((x) => x.id === s.user_id);
+            const seqN = T.certificates.filter((x) => x.college_id === s.college_id && x.status === "Issued").length + 1;
+            Object.assign(rec, { status: "Issued", serial: `${collegeOf(s.college_id).code}/CERT/${new Date().getFullYear()}/${String(seqN).padStart(3, "0")}`, date: todayISO(), issuedBy: u ? u.name : "College office" });
+            return clone(rec);
+          },
+          requestCertificate(d) {
+            const st = myStudent();
+            if (!CERT_TYPES.includes(d.type)) fail("Pick a certificate type.", "type");
+            const rec = { id: uid("crt"), college_id: st.college_id, student_id: st.id, type: d.type, serial: "", date: "", note: tx(d.note), status: "Requested", issuedBy: "" };
+            T.certificates.push(rec); return clone(rec);
+          },
+          getCertificates() { const s = need("admin"); return clone(T.certificates.filter((x) => x.college_id === s.college_id).sort((a, b) => (b.date || "").localeCompare(a.date || "") || b.id.localeCompare(a.id))); },
+          myCertificates() { const st = myStudent(); return clone(T.certificates.filter((x) => x.student_id === st.id).sort((a, b) => (b.date || "").localeCompare(a.date || "") || b.id.localeCompare(a.id))); },
           getFaculty() { const s = need("admin"); return clone(T.faculty.filter((f) => f.college_id === s.college_id).sort((a, b) => a.name.localeCompare(b.name))); },
           addFaculty(d) {
             const s = need("admin");
@@ -2014,17 +2085,17 @@
             const s = needStaff(), ids = new Set(studentsIn(s.college_id).filter((x) => !cls || classOf(x) === cls).map((x) => x.id));
             return T.marks.filter((m) => m.college_id === s.college_id && ids.has(m.student_id) && (!exam || m.exam === exam) && (!subject || lc(m.subject) === lc(subject))).map(markOut);
           },
-          upsertMarks(exam, subject, max, entries) {
-            const s = needStaff(), M = Number(max);
+          upsertMarks(exam, subject, max, entries, attempt) {
+            const s = needStaff(), M = Number(max), att = attempt === "Supplementary" ? "Supplementary" : "Regular";
             if (!tx(exam)) fail("Pick an exam.", "exam");
             if (!tx(subject)) fail("Enter a subject.", "subject");
             if (!(M > 0) || M > 1000) fail("Max marks must be between 1 and 1000.", "max");
             Object.entries(entries).forEach(([sid, v]) => { const st = mine(T.students.find((x) => x.id === sid)); if (v !== "" && !(Number(v) >= 0 && Number(v) <= M)) fail(`${st.name}: marks must be between 0 and ${M}.`, "m_" + sid); });
             let n = 0;
             Object.entries(entries).forEach(([sid, v]) => {
-              const i = T.marks.findIndex((m) => m.student_id === sid && m.exam === exam && lc(m.subject) === lc(subject));
+              const i = T.marks.findIndex((m) => m.student_id === sid && m.exam === exam && lc(m.subject) === lc(subject) && (m.attempt || "Regular") === att);
               if (v === "") { if (i >= 0) T.marks.splice(i, 1); return; }
-              const rec = { id: i >= 0 ? T.marks[i].id : uid("mrk"), college_id: s.college_id, student_id: sid, exam, subject: tx(subject), max: M, score: Number(v) };
+              const rec = { id: i >= 0 ? T.marks[i].id : uid("mrk"), college_id: s.college_id, student_id: sid, exam, subject: tx(subject), max: M, score: Number(v), attempt: att };
               if (i >= 0) T.marks[i] = rec; else T.marks.push(rec);
               n++;
             });
@@ -2032,7 +2103,8 @@
           },
           postNotice(d) {
             const s = need("admin"); req(d, ["title", "text"]);
-            const n = { id: uid("ntc"), college_id: s.college_id, title: tx(d.title), text: tx(d.text), date: todayISO() };
+            const a = d.attachment && tx(d.attachment.name) ? { name: tx(d.attachment.name), size: Number(d.attachment.size) || 0, mime: tx(d.attachment.mime), data: typeof d.attachment.data === "string" && d.attachment.data.length <= 500000 ? d.attachment.data : null } : null;
+            const n = { id: uid("ntc"), college_id: s.college_id, title: tx(d.title), text: tx(d.text), date: todayISO(), attachment: a };
             T.notices.push(n); return clone(n);
           },
           removeNotice(id) { need("admin"); mine(T.notices.find((x) => x.id === id)); T.notices = T.notices.filter((x) => x.id !== id); },
@@ -2182,17 +2254,28 @@
                 schEligible: scheme ? "Yes" : "No", schScheme: scheme, schStatus, prevQual: lat ? "Diploma" : "Inter", prevPct,
               }, status);
             };
+            let weakSt = null, weakAb = Infinity;
             C.students.forEach((row, i) => {
               const st = mk(row, "approved", i + 1), ability = row[5], [tPaid, aPaid] = row[6];
+              if (ability < weakAb) { weakAb = ability; weakSt = st; }
               genFees(st);
               /* Past years paid in full, the current year partly or wholly unpaid, future years upcoming */
               T.fees.filter((f) => f.student_id === st.id).forEach((f) => { f.paid = f.year < st.curYear ? f.amount : f.year === st.curYear ? (f.type === "Tuition" ? tPaid : aPaid) : 0; });
               days.forEach((d) => { const x = rnd(); T.attendance[`${st.id}|${d}`] = { college_id: c.id, student_id: st.id, date: d, status: x < 0.06 + (1 - ability) * 0.15 ? "A" : x > 0.965 ? "L" : "P" }; });
               [["Unit Test 1", 25], ["Mid-1", 100]].forEach(([exam, max]) => SUBJ[st.branch].forEach((subject) => {
                 const score = Math.max(0, Math.min(max, Math.round(max * (ability + (rnd() - 0.5) * 0.18))));
-                T.marks.push({ id: uid("mrk"), college_id: c.id, student_id: st.id, exam, subject, max, score });
+                T.marks.push({ id: uid("mrk"), college_id: c.id, student_id: st.id, exam, subject, max, score, attempt: "Regular" });
               }));
             });
+            /* Supplies demo: the weakest student of this college has one Mid-1 backlog cleared in a supplementary attempt */
+            (() => {
+              const weak = weakSt;
+              if (!weak) return;
+              const ms = T.marks.filter((m) => m.student_id === weak.id && m.exam === "Mid-1").sort((a, b) => a.score / a.max - b.score / b.max), worst = ms[0];
+              if (!worst) return;
+              if (worst.score / worst.max >= 0.5) worst.score = Math.floor(worst.max * 0.32);
+              T.marks.push({ id: uid("mrk"), college_id: c.id, student_id: weak.id, exam: "Mid-1", subject: worst.subject, max: worst.max, score: Math.round(worst.max * 0.62), attempt: "Supplementary" });
+            })();
             mk(C.pending, "pending", 9);
             C.notices.forEach(([title, text, ago]) => T.notices.push({ id: uid("ntc"), college_id: c.id, title, text, date: shiftISO(today, ago) }));
           });
@@ -2322,15 +2405,15 @@
           }
           /* Marks: match by Mark ID, then by roll + exam + subject */
           if (got.marks) {
-            const out = got.marks, ex = T.marks.filter((m) => m.college_id === cid), byKey = new Map(ex.map((m) => [`${exRoll(m.student_id)}|${lc(m.exam)}|${lc(m.subject)}`, m.id]));
+            const out = got.marks, ex = T.marks.filter((m) => m.college_id === cid), byKey = new Map(ex.map((m) => [`${exRoll(m.student_id)}|${lc(m.exam)}|${lc(m.subject)}|${m.attempt || "Regular"}`, m.id]));
             const matched = finish(out, out.recs, (rec, errs) => {
               reqd(rec, errs, "marks"); if (errs.length) return; idCheck(rec, T.marks);
-              rec.roll = tx(rec.roll).toUpperCase(); rec.exam = tx(rec.exam); rec.subject = tx(rec.subject); if (!rollOK(rec.roll)) errs.push(`No student with roll ${rec.roll}.`);
+              rec.roll = tx(rec.roll).toUpperCase(); rec.exam = tx(rec.exam); rec.subject = tx(rec.subject); rec.attempt = /^supp/i.test(tx(rec.attempt)) ? "Supplementary" : "Regular"; if (!rollOK(rec.roll)) errs.push(`No student with roll ${rec.roll}.`);
               const mx = toNum(rec.max), sc = toNum(rec.score);
               if (!(mx > 0 && mx <= 1000)) errs.push(`Max marks "${cellTxt(rec.max)}" must be a number from 1 to 1000.`);
               else if (!(sc >= 0 && sc <= mx)) errs.push(`Marks "${cellTxt(rec.score)}" must be a number from 0 to ${mx}.`);
               Object.assign(rec, { max: mx, score: sc });
-            }, (rec) => (rec.id && ex.some((m) => m.id === rec.id) ? rec.id : !rec.id ? byKey.get(`${lc(rec.roll)}|${lc(rec.exam)}|${lc(rec.subject)}`) || null : null), (rec) => `${lc(rec.roll)}|${lc(rec.exam)}|${lc(rec.subject)}`);
+            }, (rec) => (rec.id && ex.some((m) => m.id === rec.id) ? rec.id : !rec.id ? byKey.get(`${lc(rec.roll)}|${lc(rec.exam)}|${lc(rec.subject)}|${rec.attempt}`) || null : null), (rec) => `${lc(rec.roll)}|${lc(rec.exam)}|${lc(rec.subject)}|${rec.attempt}`);
             if (replace) out.removed = ex.filter((m) => !matched.has(m.id)).length;
           }
           /* Notices: match by Notice ID, then by date + title */
@@ -2381,7 +2464,7 @@
             if (replace) for (const k of Object.keys(T.attendance)) if (T.attendance[k].college_id === cid) delete T.attendance[k];
             got.attendance.recs.forEach((r) => { const id = sid.get(lc(r.roll)); T.attendance[`${id}|${r.date}`] = { college_id: cid, student_id: id, date: r.date, status: r.status }; });
           }
-          put("marks", "marks", (r) => ({ student_id: sid.get(lc(r.roll)), exam: r.exam, subject: r.subject, max: r.max, score: r.score }));
+          put("marks", "marks", (r) => ({ student_id: sid.get(lc(r.roll)), exam: r.exam, subject: r.subject, max: r.max, score: r.score, attempt: r.attempt || "Regular" }));
           put("notices", "notices", (r) => ({ title: r.title, text: r.text, date: r.date }));
           return res;
         }
@@ -2403,7 +2486,7 @@
         if (!load()) seed();
         try { const ss = storage("sessionStorage"), sv = ss && JSON.parse(ss.getItem(SESSION_KEY) || "null"); if (sv && T.users.some((u) => u.id === sv.user_id && u.role === sv.role)) session = sv; } catch (_) { /* no saved session */ }
         /* Every write is saved right away */
-        ["registerCollege", "registerStudent", "addFaculty", "removeFaculty", "addStudent", "updateStudent", "updateMyContact", "setStudentStatus", "removeStudent", "upsertFee", "recordPayment", "removeFee", "markAttendance", "upsertMarks", "postNotice", "removeNotice", "payMyFee", "applyImport", "resetDemo"].forEach((k) => {
+        ["registerCollege", "registerStudent", "addFaculty", "removeFaculty", "addStudent", "updateStudent", "updateMyContact", "setStudentStatus", "removeStudent", "updateCollege", "setStudentPhoto", "setMyPhoto", "addDocument", "removeDocument", "verifyDocument", "issueCertificate", "issueCertRequest", "requestCertificate", "upsertFee", "recordPayment", "removeFee", "markAttendance", "upsertMarks", "postNotice", "removeNotice", "payMyFee", "applyImport", "resetDemo"].forEach((k) => {
           const fn = api[k]; api[k] = (...args) => { const r = fn(...args); save(); return r; };
         });
         return api;
@@ -2449,7 +2532,7 @@
       const fmtM = (ym) => parseISO(ym + "-01").toLocaleDateString("en-IN", { month: "long", year: "numeric" });
       const pctTxt = (p) => (p === null || p === undefined ? "—" : p + "%");
       const lastMonths = (n) => { const out = []; const d = parseISO(todayISO()); for (let i = 0; i < n; i++) { const t = new Date(d.getFullYear(), d.getMonth() - i, 1); out.push(`${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}`); } return out; };
-      const UI0 = () => ({ loginRole: "admin", tab: "overview", stab: "overview", flash: null, msg: "", sQ: "", sCls: "", sStatus: "", edit: null, confirm: null, feeStu: "", feeSt: "", feeEdit: null, pay: null, attDate: todayISO(), attCls: "", attMonth: todayISO().slice(0, 7), mExam: "Unit Test 1", mCls: "", mSub: "", mMax: "", payStu: "", pm: null, imp: null, impMode: "merge", impErr: "", impBusy: false, impResult: null, note: "", feeYear: "", view: null, showAad: false, contactEdit: false, pmsg: "" });
+      const UI0 = () => ({ loginRole: "admin", tab: "overview", stab: "overview", flash: null, msg: "", sQ: "", sCls: "", sStatus: "", edit: null, confirm: null, feeStu: "", feeSt: "", feeEdit: null, pay: null, attDate: todayISO(), attCls: "", attMonth: todayISO().slice(0, 7), mExam: "Unit Test 1", mCls: "", mSub: "", mMax: "", mAtt: "Regular", payStu: "", pm: null, rcpt: null, noticeAtt: null, noticeTitle: "", noticeText: "", imp: null, impMode: "merge", impErr: "", impBusy: false, impResult: null, note: "", feeYear: "", view: null, showAad: false, contactEdit: false, pmsg: "" });
       let UI = UI0();
       const demoNote = `<p class="x-note" role="note">Demo mode: changes are saved in this browser only. College admins can reset the demo data anytime.</p>`;
       const pf = (label, nm, attrs = "", full = false, req = true) => `<label class="x-f${full ? " x-f--full" : ""}">${label}<input name="${nm}" ${attrs}${req ? " required" : ""} /><small class="x-err"></small></label>`;
@@ -2462,6 +2545,41 @@
       const phead = (kicker, title, meta, right = "") => `<div class="x-phead"><div><p class="x-kicker">${kicker}</p><h1>${title}</h1>${meta ? `<p>${meta}</p>` : ""}</div>${right}</div>`;
       const logoutBtn = `<button type="button" class="x-sbtn" data-act="logout">Log out</button>`;
       /* ---------- Student profile (shared by the student's own view and the admin) ---------- */
+      const DOC_KINDS_UI = ["Aadhaar Card", "SSC Memo", "Inter Memo", "Caste Certificate", "Income Certificate", "Transfer Certificate"];
+      const CERT_TYPES_UI = ["Bonafide Certificate", "Study & Conduct Certificate", "Course Completion Certificate", "Transfer Certificate (TC)"];
+      const fmtSize = (n) => { n = Number(n) || 0; return n >= 1048576 ? (Math.round(n / 104857.6) / 10) + " MB" : n >= 1024 ? Math.round(n / 1024) + " KB" : n + " B"; };
+      const logoImg = (c, cls = "") => (c && c.logo ? `<img class="x-logo ${cls}" src="${c.logo}" alt="${esc(c.name)} logo" />` : "");
+      const initials = (s) => esc(String(s.name || "?").split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase());
+      const photoHTML = (s, cls = "x-photo") => (s.photo ? `<img class="${cls}" src="${s.photo}" alt="Photo of ${esc(s.name)}" />` : `<span class="${cls} x-photo--ph" aria-hidden="true">${initials(s)}</span>`);
+      /* Print one document (receipt / memo / ID card / certificate) in a clean window. Browser only; guarded for headless runs. */
+      function printDoc(title, inner) {
+        try {
+          const w = window.open("", "_blank"); if (!w || !w.document) return;
+          w.document.write(`<!DOCTYPE html><html><head><title>${esc(title)}</title><style>body{font-family:Arial,sans-serif;color:#111;margin:32px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #999;padding:6px 8px;text-align:left}.num{text-align:right}img{max-height:64px;max-width:200px}.x-logo{max-height:64px}h1{font-size:20px}h2{font-size:16px}.muted{color:#555}</style></head><body>${inner}<script>window.onload=function(){window.print()}<\/script></body></html>`);
+          w.document.close(); if (w.focus) w.focus();
+        } catch (_) { /* printing unavailable in this context */ }
+      }
+      /* One shared fee receipt: college logo, receipt number and the balance after this payment */
+      function receiptHTML(p, s, c, balance) {
+        const rows = [["Receipt no.", p.id.toUpperCase()], ["College", c.name], ["Student", `${s.name} (${s.roll})`], ["Course", courseLine(s)], ["Fee", p.fee_label], ["Amount paid", inr(p.amount)], ["Date & time", fmtDT(p.at)], ["Paid via", p.mode + (p.payer ? ` · ${p.payer}` : "")], ["Reference / UTR", p.ref || "—"], ["Recorded by", p.by]];
+        if (balance !== undefined && balance !== null) rows.push(["Balance on this fee line", Number(balance) > 0 ? inr(balance) : "₹0 · Paid in full"]);
+        return `<div data-receipt>${logoImg(c)}<h2>${esc(c.name)}</h2><p class="muted">Fee Receipt</p><div class="breakdown"><dl>${rows.map(([k, v]) => `<div class="row"><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl></div><p class="muted">This is a computer-generated receipt from the Shaalix demo portal.</p></div>`;
+      }
+      function receiptModalHTML(p, s, c, balance) {
+        return `<div class="x-modal" data-modal><div class="x-modal__box" role="dialog" aria-modal="true" aria-labelledby="rc-h"><div class="x-phead"><div><p class="x-kicker">Fee receipt</p><h2 id="rc-h">${esc(p.fee_label)}</h2></div><button type="button" class="x-sbtn" data-act="rcptClose" aria-label="Close">Close</button></div>${receiptHTML(p, s, c, balance)}<div class="x-acts"><button type="button" class="x-btn" data-act="rcptPrint" data-id="${p.id}">Print / Save PDF</button><button type="button" class="x-sbtn" data-act="rcptClose">Close</button></div></div></div>`;
+      }
+      function idCardHTML(s, c) {
+        const yrs = s.admType === "Lateral Entry" ? 3 : 4, valid = s.admYear ? `${s.admYear} – ${Number(s.admYear) + yrs}` : "—";
+        return `<div class="x-idcard" data-idcard><div class="x-idcard__row">${logoImg(c, "x-logo--sm")}<div><b>${esc(c.name)}</b><br /><span class="muted">Student ID Card</span></div></div><div class="x-idcard__row">${photoHTML(s)}<dl><div class="row"><dt>Name</dt><dd>${esc(s.name)}</dd></div><div class="row"><dt>Roll no.</dt><dd>${esc(s.roll)}</dd></div><div class="row"><dt>Course</dt><dd>${esc(courseLine(s))}</dd></div><div class="row"><dt>Section</dt><dd>${esc(s.sec)}</dd></div><div class="row"><dt>Valid</dt><dd>${valid}</dd></div></dl></div></div>`;
+      }
+      function memoHTML(e, ms, s, c) {
+        const sc = ms.reduce((a, m) => a + m.score, 0), mx = ms.reduce((a, m) => a + m.max, 0), pct = mx ? Math.round((sc / mx) * 1000) / 10 : 0, pass = ms.length && ms.every((m) => m.pct >= 50);
+        return `<div data-memo>${logoImg(c)}<h2>${esc(c.name)}</h2><p class="muted">Marks Memo · ${esc(e)}</p><p><b>${esc(s.name)}</b> · Roll ${esc(s.roll)} · ${esc(courseLine(s))} · ${esc(s.sec)}</p><table><thead><tr><th>Subject</th><th>Marks</th><th>Percent</th><th>Grade</th><th>Attempt</th></tr></thead><tbody>${ms.map((m) => `<tr><td>${esc(m.subject)}</td><td class="num">${m.score} / ${m.max}</td><td class="num">${m.pct}%</td><td>${m.grade}</td><td>${esc(m.attempt || "Regular")}</td></tr>`).join("")}<tr><th>Total</th><td class="num">${sc} / ${mx}</td><td class="num">${pct}%</td><td>${gradeOf(pct)}</td><td></td></tr></tbody></table><p>Overall result: <b>${pass ? "Pass" : "Fail / Backlog"}</b> (pass mark is 50% in every subject).</p></div>`;
+      }
+      function certHTML(ct, s, c) {
+        return `<div data-cert>${logoImg(c)}<h2>${esc(c.name)}</h2><p class="muted">${esc(ct.type)}</p><p>Serial no. <b>${esc(ct.serial || "—")}</b> · Date ${ct.date ? fmtD(ct.date) : "—"}</p><p>This is to certify that <b>${esc(s.name)}</b> (Roll no. ${esc(s.roll)}), ${esc(courseLine(s))}, ${esc(s.sec)}, is a student of ${esc(c.name)}. This ${esc(ct.type)} is issued on ${ct.date ? fmtD(ct.date) : "—"}${ct.note ? ` — ${esc(ct.note)}` : ""}.</p><p class="muted">Issued by: ${esc(ct.issuedBy || "College office")}</p></div>`;
+      }
+      const attHTML = (n) => (n.attachment ? `<p class="x-chips"><span class="chip">Attachment: ${esc(n.attachment.name)} · ${fmtSize(n.attachment.size)}</span>${n.attachment.data ? ` <a class="link" href="${n.attachment.data}" download="${esc(n.attachment.name)}">Download</a>` : ""}</p>` : "");
       const maskAad = (a) => (a ? "XXXX XXXX " + a.slice(-4) : "—");
       const fmtAad = (a) => (a ? a.replace(/(\d{4})(?=\d)/g, "$1 ") : "—");
       const courseLine = (s) => `${s.course} ${s.branch} · Year ${s.curYear} · ${s.admType}`;
@@ -2606,8 +2724,13 @@
           ${yrs.filter((x) => x.l.length).map((x) => `<h3 class="x-yrhead">${x.t} <span class="chip${x.phase === "Current" ? " chip--solid" : ""}">${PH[x.phase]}</span> <small>AY ${x.ay} · Total ${inr(x.amount)} · Paid ${inr(x.paid)} · Balance ${inr(x.balance)}</small></h3><div class="x-tw"><table data-year="${x.t}"><caption>${x.t} fees · Tuition and Affiliation lines</caption><thead><tr><th scope="col">Fee line</th><th scope="col">Due date</th><th scope="col">Total</th><th scope="col">Paid</th><th scope="col">Balance</th><th scope="col">Status</th>${canPay ? `<th scope="col"><span class="x-sr">Pay</span></th>` : ""}</tr></thead><tbody>${x.l.map(lineRow).join("")}<tr class="x-total"><th scope="row">${x.t} total</th><td></td><td class="num">${inr(x.amount)}</td><td class="num">${inr(x.paid)}</td><td class="num">${inr(x.balance)}</td><td></td>${canPay ? "<td></td>" : ""}</tr></tbody></table></div>`).join("")}`;
       };
 
+      function adminDocsHTML(pv) {
+        const docs = DB.getDocuments(pv.id);
+        const byKind = (k) => docs.filter((d) => d.kind === k);
+        return `<h3>Admission documents</h3><div class="x-tw"><table><thead><tr><th scope="col">Document</th><th scope="col">File</th><th scope="col">Status</th><th scope="col"><span class="x-sr">Actions</span></th></tr></thead><tbody>${DOC_KINDS_UI.map((k) => { const ds = byKind(k); if (!ds.length) return `<tr><th scope="row">${k}</th><td class="muted">Not uploaded</td><td>—</td><td></td></tr>`; return ds.map((d) => `<tr><th scope="row">${esc(d.kind)}</th><td>${esc(d.name)}<small>${fmtSize(d.size)} · ${fmtDT(d.at)}</small></td><td>${d.status === "Verified" ? `<span class="chip">Verified</span>` : d.status === "Rejected" ? `<span class="chip chip--solid">Rejected</span>` : `<span class="chip">Pending</span>`}</td><td><div class="x-acts">${d.data ? `<a class="x-sbtn" href="${d.data}" download="${esc(d.name)}">Download</a>` : ""}${d.status !== "Verified" ? `<button type="button" class="x-sbtn" data-act="docVerify" data-id="${d.id}">Verify</button>` : ""}${d.status !== "Rejected" ? `<button type="button" class="x-sbtn" data-act="docReject" data-id="${d.id}">Reject</button>` : ""}</div></td></tr>`).join(""); }).join("")}</tbody></table></div>`;
+      }
       /* 4. Admin dashboard */
-      const ADMIN_TABS = [["overview", "Overview"], ["students", "Students"], ["faculty", "Faculty"], ["fees", "Fees"], ["payments", "Payments"], ["attendance", "Attendance"], ["marks", "Marks"], ["notices", "Notices"], ["data", "Import / Export"]];
+      const ADMIN_TABS = [["overview", "Overview"], ["students", "Students"], ["faculty", "Faculty"], ["fees", "Fees"], ["payments", "Payments"], ["attendance", "Attendance"], ["marks", "Marks"], ["notices", "Notices"], ["certs", "Certificates"], ["college", "College"], ["data", "Import / Export"]];
       const classOpts = (all) => [...(all ? [["", all]] : []), ...DB.getClasses()];
       const approved = () => DB.getStudents({ status: "approved" });
       const PANES = {
@@ -2628,7 +2751,7 @@
           const s = UI.edit && UI.edit !== "new" ? DB.getStudents().find((x) => x.id === UI.edit) : null, pv = !UI.edit && UI.view ? DB.getStudents().find((x) => x.id === UI.view) : null;
           return `<div class="x-phead"><div><h2>Students</h2></div><button type="button" class="x-btn" data-act="stuNew">Add student</button></div>` +
             (UI.edit ? studentForm(s) : "") +
-            (pv ? `<section class="x-stack x-profbox" data-admin-profile aria-labelledby="pa-prof-h"><div class="x-phead"><div><p class="x-kicker">Student profile</p><h3 id="pa-prof-h" tabindex="-1" data-prof-head>${esc(pv.name)}</h3><p>${esc(pv.roll)} · ${esc(courseLine(pv))}</p></div><div class="x-acts"><button type="button" class="x-btn" data-act="stuEdit" data-id="${pv.id}">Edit profile</button><button type="button" class="x-sbtn" data-act="viewClose">Close</button></div></div>${okMsg()}${profileView(pv)}</section>` : "") +
+            (pv ? `<section class="x-stack x-profbox" data-admin-profile aria-labelledby="pa-prof-h"><div class="x-phead"><div><p class="x-kicker">Student profile</p><h3 id="pa-prof-h" tabindex="-1" data-prof-head>${esc(pv.name)}</h3><p>${esc(pv.roll)} · ${esc(courseLine(pv))}</p></div><div class="x-acts"><button type="button" class="x-btn" data-act="stuEdit" data-id="${pv.id}">Edit profile</button><button type="button" class="x-sbtn" data-act="viewClose">Close</button></div></div>${okMsg()}${photoHTML(pv)}<p><label class="x-sbtn x-file">${pv.photo ? "Replace photo" : "Upload photo"}<input type="file" class="x-sr" accept="image/*" data-upload="stuPhoto" aria-label="Upload photo for ${esc(pv.name)}" /></label></p>${profileView(pv)}${adminDocsHTML(pv)}<h3>ID Card</h3>${idCardHTML(pv, DB.me().college)}<p><button type="button" class="x-sbtn" data-act="idPrint" data-id="${pv.id}">Print ID card</button></p></section>` : "") +
             `<div class="x-bar">
               <label class="x-f">Search<input type="search" data-ui="sQ" data-live="students" value="${esc(UI.sQ)}" placeholder="Name, roll, email or phone" /></label>
               ${psel("Class", "", classOpts("All classes"), UI.sCls, `data-ui="sCls"`)}
@@ -2690,14 +2813,14 @@
         },
         marks() {
           const cls = UI.mCls || DB.getClasses()[0] || "", subs = cls ? DB.subjects(cls) : [], sub = UI.mSub || subs[0] || "";
-          const existing = sub ? DB.getMarks({ exam: UI.mExam, cls, subject: sub }) : [], byS = Object.fromEntries(existing.map((m) => [m.student_id, m]));
+          const existing = sub ? DB.getMarks({ exam: UI.mExam, cls, subject: sub }).filter((m) => (m.attempt || "Regular") === UI.mAtt) : [], byS = Object.fromEntries(existing.map((m) => [m.student_id, m]));
           const max = UI.mMax || (existing[0] && existing[0].max) || 100, sts = approved().filter((x) => x.klass === cls);
           return `<h2>Marks</h2><form class="x-stack" data-portal="marks" novalidate aria-label="Enter marks">
-            <div class="x-bar">${psel("Exam", "exam", EXAMS, UI.mExam, `data-ui="mExam"`)}${psel("Class", "", classOpts(), cls, `data-ui="mCls"`)}
+            <div class="x-bar">${psel("Exam", "exam", EXAMS, UI.mExam, `data-ui="mExam"`)}${psel("Attempt", "", [["Regular", "Regular"], ["Supplementary", "Supplementary"]], UI.mAtt, `data-ui="mAtt"`)}${psel("Class", "", classOpts(), cls, `data-ui="mCls"`)}
               ${pf("Subject", "subject", `value="${esc(sub)}" list="pa-subs" data-ui="mSub"`)}<datalist id="pa-subs">${subs.map((s) => `<option value="${esc(s)}">`).join("")}</datalist>
               ${pf("Max marks", "max", `type="number" min="1" max="1000" step="1" inputmode="numeric" value="${max}" data-ui="mMax" data-norender`)}</div>
             ${sts.length ? `<div class="x-tw"><table><caption>${esc(UI.mExam)} · ${esc(cls)} · ${esc(sub || "pick a subject")}${existing.length ? "" : " · not entered yet"}</caption><thead><tr><th scope="col">Roll</th><th scope="col">Student</th><th scope="col">Marks</th><th scope="col">Percent</th><th scope="col">Grade</th></tr></thead><tbody>${sts.map((s) => { const m = byS[s.id]; return `<tr><td>${esc(s.roll)}</td><th scope="row">${esc(s.name)}</th><td><input name="m_${s.id}" type="number" min="0" step="0.5" inputmode="decimal" value="${m ? m.score : ""}" aria-label="Marks for ${esc(s.name)}" data-mk="${s.id}" /></td><td class="num" id="mp_${s.id}">${m ? m.pct + "%" : "—"}</td><td class="num" id="mg_${s.id}">${m ? m.grade : "—"}</td></tr>`; }).join("")}</tbody></table></div>` : `<p>No approved students in this class.</p>`}
-            <p class="fineprint">Grades: A+ 90% and above · A 80% · B 70% · C 60% · D 50% · F below 50%. Leave a box empty to clear that mark.</p>
+            <p class="fineprint">Grades: A+ 90% and above · A 80% · B 70% · C 60% · D 50% · F below 50%. Regular and Supplementary attempts are saved separately; pick Supplementary for supply exams. Leave a box empty to clear that mark.</p>
             ${formErr}${okMsg()}${sts.length ? `<div class="x-acts"><button class="x-btn" type="submit">Save marks</button></div>` : ""}
           </form>`;
         },
@@ -2706,7 +2829,34 @@
           const rows = DB.getPayments(UI.payStu), total = rows.reduce((a, p) => a + p.amount, 0);
           return `<h2>Payments</h2><p>Student UPI payments show here as soon as the student confirms with a UTR number. Match each UTR with your bank statement; payments recorded in the Fees tab show as College office.</p>
             <div class="x-bar">${psel("Student", "", [["", "All students"], ...sts.map((x) => [x.id, `${x.roll} · ${x.name}`])], UI.payStu, `data-ui="payStu"`)}</div>` +
-            (rows.length ? `<div class="x-tw"><table><caption>${rows.length} ${rows.length === 1 ? "payment" : "payments"} · ${inr(total)}</caption><thead><tr><th scope="col">Date &amp; time</th><th scope="col">Student</th><th scope="col">Fee</th><th scope="col">Amount</th><th scope="col">Paid via</th><th scope="col">Reference / UTR</th><th scope="col">Recorded by</th></tr></thead><tbody>${rows.map((p) => { const st = byId[p.student_id]; return `<tr><td>${fmtDT(p.at)}</td><th scope="row">${esc(st ? st.name : "")}<small>${esc(st ? st.roll : "")}</small></th><td>${esc(p.fee_label)}</td><td class="num">${inr(p.amount)}</td><td>${esc(p.mode)}${p.payer ? `<small>${esc(p.payer)}</small>` : ""}</td><td>${esc(p.ref || "—")}</td><td>${esc(p.by)}</td></tr>`; }).join("")}</tbody></table></div>` : `<p>No payments yet.</p>`);
+            (rows.length ? `<div class="x-tw"><table><caption>${rows.length} ${rows.length === 1 ? "payment" : "payments"} · ${inr(total)}</caption><thead><tr><th scope="col">Date &amp; time</th><th scope="col">Student</th><th scope="col">Fee</th><th scope="col">Amount</th><th scope="col">Paid via</th><th scope="col">Reference / UTR</th><th scope="col">Recorded by</th><th scope="col">Receipt</th></tr></thead><tbody>${rows.map((p) => { const st = byId[p.student_id]; return `<tr><td>${fmtDT(p.at)}</td><th scope="row">${esc(st ? st.name : "")}<small>${esc(st ? st.roll : "")}</small></th><td>${esc(p.fee_label)}</td><td class="num">${inr(p.amount)}</td><td>${esc(p.mode)}${p.payer ? `<small>${esc(p.payer)}</small>` : ""}</td><td>${esc(p.ref || "—")}</td><td>${esc(p.by)}</td><td><button type="button" class="x-sbtn" data-act="rcptOpen" data-id="${p.id}">Receipt</button></td></tr>`; }).join("")}</tbody></table></div>` : `<p>No payments yet.</p>`);
+        },
+        college() {
+          const me = DB.me(), c = me.college;
+          return `<h2>College</h2><p>Your college logo appears on fee receipts, marks memos, ID cards and certificates. The fee structure below is what new students get when their account is approved.</p>${okMsg()}
+            <div class="x-stack"><div>${c.logo ? `${logoImg(c)}<p><button type="button" class="x-sbtn" data-act="logoRemove">Remove logo</button></p>` : `<p class="fineprint">No logo set yet.</p>`}
+            <p><label class="x-btn x-file">${c.logo ? "Replace logo" : "Upload logo"}<input type="file" class="x-sr" accept="image/*" data-upload="logo" aria-label="Upload college logo" /></label></p></div>
+            <form class="x-form" data-portal="collegeInfo" novalidate aria-label="College information and fee structure"><h3 class="x-f--full">College information</h3>
+              <p class="x-f">College name<b>${esc(c.name)}</b></p><p class="x-f">College code<b>${esc(c.code)}</b></p>
+              <p class="x-f">Type<b>${esc(c.type)}</b></p><p class="x-f">City / State<b>${esc(c.city)}, ${esc(c.state)}</b></p>
+              <p class="x-f">Phone<b>${esc(c.phone || "—")}</b></p><p class="x-f">On Shaalix since<b>${fmtD(c.created)}</b></p>
+              ${pf("Tuition fee per year (₹)", "feeTuition", `type="number" min="1" step="1" inputmode="numeric" value="${c.feeTuition}"`)}
+              ${pf("Affiliation fee per year (₹)", "feeAffil", `type="number" min="1" step="1" inputmode="numeric" value="${c.feeAffil}"`)}
+              <p class="fineprint">Changing the fee structure affects only students approved after the change; existing fee lines stay as they are.</p>
+              ${formErr}<div class="x-acts"><button class="x-btn" type="submit">Save fee structure</button></div></form></div>`;
+        },
+        certs() {
+          const sts = approved(), byId = Object.fromEntries(sts.map((x) => [x.id, x])), all = DB.getCertificates();
+          const reqs = all.filter((x) => x.status === "Requested"), issued = all.filter((x) => x.status === "Issued");
+          const nm = (id) => { const x = byId[id] || DB.getStudents().find((y) => y.id === id); return x ? `${x.name} (${x.roll})` : ""; };
+          return `<h2>Certificates</h2><p>Issue certificates with your college logo, or handle requests students sent from their portal.</p>${okMsg()}
+            <form class="x-form" data-portal="issueCert" novalidate aria-label="Issue a certificate"><h3 class="x-f--full">Issue a certificate</h3>
+              ${psel("Student", "student_id", [["", "Select"], ...sts.map((x) => [x.id, `${x.roll} · ${x.name}`])], "", "required")}
+              ${psel("Certificate type", "type", [["", "Select"], ...CERT_TYPES_UI], "", "required")}
+              ${pf("Note (optional)", "note", `placeholder="Purpose, if any"`, false, false)}
+              ${formErr}<div class="x-acts"><button class="x-btn" type="submit">Issue certificate</button></div></form>
+            <h3>Student requests</h3>${reqs.length ? `<div class="x-tw"><table><thead><tr><th scope="col">Student</th><th scope="col">Type</th><th scope="col">Note</th><th scope="col"><span class="x-sr">Action</span></th></tr></thead><tbody>${reqs.map((x) => `<tr><th scope="row">${esc(nm(x.student_id))}</th><td>${esc(x.type)}</td><td>${esc(x.note || "—")}</td><td><button type="button" class="x-sbtn" data-act="certIssue" data-id="${x.id}">Issue</button></td></tr>`).join("")}</tbody></table></div>` : `<p>No pending requests.</p>`}
+            <h3>Issued certificates</h3>${issued.length ? `<div class="x-tw"><table><thead><tr><th scope="col">Serial</th><th scope="col">Student</th><th scope="col">Type</th><th scope="col">Date</th><th scope="col"><span class="x-sr">Print</span></th></tr></thead><tbody>${issued.map((x) => `<tr><td>${esc(x.serial)}</td><th scope="row">${esc(nm(x.student_id))}</th><td>${esc(x.type)}</td><td>${x.date ? fmtD(x.date) : "—"}</td><td><button type="button" class="x-sbtn" data-act="certPrint" data-id="${x.id}">Print</button></td></tr>`).join("")}</tbody></table></div>` : `<p>No certificates issued yet.</p>`}`;
         },
         data() {
           const r = UI.imp ? DB.analyzeImport(UI.imp.sheets, UI.impMode) : null;
@@ -2721,9 +2871,10 @@
         notices() {
           const list = DB.getNotices();
           return `<h2>Notices</h2><form class="x-form" data-portal="notice" novalidate aria-label="Post a notice">
-              ${pf("Title", "title", "", true)}<label class="x-f x-f--full">Notice<textarea name="text" required></textarea><small class="x-err"></small></label>
+              ${pf("Title", "title", `value="${esc(UI.noticeTitle)}"`, true)}<label class="x-f x-f--full">Notice<textarea name="text" required>${esc(UI.noticeText)}</textarea><small class="x-err"></small></label>
+              <div class="x-f x-f--full"><label class="x-sbtn x-file">Attach a file (optional)<input type="file" class="x-sr" data-upload="noticeAtt" aria-label="Attach a file to this notice" /></label>${UI.noticeAtt ? `<span class="chip">Attachment: ${esc(UI.noticeAtt.name)} · ${fmtSize(UI.noticeAtt.size)}</span> <button type="button" class="x-sbtn" data-act="noticeAttClear">Remove attachment</button>` : ""}</div>
               ${formErr}<div class="x-acts"><button class="x-btn" type="submit">Post to students</button></div></form>${okMsg()}` +
-            (list.length ? `<div class="cards">${list.map((n) => `<div><p class="fineprint">${fmtD(n.date)}</p><h3>${esc(n.title)}</h3><p>${esc(n.text)}</p><div class="x-acts x-acts--card">${delBtn("noticeDel", n.id, n.title)}</div></div>`).join("")}</div>` : `<p>No notices yet.</p>`);
+            (list.length ? `<div class="cards">${list.map((n) => `<div><p class="fineprint">${fmtD(n.date)}</p><h3>${esc(n.title)}</h3><p>${esc(n.text)}</p>${attHTML(n)}<div class="x-acts x-acts--card">${delBtn("noticeDel", n.id, n.title)}</div></div>`).join("")}</div>` : `<p>No notices yet.</p>`);
         },
       };
       const delBtn = (act, id, what) => UI.confirm === id ? `<button type="button" class="x-sbtn x-sbtn--warn" data-act="${act}" data-id="${id}" data-focus-after>Confirm remove</button><button type="button" class="x-sbtn" data-act="cancelDel">Keep</button>` : `<button type="button" class="x-sbtn" data-act="askDel" data-id="${id}" aria-label="Remove ${esc(what)}">Remove</button>`;
@@ -2762,22 +2913,43 @@
       function studentsList() {
         const rows = DB.getStudents({ q: UI.sQ, cls: UI.sCls, status: UI.sStatus });
         if (!rows.length) return `<p>No students match.</p>`;
-        return `<div class="x-tw"><table><caption>${rows.length} ${rows.length === 1 ? "student" : "students"}</caption><thead><tr><th scope="col">Student</th><th scope="col">Roll</th><th scope="col">Course</th><th scope="col">Admission</th><th scope="col">Mobile</th><th scope="col">Status</th><th scope="col"><span class="x-sr">Actions</span></th></tr></thead><tbody>${rows.map((s) => `<tr data-stu="${esc(s.roll)}"${s.status === "pending" ? ` class="is-highlight"` : ""}><th scope="row">${esc(s.name)}<small>${esc(s.email)}</small></th><td>${esc(s.roll)}</td><td>${esc(s.course)} ${esc(s.branch)}<small>Year ${s.curYear} · ${esc(s.sec)}</small></td><td>${s.admType === "Lateral Entry" ? `<span class="chip chip--solid">Lateral entry</span>` : `<span class="chip">Regular</span>`}</td><td>${esc(s.phone)}</td><td>${chipFor(s.status)}</td><td><div class="x-acts">${s.status !== "approved" ? `<button type="button" class="x-sbtn" data-act="approve" data-id="${s.id}" aria-label="Approve ${esc(s.name)}">Approve</button>` : ""}${s.status === "pending" ? `<button type="button" class="x-sbtn" data-act="reject" data-id="${s.id}" aria-label="Reject ${esc(s.name)}">Reject</button>` : ""}<button type="button" class="x-sbtn" data-act="stuView" data-id="${s.id}" aria-label="View profile of ${esc(s.name)}">Profile</button><button type="button" class="x-sbtn" data-act="stuEdit" data-id="${s.id}" aria-label="Edit ${esc(s.name)}">Edit</button>${delBtn("stuDel", s.id, s.name)}</div></td></tr>`).join("")}</tbody></table></div>`;
+        return `<div class="x-tw"><table><caption>${rows.length} ${rows.length === 1 ? "student" : "students"}</caption><thead><tr><th scope="col">Student</th><th scope="col">Roll</th><th scope="col">Course</th><th scope="col">Admission</th><th scope="col">Mobile</th><th scope="col">Status</th><th scope="col"><span class="x-sr">Actions</span></th></tr></thead><tbody>${rows.map((s) => `<tr data-stu="${esc(s.roll)}"${s.status === "pending" ? ` class="is-highlight"` : ""}><th scope="row">${s.photo ? `<img class="x-thumb" src="${s.photo}" alt="" />` : ""}${esc(s.name)}<small>${esc(s.email)}</small></th><td>${esc(s.roll)}</td><td>${esc(s.course)} ${esc(s.branch)}<small>Year ${s.curYear} · ${esc(s.sec)}</small></td><td>${s.admType === "Lateral Entry" ? `<span class="chip chip--solid">Lateral entry</span>` : `<span class="chip">Regular</span>`}</td><td>${esc(s.phone)}</td><td>${chipFor(s.status)}</td><td><div class="x-acts">${s.status !== "approved" ? `<button type="button" class="x-sbtn" data-act="approve" data-id="${s.id}" aria-label="Approve ${esc(s.name)}">Approve</button>` : ""}${s.status === "pending" ? `<button type="button" class="x-sbtn" data-act="reject" data-id="${s.id}" aria-label="Reject ${esc(s.name)}">Reject</button>` : ""}<button type="button" class="x-sbtn" data-act="stuView" data-id="${s.id}" aria-label="View profile of ${esc(s.name)}">Profile</button><button type="button" class="x-sbtn" data-act="stuEdit" data-id="${s.id}" aria-label="Edit ${esc(s.name)}">Edit</button>${delBtn("stuDel", s.id, s.name)}</div></td></tr>`).join("")}</tbody></table></div>`;
+      }
+      function adminRcptModal() {
+        if (!UI.rcpt) return "";
+        const p = DB.getPayments().find((x) => x.id === UI.rcpt); if (!p) return "";
+        const st = DB.getStudents().find((x) => x.id === p.student_id); if (!st) return "";
+        const f = DB.getFees().find((x) => x.id === p.fee_id);
+        return receiptModalHTML(p, st, DB.me().college, f ? f.balance : undefined);
       }
       ROUTES["/portal/admin"] = () => {
         const me = DB.me(); if (!me || me.role !== "admin") return "/portal";
         const c = me.college;
         const resetBtn = UI.confirm === "reset" ? `<button type="button" class="x-sbtn x-sbtn--warn" data-act="resetDemo" data-id="reset" data-focus-after>Yes, reset all demo data</button><button type="button" class="x-sbtn" data-act="cancelDel">Keep my data</button>` : `<button type="button" class="x-sbtn" data-act="askDel" data-id="reset">Reset demo data</button>`;
-        dyn(portalCrumbs("Admin dashboard") + `<div class="x-panel">${phead("College admin · " + esc(me.name), esc(c.name), `College code <b>${esc(c.code)}</b> · ${esc(c.type)} · ${esc(c.city)}, ${esc(c.state)}`, `<div class="x-acts">${resetBtn}${logoutBtn}</div>`)}${demoNote}${UI.note ? `<p class="x-ok" role="status">${esc(UI.note)}</p>` : ""}</div>` +
-          tabs(ADMIN_TABS, UI.tab, "tab", "Dashboard sections") + `<div class="x-panel" role="tabpanel" id="pa-panel" aria-labelledby="tab-tab-${UI.tab}">${PANES[UI.tab]()}</div>`);
+        dyn(portalCrumbs("Admin dashboard") + `<div class="x-panel">${logoImg(c)}${phead("College admin · " + esc(me.name), esc(c.name), `College code <b>${esc(c.code)}</b> · ${esc(c.type)} · ${esc(c.city)}, ${esc(c.state)}`, `<div class="x-acts">${resetBtn}${logoutBtn}</div>`)}${demoNote}${UI.note ? `<p class="x-ok" role="status">${esc(UI.note)}</p>` : ""}</div>` +
+          tabs(ADMIN_TABS, UI.tab, "tab", "Dashboard sections") + `<div class="x-panel" role="tabpanel" id="pa-panel" aria-labelledby="tab-tab-${UI.tab}">${PANES[UI.tab]()}</div>` + adminRcptModal());
       };
 
+      function studentDocsHTML() {
+        const docs = DB.myDocuments();
+        return `<h3>Admission documents</h3><p class="fineprint">Upload each document once. Your college office verifies them; the status shows here.</p><div class="x-tw"><table><thead><tr><th scope="col">Document</th><th scope="col">File</th><th scope="col">Status</th><th scope="col"><span class="x-sr">Actions</span></th></tr></thead><tbody>${DOC_KINDS_UI.map((k) => { const ds = docs.filter((d) => d.kind === k); const up = `<label class="x-sbtn x-file">Upload<input type="file" class="x-sr" data-upload="doc" data-kind="${esc(k)}" aria-label="Upload ${esc(k)}" /></label>`; if (!ds.length) return `<tr><th scope="row">${k}</th><td class="muted">Not uploaded</td><td>—</td><td>${up}</td></tr>`; return ds.map((d) => `<tr><th scope="row">${esc(d.kind)}</th><td>${esc(d.name)}<small>${fmtSize(d.size)} · ${fmtDT(d.at)}</small></td><td>${d.status === "Verified" ? `<span class="chip">Verified</span>` : d.status === "Rejected" ? `<span class="chip chip--solid">Rejected</span>` : `<span class="chip">Pending</span>`}</td><td><div class="x-acts">${d.data ? `<a class="x-sbtn" href="${d.data}" download="${esc(d.name)}">Download</a>` : ""}<button type="button" class="x-sbtn" data-act="docDel" data-id="${d.id}">Delete</button>${up}</div></td></tr>`).join(""); }).join("")}</tbody></table></div>`;
+      }
+      function studentCertsHTML() {
+        const certs = DB.myCertificates(), issued = certs.filter((x) => x.status === "Issued"), reqs = certs.filter((x) => x.status === "Requested");
+        return `<h3>Certificates</h3>
+          ${issued.length ? `<div class="x-tw"><table><thead><tr><th scope="col">Certificate</th><th scope="col">Serial</th><th scope="col">Issued on</th><th scope="col"><span class="x-sr">Print</span></th></tr></thead><tbody>${issued.map((x) => `<tr><th scope="row">${esc(x.type)}</th><td>${esc(x.serial)}</td><td>${x.date ? fmtD(x.date) : "—"}</td><td><button type="button" class="x-sbtn" data-act="certPrint" data-id="${x.id}">Print</button></td></tr>`).join("")}</tbody></table></div>` : `<p>No certificates issued yet.</p>`}
+          ${reqs.length ? `<p>Requested, waiting for the college office: ${reqs.map((x) => esc(x.type)).join(", ")}.</p>` : ""}
+          <form class="x-form" data-portal="certReq" novalidate aria-label="Request a certificate"><h4 class="x-f--full">Request a certificate</h4>
+            ${psel("Certificate type", "type", [["", "Select"], ...CERT_TYPES_UI], "", "required")}
+            ${pf("Note (optional)", "note", `placeholder="Purpose, if any"`, false, false)}
+            ${formErr}<div class="x-acts"><button class="x-btn" type="submit">Send request</button></div></form>`;
+      }
       /* 5. Student dashboard (read-only) */
       const STUDENT_TABS = [["overview", "Overview"], ["profile", "Profile"], ["fees", "Fees"], ["payments", "Payments"], ["attendance", "Attendance"], ["marks", "Marks"], ["notices", "Notices"]];
       ROUTES["/portal/student"] = () => {
         const me = DB.me(); if (!me || me.role !== "student") return "/portal";
         const s = me.student, c = me.college;
-        const top = portalCrumbs("Student dashboard") + `<div class="x-panel">${phead("Student · " + esc(c.name), esc(s.name), `Roll ${esc(s.roll)} · ${esc(courseLine(s))} · ${esc(s.sec)}`, logoutBtn)}${demoNote}</div>`;
+        const top = portalCrumbs("Student dashboard") + `<div class="x-panel">${logoImg(c)}${phead("Student · " + esc(c.name), esc(s.name), `Roll ${esc(s.roll)} · ${esc(courseLine(s))} · ${esc(s.sec)}`, logoutBtn)}${demoNote}</div>`;
         if (s.status !== "approved") return void dyn(top + `<div class="x-panel x-wait"><h2>${s.status === "rejected" ? "Your registration was not approved" : "Waiting for your college to approve"}</h2>${s.status === "rejected" ? `<p>${esc(c.name)} did not approve this account. Check your details with the college office.</p>` : `<p>${esc(c.name)} has your registration. Once the college office approves it, your fees, attendance, marks and notices appear here.</p><p><span class="chip chip--solid">Pending approval</span></p><p class="fineprint">Demo tip: sign in as admin@srividya.demo in another session to approve, or log out and back in after approval.</p>`}</div>`);
         const fees = DB.myFees(), att = DB.myAttendance(), marks = DB.myMarks(), notices = DB.getNotices(), pays = DB.myPayments();
         const lat = s.admType === "Lateral Entry", start = lat ? 2 : 1, tsum = (l, k) => l.reduce((a, f) => a + f[k], 0);
@@ -2814,20 +2986,25 @@
               <p class="fineprint">Your email is also your login. Other details can be changed only by your college office.</p>
               ${formErr}<div class="x-acts"><button class="x-btn" type="submit">Save contact details</button><button type="button" class="x-sbtn" data-act="contactCancel">Cancel</button></div></form>`
               : `<div class="x-acts"><button type="button" class="x-sbtn" data-act="contactEdit">Edit contact details</button></div>`}
+            ${photoHTML(s)}<p><label class="x-sbtn x-file">${s.photo ? "Replace my photo" : "Upload my photo"}<input type="file" class="x-sr" accept="image/*" data-upload="myPhoto" aria-label="Upload my photo" /></label></p>
             ${profileView(s)}
-            <p class="fineprint">You can change your mobile, email and address. For any other change, contact your college office.</p></section>
+            <p class="fineprint">You can change your mobile, email and address. For any other change, contact your college office.</p>
+            ${studentDocsHTML()}
+            ${studentCertsHTML()}
+            <h3>ID Card</h3>${idCardHTML(s, c)}<p><button type="button" class="x-sbtn" data-act="idPrint" data-id="${s.id}">Print ID card</button></p></section>
           <section class="section${UI.stab === "fees" ? "" : " x-off"}" id="ps-fees"><div class="head"><h2>Fees</h2><p class="head__sub">${esc(s.course)} ${esc(s.branch)} · ${lat ? "Lateral entry · 3 years, Year 2–4" : "Regular · 4 years, Year 1–4"} · year-wise Tuition + Affiliation fees</p></div>
             ${okMsg()}
             ${feeYearView(fees, s, true)}</section>
           <section class="section${UI.stab === "payments" ? "" : " x-off"}" id="ps-payments"><div class="head"><h2>Payment history</h2><p class="head__sub">${pays.length} ${pays.length === 1 ? "payment" : "payments"}</p></div>
-            ${pays.length ? `<div class="x-tw"><table><thead><tr><th scope="col">Date &amp; time</th><th scope="col">Fee</th><th scope="col">Amount</th><th scope="col">Paid via</th><th scope="col">Reference / UTR</th><th scope="col">Receipt no.</th></tr></thead><tbody>${pays.map((p) => `<tr><td>${fmtDT(p.at)}</td><th scope="row">${esc(p.fee_label)}</th><td class="num">${inr(p.amount)}</td><td>${esc(p.mode)}</td><td>${esc(p.ref || "—")}</td><td>${esc(p.id.toUpperCase())}</td></tr>`).join("")}</tbody></table></div>` : `<p>No payments yet. Use Pay Fee next to a fee to pay by UPI.</p>`}</section>
+            ${pays.length ? `<div class="x-tw"><table><thead><tr><th scope="col">Date &amp; time</th><th scope="col">Fee</th><th scope="col">Amount</th><th scope="col">Paid via</th><th scope="col">Reference / UTR</th><th scope="col">Receipt no.</th><th scope="col">Receipt</th></tr></thead><tbody>${pays.map((p) => `<tr><td>${fmtDT(p.at)}</td><th scope="row">${esc(p.fee_label)}</th><td class="num">${inr(p.amount)}</td><td>${esc(p.mode)}</td><td>${esc(p.ref || "—")}</td><td>${esc(p.id.toUpperCase())}</td><td><button type="button" class="x-sbtn" data-act="rcptOpen" data-id="${p.id}">Receipt</button></td></tr>`).join("")}</tbody></table></div>` : `<p>No payments yet. Use Pay Fee next to a fee to pay by UPI.</p>`}</section>
           <section class="section${UI.stab === "attendance" ? "" : " x-off"}" id="ps-att"><div class="head"><h2>Attendance</h2><p class="head__sub">${att.overall.P} present, ${att.overall.A} absent, ${att.overall.L} leave</p></div>
             ${att.months.length ? `<div class="pair"><div class="x-tw x-tw--s"><table><caption>By month</caption><thead><tr><th scope="col">Month</th><th scope="col">Present</th><th scope="col">Absent</th><th scope="col">Leave</th><th scope="col">Attendance</th></tr></thead><tbody>${att.months.map((m) => `<tr><th scope="row">${fmtM(m.month)}</th><td>${m.P}</td><td>${m.A}</td><td>${m.L}</td><td class="num">${pctTxt(m.pct)}</td></tr>`).join("")}</tbody></table></div>
               <div class="x-tw x-tw--s"><table><caption>Recent days</caption><thead><tr><th scope="col">Date</th><th scope="col">Status</th></tr></thead><tbody>${att.recent.map((r) => `<tr><th scope="row">${parseISO(r.date).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })}</th><td>${chipFor(r.status)}</td></tr>`).join("")}</tbody></table></div></div>` : `<p>No attendance recorded yet.</p>`}</section>
           <section class="section${UI.stab === "marks" ? "" : " x-off"}" id="ps-marks"><div class="head"><h2>Marks</h2></div>
-            ${exams.length ? `<div class="pair">${exams.map((e) => { const t = examTot(e); return `<div class="x-tw x-tw--s"><table><caption>${esc(e)} · ${t.pct}% · grade ${gradeOf(t.pct)}</caption><thead><tr><th scope="col">Subject</th><th scope="col">Marks</th><th scope="col">Percent</th><th scope="col">Grade</th></tr></thead><tbody>${t.ms.map((m) => `<tr><th scope="row">${esc(m.subject)}</th><td class="num">${m.score} / ${m.max}</td><td>${m.pct}%</td><td class="num">${m.grade}</td></tr>`).join("")}<tr class="x-total"><th scope="row">Total</th><td class="num">${t.sc} / ${t.mx}</td><td>${t.pct}%</td><td class="num">${gradeOf(t.pct)}</td></tr></tbody></table></div>`; }).join("")}</div>` : `<p>No marks published yet.</p>`}</section>
+            ${(() => { const bySub = {}; marks.forEach((m) => { (bySub[m.subject] = bySub[m.subject] || []).push(m); }); const backs = Object.entries(bySub).map(([sub, ms]) => { const regs = ms.filter((m) => (m.attempt || "Regular") === "Regular").sort((a, b) => EXAMS.indexOf(a.exam) - EXAMS.indexOf(b.exam)), latest = regs[regs.length - 1]; if (!latest || latest.pct >= 50) return null; if (ms.some((m) => m.attempt === "Supplementary" && m.pct >= 50)) return null; return { sub, exam: latest.exam, score: latest.score, max: latest.max }; }).filter(Boolean); return backs.length ? `<div class="breakdown"><h3>Backlogs</h3><p>These subjects are below the 50% pass mark in the latest regular attempt, with no passing supplementary attempt yet:</p><ul>${backs.map((b) => `<li>${esc(b.sub)} · ${esc(b.exam)} · ${b.score} / ${b.max}</li>`).join("")}</ul></div>` : ""; })()}
+            ${exams.length ? `<div class="pair">${exams.map((e) => { const t = examTot(e); return `<div class="x-tw x-tw--s"><p><button type="button" class="x-sbtn" data-act="memoPrint" data-id="${esc(e)}">Memo · Print / Save PDF</button></p><table><caption>${esc(e)} · ${t.pct}% · grade ${gradeOf(t.pct)}</caption><thead><tr><th scope="col">Subject</th><th scope="col">Marks</th><th scope="col">Percent</th><th scope="col">Grade</th></tr></thead><tbody>${t.ms.map((m) => `<tr><th scope="row">${esc(m.subject)}${m.attempt === "Supplementary" ? ` <span class="chip chip--solid">Supply</span>` : ""}</th><td class="num">${m.score} / ${m.max}</td><td>${m.pct}%</td><td class="num">${m.grade}</td></tr>`).join("")}<tr class="x-total"><th scope="row">Total</th><td class="num">${t.sc} / ${t.mx}</td><td>${t.pct}%</td><td class="num">${gradeOf(t.pct)}</td></tr></tbody></table></div>`; }).join("")}</div>` : `<p>No marks published yet.</p>`}</section>
           <section class="section${UI.stab === "notices" ? "" : " x-off"}" id="ps-notices"><div class="head"><h2>Notices</h2></div>
-            ${notices.length ? `<div class="cards">${notices.map((n) => `<div><p class="fineprint">${fmtD(n.date)}</p><h3>${esc(n.title)}</h3><p>${esc(n.text)}</p></div>`).join("")}</div>` : `<p>No notices yet.</p>`}</section>` + (UI.pm ? payModal(s, c) : ""));
+            ${notices.length ? `<div class="cards">${notices.map((n) => `<div><p class="fineprint">${fmtD(n.date)}</p><h3>${esc(n.title)}</h3><p>${esc(n.text)}</p>${attHTML(n)}</div>`).join("")}</div>` : `<p>No notices yet.</p>`}</section>` + (UI.pm ? payModal(s, c) : "") + (UI.rcpt ? (() => { const p = pays.find((x) => x.id === UI.rcpt); if (!p) return ""; const f = fees.find((x) => x.id === p.fee_id); return receiptModalHTML(p, s, c, f ? f.balance : undefined); })() : ""));
       };
 
       /* Pay Fee modal: choose amount -> UPI QR + payment details -> receipt */
@@ -2860,8 +3037,9 @@
         } else {
           const p = pm.receipt.payment, nf = pm.receipt.fee;
           body = `<div class="x-done" role="status"><span class="x-done__tick" aria-hidden="true">✓</span><h3>Payment Done</h3><p>${inr(p.amount)} paid towards ${esc(p.fee_label)}.</p></div>
+            ${logoImg(college)}
             <div class="breakdown" data-receipt><dl>${[["Receipt no.", p.id.toUpperCase()], ["Amount paid", inr(p.amount)], ["Fee", p.fee_label], ["Student", `${st.name} (${st.roll})`], ["Course", `${st.course} ${st.branch} · ${st.admType}`], ["Date & time", fmtDT(p.at)], ["Reference (UTR)", p.ref], ["Paid via", p.mode], ["Payer", p.payer], ["Paid to", `${college.name} · ${UPI_CONFIG.UPI_ID}`], ["New balance", nf.balance > 0 ? inr(nf.balance) : "₹0 · Paid in full"]].map(([k, v]) => `<div class="row"><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl></div>
-            <div class="x-acts"><button type="button" class="x-btn" data-act="pmClose" data-autofocus>Done</button></div>`;
+            <div class="x-acts"><button type="button" class="x-sbtn" data-act="pmPrint">Print / Save PDF</button><button type="button" class="x-btn" data-act="pmClose" data-autofocus>Done</button></div>`;
         }
         return `<div class="x-modal" data-modal><div class="x-modal__box" role="dialog" aria-modal="true" aria-labelledby="pm-h">
           <div class="x-phead"><div><p class="x-kicker">${pm.step === "done" ? "Receipt" : pm.step === "qr" ? "Step 2 of 2 · Pay by UPI" : "Step 1 of 2 · Pay fee"}</p><h2 id="pm-h">${esc(label)}</h2></div><button type="button" class="x-sbtn" data-act="pmClose" aria-label="Close">Close</button></div>
@@ -3149,9 +3327,12 @@
         },
         marks(f, d) {
           const entries = {}; f.querySelectorAll("[data-mk]").forEach((el) => (entries[el.dataset.mk] = el.value.trim()));
-          const n = DB.upsertMarks(d.exam, d.subject, d.max, entries); UI.mSub = d.subject.trim(); UI.mMax = d.max; UI.msg = `Saved ${n} marks for ${d.subject.trim()}, ${d.exam}.`; paint('#v-dyn [data-portal="marks"] [type="submit"]');
+          const n = DB.upsertMarks(d.exam, d.subject, d.max, entries, UI.mAtt); UI.mSub = d.subject.trim(); UI.mMax = d.max; UI.msg = `Saved ${n} ${UI.mAtt.toLowerCase()} marks for ${d.subject.trim()}, ${d.exam}.`; paint('#v-dyn [data-portal="marks"] [type="submit"]');
         },
-        notice(f, d) { const n = DB.postNotice(d); UI.msg = `“${n.title}” posted to students.`; paint('#v-dyn [name="title"]'); },
+        notice(f, d) { const n = DB.postNotice({ title: d.title, text: d.text, attachment: UI.noticeAtt }); UI.noticeAtt = null; UI.noticeTitle = ""; UI.noticeText = ""; UI.msg = `“${n.title}” posted to students.`; paint('#v-dyn [name="title"]'); },
+        collegeInfo(f, d) { const c = DB.updateCollege({ feeTuition: d.feeTuition, feeAffil: d.feeAffil }); UI.msg = `Fee structure saved · Tuition ${inr(c.feeTuition)} · Affiliation ${inr(c.feeAffil)}.`; paint(); },
+        issueCert(f, d) { const ct = DB.issueCertificate(d); UI.msg = `${ct.type} issued · ${ct.serial}.`; paint(); },
+        certReq(f, d) { const ct = DB.requestCertificate(d); UI.pmsg = `${ct.type} requested. The college office will issue it.`; paint(); },
         myContact(f, d) { DB.updateMyContact(d); UI.contactEdit = false; UI.pmsg = "Contact details saved."; paint('#v-dyn [data-act="contactEdit"]'); },
         pmAmount(f, d) { const a = DB.checkPayAmount(UI.pm.fee, d.amount); Object.assign(UI.pm, { mode: d.mode === "partial" ? "partial" : "full", amount: a, step: "qr" }); paint(); },
         pmConfirm(f, d) {
@@ -3173,7 +3354,7 @@
         logout() { DB.logout(); UI = UI0(); go("/portal"); },
         role(id) { UI.loginRole = id; paint(`[data-act="role"][data-id="${id}"]`); },
         fill(email, b) { UI.loginRole = b.dataset.role; paint(); const f = document.querySelector('#v-dyn [data-portal="login"]'); f.email.value = email; f.password.value = "Demo@1234"; f.querySelector("[type=submit]").focus(); },
-        tab(id) { Object.assign(UI, { tab: id, msg: "", edit: null, confirm: null, feeEdit: null, pay: null, note: "", imp: null, impErr: "", impResult: null, view: null, showAad: false }); paint(`[data-act="tab"][data-id="${id}"]`); },
+        tab(id) { Object.assign(UI, { tab: id, msg: "", edit: null, confirm: null, feeEdit: null, pay: null, rcpt: null, note: "", imp: null, impErr: "", impResult: null, view: null, showAad: false }); paint(`[data-act="tab"][data-id="${id}"]`); },
         stab(id) { UI.stab = id; UI.msg = ""; paint(`[data-act="stab"][data-id="${id}"]`); },
         facDel(id) { const f = DB.removeFaculty(id); UI.confirm = null; UI.msg = `${f.name} removed from faculty.`; paint(); },
         goPending() { Object.assign(UI, { tab: "students", sStatus: "pending", sQ: "", sCls: "", msg: "" }); paint('[data-act="tab"][data-id="students"]'); },
@@ -3210,6 +3391,36 @@
         },
         impCancel() { Object.assign(UI, { imp: null, impErr: "" }); paint('#v-dyn [data-act="xExport"]'); },
         allP() { document.querySelectorAll('#v-dyn [data-portal="att"] input[type=radio][value="P"]').forEach((r) => (r.checked = true)); },
+        logoRemove() { DB.updateCollege({ logo: "" }); UI.msg = "College logo removed."; paint(); },
+        noticeAttClear() { const f = document.querySelector('#v-dyn [data-portal="notice"]'); if (f) { UI.noticeTitle = f.title.value; UI.noticeText = f.text.value; } UI.noticeAtt = null; paint(); },
+        docVerify(id) { const d = DB.verifyDocument(id, "Verified"); UI.msg = `${d.kind} of the student marked Verified.`; paint(); },
+        docReject(id) { const d = DB.verifyDocument(id, "Rejected"); UI.msg = `${d.kind} marked Rejected.`; paint(); },
+        docDel(id) { DB.removeDocument(id); UI.pmsg = "Document deleted."; paint(); },
+        certIssue(id) { const ct = DB.issueCertRequest(id); UI.msg = `${ct.type} issued · ${ct.serial}.`; paint(); },
+        certPrint(id) {
+          const me = DB.me(), list = me.role === "admin" ? DB.getCertificates() : DB.myCertificates(), ct = list.find((x) => x.id === id); if (!ct) return;
+          const st = me.role === "admin" ? DB.getStudents().find((x) => x.id === ct.student_id) : me.student; if (!st) return;
+          printDoc(ct.type, certHTML(ct, st, me.college));
+        },
+        idPrint(id) {
+          const me = DB.me(), st = me.role === "admin" ? DB.getStudents().find((x) => x.id === id) : me.student; if (!st) return;
+          printDoc("Student ID Card", idCardHTML(st, me.college));
+        },
+        memoPrint(exam) {
+          const me = DB.me(); if (!me || me.role !== "student") return;
+          const ms = DB.myMarks().filter((m) => m.exam === exam); if (!ms.length) return;
+          printDoc(`Marks Memo · ${exam}`, memoHTML(exam, ms, me.student, me.college));
+        },
+        rcptOpen(id) { UI.rcpt = id; paint(); },
+        rcptClose() { UI.rcpt = null; paint(); },
+        rcptPrint(id) {
+          const me = DB.me();
+          const list = me.role === "admin" ? DB.getPayments() : DB.myPayments(), p = list.find((x) => x.id === id); if (!p) return;
+          const st = me.role === "admin" ? DB.getStudents().find((x) => x.id === p.student_id) : me.student;
+          const fees = me.role === "admin" ? DB.getFees() : DB.myFees(), f = fees.find((x) => x.id === p.fee_id);
+          printDoc("Fee Receipt", receiptHTML(p, st, me.college, f ? f.balance : undefined));
+        },
+        pmPrint() { if (UI.pm && UI.pm.receipt) { const me = DB.me(); printDoc("Fee Receipt", receiptHTML(UI.pm.receipt.payment, me.student, me.college, UI.pm.receipt.fee.balance)); } },
       };
       document.addEventListener("click", (e) => {
         const b = e.target.closest("#v-dyn [data-act]"); if (!b || !ACTS[b.dataset.act]) return;
@@ -3246,6 +3457,34 @@
         }
       });
       document.addEventListener("keydown", (e) => { if (e.key === "Escape" && UI.pm && document.querySelector("#v-dyn [data-modal]")) { e.preventDefault(); ACTS.pmClose(); } });
+      /* File uploads: images are resized on a canvas so localStorage is not blown; small files keep their data, big ones keep only their details */
+      const readScaled = (file, maxPx, keepPng, done) => {
+        const url = URL.createObjectURL(file), img = new Image();
+        img.onload = () => { try { const sc = Math.min(1, maxPx / Math.max(img.width, img.height)); const cv = document.createElement("canvas"); cv.width = Math.max(1, Math.round(img.width * sc)); cv.height = Math.max(1, Math.round(img.height * sc)); cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height); URL.revokeObjectURL(url); done(cv.toDataURL(keepPng && file.type === "image/png" ? "image/png" : "image/jpeg", 0.85)); } catch (_) { URL.revokeObjectURL(url); done(null); } };
+        img.onerror = () => { URL.revokeObjectURL(url); done(null); };
+        img.src = url;
+      };
+      const readPlain = (file, done) => { const r = new FileReader(); r.onload = () => done(typeof r.result === "string" && r.result.length <= 500000 ? r.result : null); r.onerror = () => done(null); r.readAsDataURL(file); };
+      document.addEventListener("change", (e) => {
+        const el = e.target; if (!el.closest || !el.closest("#v-dyn") || !el.matches("input[type=file][data-upload]")) return;
+        const file = el.files && el.files[0], kind = el.dataset.upload; el.value = "";
+        if (!file || !kind) return;
+        const fail = (m) => { UI.msg = ""; alertBox(m); };
+        const after = (data) => {
+          try {
+            if (kind === "logo") { if (!data) return fail("That image could not be read. Try a PNG or JPG logo."); DB.updateCollege({ logo: data }); UI.msg = "College logo saved. It now appears on receipts, memos, ID cards and certificates."; }
+            else if (kind === "myPhoto") { if (!data) return fail("That image could not be read. Try a JPG or PNG photo."); DB.setMyPhoto(data); UI.pmsg = "Your photo is saved."; }
+            else if (kind === "stuPhoto") { if (!data) return fail("That image could not be read. Try a JPG or PNG photo."); DB.setStudentPhoto(UI.view, data); UI.msg = "Student photo saved."; }
+            else if (kind === "doc") { DB.addDocument({ kind: el.dataset.kind, name: file.name, size: file.size, mime: file.type, data }); if (UI.tab) UI.msg = "Document uploaded."; else UI.pmsg = `${el.dataset.kind} uploaded. It is waiting for the college office to verify it.`; }
+            else if (kind === "noticeAtt") { const f = document.querySelector('#v-dyn [data-portal="notice"]'); if (f) { UI.noticeTitle = f.title.value; UI.noticeText = f.text.value; } UI.noticeAtt = { name: file.name, size: file.size, mime: file.type, data }; }
+            paint();
+          } catch (err) { fail(err.message); }
+        };
+        if (kind === "logo") readScaled(file, 320, true, after);
+        else if (kind === "myPhoto" || kind === "stuPhoto") readScaled(file, 240, false, after);
+        else if (file.type && file.type.startsWith("image/")) readScaled(file, 1024, false, after);
+        else readPlain(file, after);
+      });
       document.addEventListener("input", (e) => {
         const el = e.target;
         if (!el.closest || !el.closest("#v-dyn")) return;
