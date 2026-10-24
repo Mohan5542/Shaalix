@@ -2202,6 +2202,7 @@
           },
           resetDemo() {
             need("admin"); T = blank(); seq = 1000; seed();
+            try { ensureDemoData(); } catch (_) { /* backfill must never break a reset */ }
             const u = session && T.users.find((x) => x.id === session.user_id && x.email);
             if (!u) { session = null; saveSession(); }
             return !!session;
@@ -2275,11 +2276,7 @@
               T.fees.filter((f) => f.student_id === st.id).forEach((f) => { f.paid = f.year < st.curYear ? f.amount : f.year === st.curYear ? (f.type === "Tuition" ? tPaid : aPaid) : 0; });
               /* One payment record per fee already paid, so the Payments tabs agree with the fee totals:
                  office cash and student UPI alternate, on past dates, with unique UTRs for the UPI ones */
-              T.fees.filter((f) => f.student_id === st.id && f.paid > 0).forEach((f) => {
-                const n = payN++, at = `${shiftISO(today, -(2 + (n * 13) % 115))} ${String(9 + (n % 8)).padStart(2, "0")}:${String((n * 7) % 60).padStart(2, "0")}`;
-                if (n % 2) T.payments.push({ id: uid("pay"), college_id: c.id, student_id: st.id, fee_id: f.id, fee_label: feeLabel(f), amount: r2(f.paid), at, payer: st.name, mode: "PhonePe", ref: `4021${String(50000000 + n * 7919).slice(0, 8)}`, by: "Student (UPI)" });
-                else T.payments.push({ id: uid("pay"), college_id: c.id, student_id: st.id, fee_id: f.id, fee_label: feeLabel(f), amount: r2(f.paid), at, payer: "", mode: "Cash / office", ref: "", by: "College office" });
-              });
+              T.fees.filter((f) => f.student_id === st.id && f.paid > 0).forEach((f) => { T.payments.push(seedPaymentFor(f, st, payN++)); });
               days.forEach((d) => { const x = rnd(); T.attendance[`${st.id}|${d}`] = { college_id: c.id, student_id: st.id, date: d, status: x < 0.06 + (1 - ability) * 0.15 ? "A" : x > 0.965 ? "L" : "P" }; });
               [["Unit Test 1", 25], ["Mid-1", 100]].forEach(([exam, max]) => SUBJ[st.branch].forEach((subject) => {
                 const score = Math.max(0, Math.min(max, Math.round(max * (ability + (rnd() - 0.5) * 0.18))));
@@ -2299,6 +2296,72 @@
             C.notices.forEach(([title, text, ago]) => T.notices.push({ id: uid("ntc"), college_id: c.id, title, text, date: shiftISO(today, ago) }));
           });
           save();
+        }
+
+        /* One demo payment record for a fee that already has money against it: even indexes are
+           office cash records, odd ones student UPI payments carrying a deterministic 12-digit UTR.
+           Shared by seed() (fresh demo) and ensureDemoData() (backfill for older saved demos). */
+        function seedPaymentFor(fee, student, n) {
+          const at = `${shiftISO(todayISO(), -(2 + (n * 13) % 115))} ${String(9 + (n % 8)).padStart(2, "0")}:${String((n * 7) % 60).padStart(2, "0")}`;
+          if (n % 2) return { id: uid("pay"), college_id: fee.college_id, student_id: student.id, fee_id: fee.id, fee_label: feeLabel(fee), amount: r2(fee.paid), at, payer: student.name, mode: "PhonePe", ref: `4021${String(50000000 + n * 7919).slice(0, 8)}`, by: "Student (UPI)" };
+          return { id: uid("pay"), college_id: fee.college_id, student_id: student.id, fee_id: fee.id, fee_label: feeLabel(fee), amount: r2(fee.paid), at, payer: "", mode: "Cash / office", ref: "", by: "College office" };
+        }
+
+        /* ----- Backfill for browsers whose saved demo predates the richer seed -----
+           seed() only runs on a first visit, so anyone with a saved demo DB would otherwise never
+           see seeded payment records (Receipt buttons), demo admission documents or the supply
+           demo. Each piece is guarded per college and skipped when it already exists, which makes
+           this a no-op for up-to-date data. Returns true when anything was added. */
+        function ensureDemoData() {
+          let changed = false;
+          const today = todayISO();
+          /* (1) Payment history: one record per fee that has money against it but no record yet.
+                 Start the index where the existing records left off; UTRs that are already
+                 taken are skipped so a backfilled ref never collides with a real one. */
+          const usedRefs = new Set(T.payments.map((p) => p.ref).filter(Boolean));
+          let payN = T.payments.length;
+          T.colleges.forEach((c) => {
+            T.fees.filter((f) => f.college_id === c.id && f.paid > 0 && !T.payments.some((p) => p.fee_id === f.id)).forEach((f) => {
+              const st = T.students.find((x) => x.id === f.student_id); if (!st) return;
+              let rec = seedPaymentFor(f, st, payN);
+              while (rec.ref && usedRefs.has(rec.ref)) { payN++; rec = seedPaymentFor(f, st, payN); }
+              payN++; if (rec.ref) usedRefs.add(rec.ref);
+              T.payments.push(rec); changed = true;
+            });
+          });
+          /* (2) Demo documents: a college with none gets two for its first approved student
+                 (lowest roll) — one already Verified, one still Pending, so the office
+                 Verify / Reject controls and the student's statuses show in the demo. */
+          T.colleges.forEach((c) => {
+            if (T.documents.some((d) => d.college_id === c.id)) return;
+            const st = T.students.filter((x) => x.college_id === c.id && x.status === "approved").sort((a, b) => a.roll.localeCompare(b.roll))[0];
+            if (!st) return;
+            T.documents.push(
+              { id: uid("doc"), college_id: c.id, student_id: st.id, kind: "Aadhaar Card", name: "aadhaar-card.jpg", size: 184320, mime: "image/jpeg", data: null, status: "Verified", at: `${shiftISO(today, -45)} 10:24` },
+              { id: uid("doc"), college_id: c.id, student_id: st.id, kind: "SSC Memo", name: "ssc-memo.pdf", size: 237568, mime: "application/pdf", data: null, status: "Pending", at: `${shiftISO(today, -45)} 10:26` }
+            );
+            changed = true;
+          });
+          /* (3) Supply demo: a college with marks but no supplementary attempt gets one — the
+                 weakest approved student (lowest average) has their weakest Mid-1 regular mark
+                 below 50% and a passing supplementary record for the same subject. */
+          T.colleges.forEach((c) => {
+            const marks = T.marks.filter((m) => m.college_id === c.id);
+            if (!marks.length || marks.some((m) => m.attempt === "Supplementary")) return;
+            let weak = null, weakAvg = Infinity;
+            T.students.filter((x) => x.college_id === c.id && x.status === "approved").forEach((st) => {
+              const ms = marks.filter((m) => m.student_id === st.id); if (!ms.length) return;
+              const avg = ms.reduce((a, m) => a + m.score / m.max, 0) / ms.length;
+              if (avg < weakAvg) { weakAvg = avg; weak = st; }
+            });
+            if (!weak) return;
+            const worst = marks.filter((m) => m.student_id === weak.id && m.exam === "Mid-1" && (m.attempt || "Regular") === "Regular").sort((a, b) => a.score / a.max - b.score / b.max)[0];
+            if (!worst) return;
+            if (worst.score / worst.max >= 0.5) { worst.score = Math.round(worst.max * 0.4); changed = true; }
+            T.marks.push({ id: uid("mrk"), college_id: c.id, student_id: weak.id, exam: "Mid-1", subject: worst.subject, max: worst.max, score: Math.round(worst.max * 0.62), attempt: "Supplementary" });
+            changed = true;
+          });
+          return changed;
         }
 
         /* ----- Import: map sheets and headers, validate every row, then merge or replace ----- */
@@ -2503,6 +2566,9 @@
           } catch (_) { return false; }
         }
         if (!load()) seed();
+        /* Older saved demos miss the newer seed pieces; top them up. Never fatal: a backfill
+           hiccup must not stop the portal from booting. */
+        try { if (ensureDemoData()) save(); } catch (_) { /* ignore */ }
         try { const ss = storage("sessionStorage"), sv = ss && JSON.parse(ss.getItem(SESSION_KEY) || "null"); if (sv && T.users.some((u) => u.id === sv.user_id && u.role === sv.role)) session = sv; } catch (_) { /* no saved session */ }
         /* Every write is saved right away */
         ["registerCollege", "registerStudent", "addFaculty", "removeFaculty", "addStudent", "updateStudent", "updateMyContact", "setStudentStatus", "removeStudent", "updateCollege", "setStudentPhoto", "setMyPhoto", "setStudentIdCard", "removeStudentIdCard", "addDocument", "removeDocument", "verifyDocument", "issueCertificate", "issueCertRequest", "requestCertificate", "upsertFee", "recordPayment", "removeFee", "markAttendance", "upsertMarks", "postNotice", "removeNotice", "payMyFee", "applyImport", "resetDemo"].forEach((k) => {

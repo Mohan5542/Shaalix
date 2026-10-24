@@ -417,6 +417,83 @@ if (!cardOut.includes("STUDENT IDENTITY CARD") || !cardOut.includes(raviAdm.roll
 DB.login("student", "harika@srividya.demo", "Demo@1234");
 const profCardHtml = renderAs("student/idcard-design", "/portal/student");
 if (!profCardHtml.includes("STUDENT IDENTITY CARD") || !profCardHtml.includes(DB.me().student.roll)) fails.push("Student profile: ID card missing the identity strip or the student's roll number");
+// ---- Build #4: ensureDemoData backfill — old saved browsers get the rich demo too ----
+// After a reset, EVERY college (not just Sri Vidya) has: payments adding up to fees paid,
+// the two demo documents on its first approved student (lowest roll), and a supply demo.
+DB.login("admin", "admin@srividya.demo", "Demo@1234");
+DB.resetDemo();
+const demoAdmins = [["admin@srividya.demo", "Sri Vidya"], ["admin@greenvalley.demo", "Green Valley"]];
+for (const [em, label] of demoAdmins) {
+  DB.login("admin", em, "Demo@1234");
+  const cPays = DB.getPayments(), cFees = DB.getFees();
+  if (!cPays.length || cPays.reduce((a, p) => a + p.amount, 0) !== cFees.reduce((a, f) => a + f.paid, 0)) fails.push(`Backfill reset (${label}): payments do not add up to the fees' paid totals`);
+  const firstStu = DB.getStudents().filter((s) => s.status === "approved").sort((a, b) => a.roll.localeCompare(b.roll))[0];
+  const docs = DB.getDocuments(firstStu.id);
+  if (!docs.some((d) => d.kind === "Aadhaar Card" && d.status === "Verified") || !docs.some((d) => d.kind === "SSC Memo" && d.status === "Pending")) fails.push(`Backfill reset (${label}): demo documents missing for the first approved student (${firstStu.name})`);
+  P.setUI({ tab: "students", view: firstStu.id }); const docProf = renderAs("admin/backfill-docs-" + label, "/portal/admin");
+  if (!docProf.includes('data-act="docVerify"') || !docProf.includes('data-act="docReject"')) fails.push(`Backfill reset (${label}): admin profile lacks Verify / Reject controls for the pending document`);
+  P.setUI({ view: null, tab: "overview" });
+  if (!DB.getMarks({}).some((m) => m.attempt === "Supplementary")) fails.push(`Backfill reset (${label}): no supplementary mark after reset`);
+  DB.login("student", firstStu.email, "Demo@1234");
+  const myDocs = DB.myDocuments();
+  if (!myDocs.some((d) => d.status === "Verified") || !myDocs.some((d) => d.status === "Pending")) fails.push(`Backfill reset (${label}): the student's documents lack a Verified and a Pending entry`);
+  const myDocHtml = renderAs("student/backfill-docs-" + label, "/portal/student");
+  if (!/Admission documents/.test(myDocHtml) || !myDocHtml.includes("Verified") || !myDocHtml.includes("Pending")) fails.push(`Backfill reset (${label}): student render does not show both document statuses`);
+}
+// Migration: boot the page script again over a saved v2 DB stripped of payments, documents
+// and supplementary marks — exactly what an older build left in a returning visitor's browser —
+// and check the boot-time backfill restores all three, per college, with unique UTRs.
+const mkStore = (init) => { const m = new Map(Object.entries(init || {})); return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => { m.set(k, String(v)); }, removeItem: (k) => { m.delete(k); } }; };
+const bootWith = (ls) => {
+  const c2 = { console, setTimeout, clearTimeout, Date, Math, JSON, encodeURIComponent, decodeURIComponent, String, Object, Array,
+    location: { hash: "", replace(h) { this.hash = h; } },
+    matchMedia: () => ({ matches: true, addEventListener: noop }),
+    requestAnimationFrame: (f) => f(), scrollTo: noop, open: noop, addEventListener: noop,
+    localStorage: ls, sessionStorage: mkStore(),
+    document: { title: "", documentElement: el("boot-html"), querySelector: () => el("boot-q"), querySelectorAll: () => [], getElementById: () => null, addEventListener: noop } };
+  c2.history = { replaceState: (a, b, h) => { c2.location.hash = h; } };
+  c2.window = c2;
+  vm.createContext(c2); vm.runInContext(code, c2);
+  return vm.runInContext("DB", c2);
+};
+const lsA = mkStore(); bootWith(lsA);
+const savedDemo = lsA.getItem("shaalix-demo-db-v2");
+if (!savedDemo) fails.push("Migration: a first boot with storage did not persist a demo DB");
+else {
+  const oldDb = JSON.parse(savedDemo);
+  oldDb.T.payments = []; oldDb.T.documents = [];
+  oldDb.T.marks = oldDb.T.marks.filter((m) => m.attempt !== "Supplementary");
+  // Discriminators: if load() failed and seed() re-ran instead, the notices would be back
+  // and the college would have its seed name — a passing run must show the saved DB was used.
+  oldDb.T.notices = [];
+  oldDb.T.colleges[0].name = "Sri Vidya Institute of Technology (Saved)";
+  const lsB = mkStore({ "shaalix-demo-db-v2": JSON.stringify(oldDb) });
+  const DB2 = bootWith(lsB);
+  DB2.login("admin", "admin@srividya.demo", "Demo@1234");
+  if (DB2.me().college.name !== "Sri Vidya Institute of Technology (Saved)" || DB2.getNotices().length !== 0) fails.push("Migration: second boot did not load the saved DB (seed re-ran instead of the backfill path)");
+  for (const [em, label] of demoAdmins) {
+    DB2.login("admin", em, "Demo@1234");
+    const p2 = DB2.getPayments(), f2 = DB2.getFees();
+    if (!p2.length) fails.push(`Migration (${label}): payment history was not backfilled on the second boot`);
+    if (p2.reduce((a, p) => a + p.amount, 0) !== f2.reduce((a, f) => a + f.paid, 0)) fails.push(`Migration (${label}): backfilled payments do not add up to the fees' paid totals`);
+    const refs2 = p2.map((p) => p.ref).filter(Boolean);
+    if (new Set(refs2).size !== refs2.length || refs2.some((r) => !/^4021\d{8}$/.test(r))) fails.push(`Migration (${label}): backfilled UTRs are not unique 4021-prefixed 12-digit numbers`);
+    const first2 = DB2.getStudents().filter((s) => s.status === "approved").sort((a, b) => a.roll.localeCompare(b.roll))[0];
+    const docs2 = DB2.getDocuments(first2.id);
+    if (!docs2.some((d) => d.kind === "Aadhaar Card" && d.status === "Verified") || !docs2.some((d) => d.kind === "SSC Memo" && d.status === "Pending")) fails.push(`Migration (${label}): demo documents were not backfilled on the second boot`);
+    if (!DB2.getMarks({}).some((m) => m.attempt === "Supplementary")) fails.push(`Migration (${label}): supplementary mark was not backfilled on the second boot`);
+  }
+  // Idempotence: a third boot over the backfilled DB must add nothing
+  const after2 = JSON.parse(lsB.getItem("shaalix-demo-db-v2"));
+  const DB3store = mkStore({ "shaalix-demo-db-v2": JSON.stringify(after2) });
+  const DB3 = bootWith(DB3store);
+  DB3.login("admin", "admin@srividya.demo", "Demo@1234");
+  if (DB3.getPayments().length + DB3.getFees().length === 0) fails.push("Migration: third boot lost the demo data");
+  const after3raw = DB3store.getItem("shaalix-demo-db-v2");
+  const after3 = after3raw ? JSON.parse(after3raw) : after2;
+  if (after3.T.payments.length !== after2.T.payments.length || after3.T.documents.length !== after2.T.documents.length || after3.T.marks.length !== after2.T.marks.length) fails.push("Migration: backfill is not idempotent — a repeat boot added more records");
+}
+console.log("portal: demo-data backfill for previously-saved browsers (payments, documents, supply) checked");
 console.log("portal: seeded payments, admin memo print and ID card design checked");
 console.log("portal: receipt template + words + download, college-issued ID card and fees search checked");
 console.log("portal: logo, photo, documents, receipts, supplies, certificates, ID card and notice attachments checked");
