@@ -3640,7 +3640,7 @@
       const ACTS = {
         logout() { DB.logout(); UI = UI0(); go("/portal"); },
         role(id) { UI.loginRole = id; paint(`[data-act="role"][data-id="${id}"]`); },
-        fill(email, b) { UI.loginRole = b.dataset.role; paint(); alertBox("Demo accounts are being set up. Please sign in with your college account, or register your college / register as a student to start."); },
+        fill(email, b) { UI.loginRole = b.dataset.role; paint(); const lf = document.querySelector('#v-dyn form[data-portal="login"]'); if (lf) { const em = lf.querySelector('[name="email"]'), pw = lf.querySelector('[name="password"]'); if (em) em.value = email; if (pw) pw.value = "Demo@1234"; const sb = lf.querySelector('button[type="submit"]'); if (sb) sb.focus(); } },
         tab(id) { Object.assign(UI, { tab: id, msg: "", edit: null, confirm: null, feeEdit: null, pay: null, rcpt: null, note: "", imp: null, impErr: "", impResult: null, view: null, showAad: false }); paint(`[data-act="tab"][data-id="${id}"]`); },
         stab(id) { UI.stab = id; UI.msg = ""; paint(`[data-act="stab"][data-id="${id}"]`); },
         facDel(id) { const f = DB.removeFaculty(id); UI.confirm = null; UI.msg = `${f.name} removed from faculty.`; paint(); },
