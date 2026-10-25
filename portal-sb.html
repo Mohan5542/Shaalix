@@ -1895,8 +1895,24 @@
             if (!sb) fail("The portal cannot reach its server right now. Check your connection and try again.", "email");
             const code = tx(d.code).toUpperCase();
             let college = null;
-            if (code) { const { data } = await sb.from("colleges").select("id,name,code,city").eq("code", code); college = data && data[0]; }
-            else if (d.college_id) { const { data } = await sb.from("colleges").select("id,name,code,city").eq("id", d.college_id); college = data && data[0]; }
+            const directCollege = async (field, value) => {
+              let hasSession = !!session;
+              if (!hasSession && sb.auth && sb.auth.getSession) {
+                try { const { data } = await sb.auth.getSession(); hasSession = !!(data && data.session); } catch (_) { /* no session to fall back with */ }
+              }
+              if (!hasSession) return null;
+              const { data } = await sb.from("colleges").select("id,name,code,city").eq(field, value);
+              return data && data[0];
+            };
+            if (code) {
+              try {
+                const { data, error } = await sb.rpc("find_college_by_code", { p_code: code });
+                if (!error) college = data && data[0];
+              } catch (_) { /* RPC not installed yet: the session fallback below may still resolve it */ }
+              if (!college) college = await directCollege("code", code);
+            } else if (d.college_id) {
+              college = await directCollege("id", d.college_id);
+            }
             if (!college) fail(code ? "No college has this code. Check it with your college office." : "Pick your college or enter its code.", code ? "code" : "college_id");
             if (d.college_id && code && d.college_id !== college.id) fail("The code does not match the college you picked.", "code");
             req(d, ["name", "roll", "sec", "email", "phone"]);
