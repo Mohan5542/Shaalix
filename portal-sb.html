@@ -1702,6 +1702,11 @@
         const TYPES = ["School", "Junior College", "Degree", "Engineering"];
         /* Platform owner (Shaalix team): the only email that may hold the 'owner' profile — see 07-college-approval.sql */
         const OWNER_EMAIL = "mohan@shaalix.com";
+        /* Student claim accounts (08-student-claim.sql): these logins have no
+           mailbox — the Auth email is DERIVED from college code + roll, the
+           same way at claim time and at every roll sign-in, e.g.
+           shx-1001-24sv1a0501@students.shaalix.com */
+        const synthStudentEmail = (code, roll) => (tx(code) + "-" + tx(roll)).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") + "@students.shaalix.com";
         const ATT = { P: "Present", A: "Absent", L: "Leave" };
         /* B.Tech: a regular student studies Year 1-4; a lateral entry student joins in Year 2 (Year 2-4) */
         const ADM = ["Regular", "Lateral Entry"];
@@ -1789,7 +1794,8 @@
         function cleanProfile(d) {
           const o = {}, g = (k) => (d[k] === undefined || d[k] === null ? PROFILE_DEFAULTS[k] : d[k]), blank = (k) => tx(g(k)) === "";
           o.course = tx(g("course")) || "B.Tech";
-          o.branch = tx(g("branch")).toUpperCase();
+          const brRaw = tx(g("branch")), brCanon = typeof BRANCHES !== "undefined" ? BRANCHES.find((b) => b.toLowerCase() === brRaw.toLowerCase()) : null;
+          o.branch = brCanon || brRaw.toUpperCase();
           const at = nrm(g("admType"));
           o.admType = !at || at === "regular" ? "Regular" : ["lateral", "lateralentry", "le"].includes(at) ? "Lateral Entry" : fail("Admission type must be Regular or Lateral Entry.", "admType");
           const start = o.admType === "Lateral Entry" ? 2 : 1, cy = blank("curYear") ? start : parseYear(g("curYear"));
@@ -1893,52 +1899,59 @@
             startSession(self);
             return clone(collegeOf(c.id));
           },
-          async registerStudent(d) {
-            if (!sb) fail("The portal cannot reach its server right now. Check your connection and try again.", "email");
-            const code = tx(d.code).toUpperCase();
-            let college = null;
-            const directCollege = async (field, value) => {
-              let hasSession = !!session;
-              if (!hasSession && sb.auth && sb.auth.getSession) {
-                try { const { data } = await sb.auth.getSession(); hasSession = !!(data && data.session); } catch (_) { /* no session to fall back with */ }
-              }
-              if (!hasSession) return null;
-              const { data } = await sb.from("colleges").select("id,name,code,city,status").eq(field, value);
-              return data && data[0];
-            };
-            if (code) {
-              try {
-                const { data, error } = await sb.rpc("find_college_by_code", { p_code: code });
-                if (!error) college = data && data[0];
-              } catch (_) { /* RPC not installed yet: the session fallback below may still resolve it */ }
-              if (!college) college = await directCollege("code", code);
-            } else if (d.college_id) {
-              college = await directCollege("id", d.college_id);
-            }
-            /* The lookup RPC returns approved colleges only; the direct-select fallback can see
-               pending/rejected rows, so hold it to the same rule (07-college-approval.sql). */
-            if (college && college.status && college.status !== "approved") college = null;
-            if (!college) fail(code ? "No college has this code. Check it with your college office." : "Pick your college or enter its code.", code ? "code" : "college_id");
-            if (d.college_id && code && d.college_id !== college.id) fail("The code does not match the college you picked.", "code");
-            req(d, ["name", "roll", "sec", "email", "phone"]);
-            if (!EMAIL.test(tx(d.email))) fail("Enter a valid email.", "email");
-            checkPhone(d.phone); checkPass(d);
-            const prof0 = cleanProfile(d);
-            const auth = await sbSignUp(d.email, d.password);
-            const st = { id: uid(), college_id: college.id, name: tx(d.name), roll: tx(d.roll).toUpperCase(), cls: tx(d.cls) || clsOf(prof0), sec: tx(d.sec), email: lc(d.email), phone: tx(d.phone), status: "pending", created: todayISO(), photo: "", idCard: null, ...prof0 };
-            const sins = await sb.from("students").insert(await studentToRow(st));
-            if (sins.error) {
-              console.error("[shaalix] student insert failed", sins.error);
-              if (/duplicate key|unique/i.test(sins.error.message || "")) fail("This roll number is already used in this college.", "roll");
-              if (sins.error.code === "42501") fail("Your college is not accepting online registrations yet. Please contact the college office.", "code");
-              fail("Your registration could not be saved. Please try again.", "name");
-            }
-            const prof = { id: auth.id, role: "student", college_id: college.id, student_id: st.id, email: st.email, display_name: st.name };
+          /* ----- Student account claim (08-student-claim.sql) -----
+             The college office creates the record; the student activates a
+             login for it. findClaim resolves the college (approved only),
+             asks find_student_for_claim, and surfaces the lookup's verdict —
+             claimStudent re-runs the same lookup, so a record whose state
+             changed in between is judged fresh. No students row is ever
+             created here and there is no pending step. */
+          async findClaim(ref) {
+            const f = await claimLookup(ref || {});
+            return { student_id: f.rec.student_id, name: f.rec.name, roll: f.rec.roll, courseLine: f.rec.courseLine, college: { id: f.college.id, name: f.college.name, code: f.college.code, city: f.college.city } };
+          },
+          async claimStudent(d) {
+            req(d, ["roll", "password", "confirm"]);
+            checkPass(d);
+            const f = await claimLookup(d);
+            const email = synthStudentEmail(f.college.code, f.rec.roll);
+            const auth = await sbSignUp(email, d.password);
+            const prof = { id: auth.id, role: "student", college_id: f.college.id, student_id: f.rec.student_id, email, display_name: f.rec.name };
             const pins = await sb.from("profiles").insert(prof);
-            if (pins.error) { console.error("[shaalix] profile insert failed", pins.error); fail("Your account was created but its profile could not be saved. Sign in to finish setting up.", "email"); }
+            if (pins.error) {
+              console.error("[shaalix] claim profile insert failed", pins.error);
+              /* The claim policy (08) refuses exactly one realistic case at
+                 this point: the record was claimed between lookup and insert. */
+              if (pins.error.code === "42501") fail("An account already exists for this roll number. Please sign in.", "roll");
+              fail("Your account was created but its profile could not be saved. Sign in to finish setting up.", "email");
+            }
             const self = await loadAll(prof);
             startSession(self);
-            return clone(T.students.find((x) => x.id === st.id) || st);
+            return clone(T.students.find((x) => x.id === f.rec.student_id));
+          },
+          /* Roll sign-in: college + roll + password, deriving the same
+             synthetic email the claim created. Every credential failure is
+             the same generic message — which part was wrong is never said. */
+          async loginByRoll(ref, roll, password) {
+            if (!tx(roll)) fail("Required.", "roll");
+            if (!password) fail("Required.", "password");
+            if (!sb) fail("The portal cannot reach its server right now. Check your connection and try again.", "roll");
+            ref = ref || {};
+            if (!tx(ref.code) && !ref.college_id) fail("Pick your college or enter its code.", "college_id");
+            const G = "Wrong roll number or password.";
+            let college = null;
+            const code = tx(ref.code).toUpperCase();
+            if (code) { try { const { data, error } = await sb.rpc("find_college_by_code", { p_code: code }); if (!error) college = data && data[0]; } catch (_) { /* fall through to the generic error */ } }
+            if (!college && ref.college_id) college = collegeDir.find((c) => c.id === ref.college_id) || await directCollege("id", ref.college_id);
+            if (college && college.status && college.status !== "approved") college = null;
+            if (!college) fail(G, "password");
+            await syncChain; // flush the previous session's writes before switching accounts
+            const { data, error } = await sb.auth.signInWithPassword({ email: synthStudentEmail(college.code, roll), password: String(password) });
+            if (error || !data || !data.user) fail(G, "password");
+            const prof = await fetchProfile(data.user.id);
+            if (!prof || prof.role !== "student") { await sb.auth.signOut(); fail(G, "password"); }
+            const self = await loadAll(prof);
+            return startSession(self);
           },
           async login(role, email, password) {
             if (!tx(email)) fail("Required.", "email");
@@ -2073,6 +2086,16 @@
             if (!DOC_KINDS.includes(d.kind)) fail("Pick a document type.", "kind");
             if (!tx(d.name)) fail("The file has no name.", "name");
             const rec = { id: uid("doc"), college_id: st.college_id, student_id: st.id, kind: d.kind, name: tx(d.name), size: Number(d.size) || 0, mime: tx(d.mime), data: typeof d.data === "string" && d.data.length <= 500000 ? d.data : null, status: "Pending", at: nowStamp() };
+            T.documents.push(rec); return clone(rec);
+          },
+          /* Office upload from the edit form: replaces any existing document
+             of the same kind and lands Verified — the office is the authority. */
+          replaceDocument(d) {
+            need("admin"); const st = mine(T.students.find((x) => x.id === d.student_id));
+            if (!DOC_KINDS.includes(d.kind)) fail("Pick a document type.", "kind");
+            if (!tx(d.name)) fail("The file has no name.", "name");
+            const rec = { id: uid("doc"), college_id: st.college_id, student_id: st.id, kind: d.kind, name: tx(d.name), size: Number(d.size) || 0, mime: tx(d.mime), data: typeof d.data === "string" && d.data.length <= 500000 ? d.data : null, status: "Verified", at: nowStamp() };
+            T.documents = T.documents.filter((x) => !(x.student_id === st.id && x.kind === d.kind));
             T.documents.push(rec); return clone(rec);
           },
           removeDocument(id) {
@@ -2663,6 +2686,46 @@
           return users;
         }
         async function fetchProfile(userId) { const { data, error } = await sb.from("profiles").select("*").eq("id", userId).single(); return error ? null : data; }
+        /* Claim support (08): directCollege is the session fallback for
+           resolving a college (the code RPC is the logged-out path);
+           claimLookup owns college resolution + the find_student_for_claim
+           verdict, translating the record's state into the claim page's
+           exact errors. */
+        async function directCollege(field, value) {
+          let hasSession = !!session;
+          if (!hasSession && sb && sb.auth && sb.auth.getSession) {
+            try { const { data } = await sb.auth.getSession(); hasSession = !!(data && data.session); } catch (_) { /* no session to fall back with */ }
+          }
+          if (!hasSession) return null;
+          const { data } = await sb.from("colleges").select("id,name,code,city,status").eq(field, value);
+          return data && data[0];
+        }
+        async function claimLookup(ref) {
+          if (!sb) fail("The portal cannot reach its server right now. Check your connection and try again.", "roll");
+          if (!tx(ref.roll)) fail("Required.", "roll");
+          const code = tx(ref.code).toUpperCase();
+          let college = null;
+          if (code) {
+            try { const { data, error } = await sb.rpc("find_college_by_code", { p_code: code }); if (!error) college = data && data[0]; } catch (_) { /* RPC missing: the session fallback below may still resolve it */ }
+            if (!college) college = await directCollege("code", code);
+          } else if (ref.college_id) {
+            college = collegeDir.find((c) => c.id === ref.college_id) || await directCollege("id", ref.college_id);
+          }
+          /* The lookup RPC returns approved colleges only; the other paths
+             can see pending/rejected rows, so hold them to the same rule. */
+          if (college && college.status && college.status !== "approved") college = null;
+          if (!college) fail(code ? "No college has this code. Check it with your college office." : "Pick your college or enter its code.", code ? "code" : "college_id");
+          if (ref.college_id && code && ref.college_id !== college.id) fail("The code does not match the college you picked.", "code");
+          const { data, error } = await sb.rpc("find_student_for_claim", { p_college_id: college.id, p_roll: tx(ref.roll) });
+          if (error) { console.error("[shaalix] claim lookup failed", error); fail("Your record could not be checked right now. Please try again.", "roll"); }
+          const row = data && data[0];
+          if (!row) fail("This roll number is not in the college's records. Please contact your college office.", "roll");
+          if (row.claimed) fail("An account already exists for this roll number. Please sign in.", "roll");
+          if (row.status === "pending") fail("Your record is waiting for your college's approval. Please try after they approve it.", "roll");
+          if (row.status === "rejected") fail("Your record was not approved. Please contact your college office.", "roll");
+          const courseLine = [row.course, row.branch].filter(Boolean).join(" ") + (row.cur_year ? ` · Year ${row.cur_year}` : "");
+          return { college, rec: { student_id: row.student_id, name: row.name, roll: row.roll, courseLine } };
+        }
         async function loadAll(prof) {
           const cid = prof.college_id;
           const get = async (t) => { const { data, error } = await sb.from(t).select("*").eq("college_id", cid); if (error) throw new Error(`Load ${t}: ${error.message}`); return data || []; };
@@ -2739,10 +2802,10 @@
         api.settle = () => syncChain;    // resolves when every queued sync has finished
         api.syncError = () => syncErr;   // last background sync failure, if any
         /* Every write is synced right away (async, in the background).
-           registerCollege / registerStudent are not wrapped: they persist
+           registerCollege / claimStudent are not wrapped: they persist
            through their own inserts and finish by loading a fresh snapshot. */
         /* Every write is saved right away */
-        ["addFaculty", "removeFaculty", "addStudent", "updateStudent", "updateMyContact", "setStudentStatus", "removeStudent", "updateCollege", "setStudentPhoto", "setMyPhoto", "setStudentIdCard", "removeStudentIdCard", "addDocument", "removeDocument", "verifyDocument", "issueCertificate", "issueCertRequest", "requestCertificate", "upsertFee", "recordPayment", "removeFee", "markAttendance", "upsertMarks", "postNotice", "removeNotice", "payMyFee", "applyImport"].forEach((k) => {
+        ["addFaculty", "removeFaculty", "addStudent", "updateStudent", "updateMyContact", "setStudentStatus", "removeStudent", "updateCollege", "setStudentPhoto", "setMyPhoto", "setStudentIdCard", "removeStudentIdCard", "addDocument", "replaceDocument", "removeDocument", "verifyDocument", "issueCertificate", "issueCertRequest", "requestCertificate", "upsertFee", "recordPayment", "removeFee", "markAttendance", "upsertMarks", "postNotice", "removeNotice", "payMyFee", "applyImport"].forEach((k) => {
           const fn = api[k]; api[k] = (...args) => { const r = fn(...args); save(); return r; };
         });
         return api;
@@ -2751,12 +2814,12 @@
       /* ---------- Portal UI: renders from DB only ---------- */
       PAGES["/portal"] = { t: "Portal login", d: "Sign in as a college admin or a student." };
       PAGES["/portal/register-college"] = { t: "Register your college", d: "Create a college account on the Shaalix demo portal." };
-      PAGES["/portal/register-student"] = { t: "Student registration", d: "Join your college on the Shaalix demo portal." };
+      PAGES["/portal/register-student"] = { t: "Claim your student account", d: "Claim the login for the student record your college office created for you." };
       PAGES["/portal/admin"] = { t: "College admin dashboard", d: "Students, fees, attendance, marks and notices." };
       PAGES["/portal/student"] = { t: "Student dashboard", d: "Your fees, attendance, marks and notices." };
       PAGES["/portal/owner"] = { t: "Platform owner console", d: "Approve new colleges before they open on Shaalix." };
       const EXAMS = ["Unit Test 1", "Mid-1", "Unit Test 2", "Mid-2", "Final"];
-      const BRANCHES = ["CSE", "ECE", "EEE", "MECH", "CIVIL", "IT", "CSM", "CSD"];
+      const BRANCHES = ["CSE", "IT", "ECE", "EEE", "MECH", "CIVIL", "CSM", "CSD", "CSE (Cyber Security)", "AI & DS", "Chemical Engineering", "Aeronautical Engineering", "Automobile Engineering", "Mining Engineering", "Petroleum Engineering", "Biotechnology", "Food Technology", "Textile Technology", "Diploma in Computer Engineering", "Diploma in Electronics & Communication Engineering", "Diploma in Electrical & Electronics Engineering", "Diploma in Mechanical Engineering", "Diploma in Civil Engineering", "Diploma in Automobile Engineering", "Diploma in Chemical Engineering", "Diploma in Metallurgical Engineering", "Diploma in Mining Engineering", "Diploma in Pharmacy"];
       const YEAR_OPTS = [1, 2, 3, 4].map((y) => [y, `Year ${y}`]);
       const RELIGIONS = ["Hindu", "Muslim", "Christian", "Sikh", "Buddhist", "Jain", "Other"];
       const SCHEMES = ["Jagananna Vidya Deevena (RTF)", "Jagananna Vasathi Deevena (MTF)", "Post-Matric Scholarship (RTF/MTF)", "TS ePASS Post-Matric (RTF)", "TS ePASS Post-Matric (MTF)"];
@@ -2804,7 +2867,7 @@
       const fmtM = (ym) => parseISO(ym + "-01").toLocaleDateString("en-IN", { month: "long", year: "numeric" });
       const pctTxt = (p) => (p === null || p === undefined ? "—" : p + "%");
       const lastMonths = (n) => { const out = []; const d = parseISO(todayISO()); for (let i = 0; i < n; i++) { const t = new Date(d.getFullYear(), d.getMonth() - i, 1); out.push(`${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}`); } return out; };
-      const UI0 = () => ({ loginRole: "admin", tab: "overview", stab: "overview", flash: null, msg: "", sQ: "", sCls: "", sStatus: "", edit: null, confirm: null, feeStu: "", feeSt: "", feeEdit: null, pay: null, attDate: todayISO(), attCls: "", attMonth: todayISO().slice(0, 7), mExam: "Unit Test 1", mCls: "", mSub: "", mMax: "", mAtt: "Regular", memoStu: "", payStu: "", pm: null, rcpt: null, noticeAtt: null, noticeTitle: "", noticeText: "", imp: null, impMode: "merge", impErr: "", impBusy: false, impResult: null, note: "", feeYear: "", feeQ: "", view: null, showAad: false, contactEdit: false, pmsg: "", oConfirm: null, oMsg: "" });
+      const UI0 = () => ({ loginRole: "admin", tab: "overview", stab: "overview", flash: null, msg: "", sQ: "", sCls: "", sStatus: "", edit: null, confirm: null, feeStu: "", feeSt: "", feeEdit: null, pay: null, attDate: todayISO(), attCls: "", attMonth: todayISO().slice(0, 7), mExam: "Unit Test 1", mCls: "", mSub: "", mMax: "", mAtt: "Regular", memoStu: "", payStu: "", pm: null, rcpt: null, noticeAtt: null, noticeTitle: "", noticeText: "", imp: null, impMode: "merge", impErr: "", impBusy: false, impResult: null, note: "", feeYear: "", feeQ: "", view: null, showAad: false, contactEdit: false, pmsg: "", oConfirm: null, oMsg: "", stuMode: "roll", claim: null });
       let UI = UI0();
       const demoNote = `<p class="x-note" role="note">Live mode: data is saved securely to the cloud. Sign in from any device to see the same records.</p>`;
       const pf = (label, nm, attrs = "", full = false, req = true) => `<label class="x-f${full ? " x-f--full" : ""}">${label}<input name="${nm}" ${attrs}${req ? " required" : ""} /><small class="x-err"></small></label>`;
@@ -2927,19 +2990,27 @@
       const feeChip = (f) => chipFor(f.status === "Due" && f.phase === "Upcoming" ? "Upcoming" : f.status);
       const datalist = (id, list) => `<datalist id="${id}">${list.map((o) => `<option value="${esc(o)}">`).join("")}</datalist>`;
       function profileView(s) {
-        const v = (x) => (x === "" || x === null || x === undefined ? "—" : esc(x)), lat = s.admType === "Lateral Entry", expired = s.incomeValid && s.incomeValid < todayISO();
+        const v = (x) => (x === "" || x === null || x === undefined ? "—" : esc(x)), lat = s.admType === "Lateral Entry";
         const aad = `<span data-aadhaar>${UI.showAad ? fmtAad(s.aadhaar) : maskAad(s.aadhaar)}</span>${s.aadhaar ? `<button type="button" class="x-sbtn x-sbtn--xs" data-act="aadToggle" aria-pressed="${UI.showAad}" aria-label="${UI.showAad ? "Hide" : "Show"} Aadhaar number">${UI.showAad ? "Hide" : "Show"}</button>` : ""}`;
         const groups = [
           ["Personal", [["Full name", v(s.name)], ["Father's name", v(s.father)], ["Mother's name", v(s.mother)], ["Date of birth", s.dob ? fmtD(s.dob) : "—"], ["Gender", v(s.gender)], ["Blood group", v(s.blood)], ["Mobile", v(s.phone)], ["Email", v(s.email)], ["Address", v(s.address)]]],
           ["Identity", [["Aadhaar number", aad], ["APAAR / ABC ID", v(s.apaar)]]],
-          ["Category / caste", [["Religion", v(s.religion)], ["Category", v(s.category)], ["Caste", v(s.caste)], ["Caste certificate no.", v(s.casteCert)]]],
-          ["Income", [["Annual family income", s.income === "" ? "—" : inr(s.income)], ["Income certificate no.", v(s.incomeCert)], ["Valid till", s.incomeValid ? fmtD(s.incomeValid) + (expired ? ` <span class="chip chip--solid">Expired</span>` : "") : "—"]]],
+          ["Category / caste", [["Category", v(s.category)], ["Caste certificate no.", v(s.casteCert)]]],
+          ["Income", [["Income certificate no.", v(s.incomeCert)]]],
           ["Scholarship", [["Eligible", v(s.schEligible)], ["Scheme", v(s.schScheme)], ["Status", v(s.schStatus)]]],
           ["Academic", [["Roll number", v(s.roll)], ["Course", v(s.course)], ["Branch", v(s.branch)], ["Admission type", v(s.admType)], ["Admission year", v(s.admYear)], ["Current year", `Year ${s.curYear}`], ["Course years", lat ? "Year 2–4 (3 years)" : "Year 1–4 (4 years)"], ["Previous qualification", s.prevQual ? esc(s.prevQual) + (s.prevPct !== "" ? ` · ${s.prevPct}%` : "") : "—"], ["Class / section", `${esc(s.cls)} · ${esc(s.sec)}`]]],
         ];
         return `<div class="x-prof" data-profile>${groups.map(([h, rows]) => `<div class="breakdown x-prof__g"><h3>${h}</h3><dl>${rows.map(([k, html]) => `<div class="row"><dt>${k}</dt><dd>${html}</dd></div>`).join("")}</dl></div>`).join("")}</div>`;
       }
       const aadInput = (val) => `<label class="x-f">Aadhaar number<span class="x-inrow"><input name="aadhaar" class="x-mask" inputmode="numeric" autocomplete="off" maxlength="14" placeholder="12 digits" value="${esc(val)}" aria-describedby="pa-aad-hint" /><button type="button" class="x-sbtn" data-act="aadField" aria-pressed="false" aria-label="Show Aadhaar number">Show</button></span><small class="x-err"></small><small class="fineprint" id="pa-aad-hint">12 digits. Shown masked as XXXX XXXX 1234.</small></label>`;
+      const admYearOpts = (cur) => { const nowY = new Date().getFullYear(), ys = []; for (let y = nowY + 1; y >= nowY - 15; y--) ys.push([y, String(y)]); const c = cur === "" || cur === null || cur === undefined ? null : Number(cur); if (c !== null && Number.isInteger(c) && !ys.some(([y]) => y === c)) ys.push([c, String(c)]); return ys; };
+      const docStatusChip = (d) => (d.status === "Verified" ? `<span class="chip">Verified</span>` : d.status === "Rejected" ? `<span class="chip chip--solid">Rejected</span>` : `<span class="chip">Pending</span>`);
+      /* Admission documents inside the EDIT form: files picked here are only
+         staged in the form — nothing is written until Save changes submits. */
+      function studentDocsFormHTML(s) {
+        const docs = DB.getDocuments(s.id);
+        return `<h4 class="x-fgroup x-f--full">Admission documents</h4><div class="x-f--full"><div class="x-tw"><table><thead><tr><th scope="col">Document</th><th scope="col">File</th><th scope="col">Status</th><th scope="col"><span class="x-sr">Upload</span></th></tr></thead><tbody>${DOC_KINDS_UI.map((k, i) => { const d = docs.filter((x) => x.kind === k)[0]; return `<tr><th scope="row">${esc(k)}</th><td>${d ? `${esc(d.name)}<small>${fmtSize(d.size)} · ${fmtDT(d.at)}</small>` : `<span class="muted">Not uploaded</span>`}</td><td>${d ? docStatusChip(d) : "—"}</td><td><label class="x-sbtn x-file">${d ? "Replace" : "Upload"}<input type="file" class="x-sr" data-stage-doc="${esc(k)}" name="docFile${i}" aria-label="${d ? "Replace" : "Upload"} ${esc(k)}" /></label><small data-stage-note></small></td></tr>`; }).join("")}</tbody></table></div><p class="fineprint">Files you pick here are saved only when you click Save changes. Documents uploaded by the college office are marked Verified.</p></div>`;
+      }
       function studentForm(s) {
         const L = DB.lists(), v = (k, d = "") => esc(s && s[k] !== undefined && s[k] !== null ? s[k] : d), grp = (t) => `<h4 class="x-fgroup">${t}</h4>`, opt = (k, d = "") => (s ? s[k] : d);
         return `<form class="x-form" data-portal="student" novalidate aria-label="${s ? "Edit student profile" : "Add student"}"><h3 class="x-f--full">${s ? "Edit profile · " + esc(s.name) : "Add a student"}</h3>
@@ -2952,12 +3023,10 @@
           ${grp("Identity")}
           ${aadInput(opt("aadhaar"))}${pf("APAAR / ABC ID (optional)", "apaar", `inputmode="numeric" maxlength="14" placeholder="12 digits" value="${v("apaar")}"`, false, false)}
           ${grp("Category / caste")}
-          ${pf("Religion", "religion", `value="${v("religion")}" list="pa-rel"`, false, false)}${datalist("pa-rel", RELIGIONS)}
           ${psel("Category", "category", [["", "Select"], ...L.CATEGORIES], opt("category"))}
-          ${pf("Caste name", "caste", `value="${v("caste")}"`, false, false)}${pf("Caste certificate number", "casteCert", `value="${v("casteCert")}"`, false, false)}
+          ${pf("Caste certificate number", "casteCert", `value="${v("casteCert")}"`, false, false)}
           ${grp("Income")}
-          ${pf("Annual family income (₹)", "income", `inputmode="numeric" placeholder="180000" value="${v("income")}"`, false, false)}${pf("Income certificate number", "incomeCert", `value="${v("incomeCert")}"`, false, false)}
-          ${pf("Income certificate valid till", "incomeValid", `type="date" value="${v("incomeValid")}"`, false, false)}
+          ${pf("Income certificate number", "incomeCert", `value="${v("incomeCert")}"`, false, false)}
           ${grp("Scholarship")}
           ${psel("Scholarship eligible", "schEligible", ["No", "Yes"], opt("schEligible", "No"))}${pf("Scholarship scheme", "schScheme", `value="${v("schScheme")}" list="pa-sch"`, false, false)}${datalist("pa-sch", SCHEMES)}
           ${psel("Scholarship status", "schStatus", [["", "Select"], ...SCH_STATUS], opt("schStatus"))}
@@ -2965,27 +3034,36 @@
           ${pf("Roll number", "roll", `value="${v("roll")}"`)}${pf("Course", "course", `value="${v("course", "B.Tech")}"`, false, false)}
           ${pf("Branch", "branch", `value="${v("branch")}" list="pa-br" placeholder="CSE"`)}${datalist("pa-br", BRANCHES)}
           ${psel("Admission type", "admType", L.ADM, opt("admType", "Regular"))}
-          ${pf("Admission year", "admYear", `inputmode="numeric" maxlength="4" placeholder="Blank = worked out from the year" value="${v("admYear")}"`, false, false)}
+          ${psel("Admission year", "admYear", [["", "Select"], ...admYearOpts(opt("admYear"))], opt("admYear"))}
           ${psel("Current year", "curYear", YEAR_OPTS, opt("curYear", 1))}
           ${psel("Previous qualification", "prevQual", [["", "Select"], ["Inter", "Inter (regular)"], ["Diploma", "Diploma (lateral entry)"]], opt("prevQual"))}
           ${pf("Previous marks (%)", "prevPct", `inputmode="decimal" value="${v("prevPct")}"`, false, false)}
           ${pf("Class (optional)", "cls", `value="${v("cls")}" placeholder="Blank = course, branch and year"`, false, false)}${pf("Section", "sec", `value="${v("sec")}" placeholder="Sec A"`)}
+          ${s ? studentDocsFormHTML(s) : ""}
           ${s ? "" : pf("Password (optional)", "password", `type="text" placeholder="Welcome@123"`, false, false)}
           <p class="fineprint">Regular students study Year 1–4. Lateral entry students join directly in Year 2 and pay fees for Year 2–4 only.${s ? "" : " A new student gets Tuition and Affiliation fee lines for every year of the course."}</p>
-          ${formErr}<div class="x-acts"><button class="x-btn" type="submit">${s ? "Save profile" : "Add student"}</button><button type="button" class="x-sbtn" data-act="cancel">Cancel</button></div></form>`;
+          ${formErr}<div class="x-acts"><button class="x-btn" type="submit">${s ? "Save changes" : "Save"}</button><button type="button" class="x-sbtn" data-act="cancel">Cancel</button></div></form>`;
       }
 
       /* 1. Login */
       ROUTES["/portal"] = () => {
         const me = DB.me(), isA = UI.loginRole === "admin";
+        /* Student sign-in defaults to college + roll + password (the claim
+           model, 08); the email form stays one toggle away for accounts
+           registered earlier by email and for the demo accounts. */
+        const pwField = pf("Password", "password", `type="password" autocomplete="current-password"`, true);
+        const fields = isA
+          ? pf("Email", "email", `type="email" autocomplete="username" placeholder="admin@yourcollege.in"`, true) + pwField
+          : UI.stuMode === "email"
+            ? pf("Email", "email", `type="email" autocomplete="username" placeholder="you@example.com"`, true) + pwField + `<p class="fineprint">Claimed your account with your roll number? <button type="button" class="link" data-act="stuMode" data-id="roll">Sign in with your roll number instead</button></p>`
+            : psel("Your college", "college_id", [["", "Select"], ...DB.listColleges().map((c) => [c.id, `${c.name}, ${c.city}`])]) + pf("Or enter college code", "code", `placeholder="SHX-1001" autocapitalize="characters"`, false, false) + pf("Roll / admission number", "roll", `autocomplete="username" autocapitalize="characters"`) + pwField + `<p class="fineprint">Registered earlier with an email? <button type="button" class="link" data-act="stuMode" data-id="email">Sign in with email instead</button></p>`;
         dyn(portalCrumbs("Login") + titleHero("Shaalix Portal · Demo", "Sign in to your portal", "College admins run students, fees, attendance, marks and notices. Students see their own records.") + demoNote +
           (me ? `<aside class="callout" aria-label="Signed in"><p class="callout__head">Signed in</p><p class="callout__lead"><strong>You are signed in as ${esc(me.name)}.</strong> ${esc(me.college.name)}</p><div class="links"><a class="btn" href="#/portal/${me.role}">Open my dashboard</a><button type="button" class="btn" data-act="logout">Log out</button></div></aside>` : "") +
           `<div class="x-auth"><div>
             <form class="x-form" data-portal="login" novalidate aria-labelledby="pl-h">
               <h2 id="pl-h">Sign in</h2>
               ${tabs([["admin", "College Admin"], ["student", "Student"]], UI.loginRole, "role", "Sign in as")}
-              ${pf("Email", "email", `type="email" autocomplete="username" placeholder="${isA ? "admin@yourcollege.in" : "you@example.com"}"`, true)}
-              ${pf("Password", "password", `type="password" autocomplete="current-password"`, true)}
+              ${fields}
               ${formErr}
               <div class="x-acts"><button class="x-btn" type="submit">Sign in as ${isA ? "College Admin" : "Student"}</button></div>
               <p class="fineprint">New here? <a class="link" href="#/portal/register-college">Register your college</a> or <a class="link" href="#/portal/register-student">register as a student</a>.</p>
@@ -2997,7 +3075,7 @@
               ${[["admin", "College Admin", "srividya-admin@brandique.in", "Sri Vidya Institute of Technology · SHX-1001"], ["admin", "College Admin", "greenvalley-admin@brandique.in", "Green Valley College of Engineering · SHX-1002"], ["student", "Student, regular", "ravi@brandique.in", "B.Tech CSE · Year 3 · fees Year 1–4"], ["student", "Student, lateral entry", "lakshmi@brandique.in", "B.Tech ECE · Year 3 · joined in Year 2, fees Year 2–4"], ["student", "Student, pending", "anil@brandique.in", "Sri Vidya · waiting for approval"]].map(([r, l, e, c]) => `<tr><th scope="row">${l}</th><td>${e}</td><td class="muted">${c}</td><td><button type="button" class="x-sbtn" data-act="fill" data-role="${r}" data-id="${e}" aria-label="Use ${e}">Use</button></td></tr>`).join("")}
               </tbody></table></div>
             </div></details></div>
-            <div class="cards"><div><h3>What the demo shows</h3><ul><li>Admins approve students, manage full student profiles, collect year-wise B.Tech fees, mark attendance and enter marks.</li><li>Admins keep faculty records — education, position and salary — in the Faculty tab. Faculty do not sign in.</li><li>Students see only their own fees, attendance, marks and notices.</li><li>Each college sees only its own data.</li></ul></div></div>
+            <div class="cards"><div><h3>What the demo shows</h3><ul><li>Admins add student records, manage full student profiles, collect year-wise B.Tech fees, mark attendance and enter marks.</li><li>Admins keep faculty records — education, position and salary — in the Faculty tab. Faculty do not sign in.</li><li>Students see only their own fees, attendance, marks and notices.</li><li>Each college sees only its own data.</li></ul></div></div>
           </div></div>`);
       };
 
@@ -3019,25 +3097,29 @@
           <div class="x-acts"><button class="x-btn" type="submit">Register college</button><a class="x-sbtn" href="#/portal">I already have an account</a></div>
         </form>`);
 
-      /* 3. Register student */
-      ROUTES["/portal/register-student"] = () => dyn(portalCrumbs("Register student") + titleHero("Shaalix Portal · Demo", "Register as a student", "Your college approves your account before you can see your records.") + demoNote +
-        `<form class="x-form" data-portal="regStudent" novalidate aria-label="Register as a student">
+      /* 3. Claim your student account (08): the college office creates the
+         record first; the student activates a login for it. Step 1 finds the
+         record by college + roll, step 2 shows "Is this you?" and sets the
+         password. There is no self-registration form any more. */
+      ROUTES["/portal/register-student"] = () => {
+        const cl = UI.claim;
+        return void dyn(portalCrumbs("Claim your account") + titleHero("Shaalix Portal · Demo", "Claim your student account", "Your college office adds your record first. If your roll number is in your college's data, claim your login here.") + demoNote +
+        (cl ? `<div class="x-panel"><h2>Is this you?</h2><p><strong>${esc(cl.name)}</strong></p><p>${esc(cl.courseLine)} · ${esc(cl.college.name)}</p><p class="fineprint">Roll / admission number ${esc(cl.roll)} · ${esc(cl.college.name)}. Set a password to finish — afterwards you sign in with your college, this roll number and your password.</p>
+          <form class="x-form" data-portal="claimCreate" novalidate aria-label="Create my account">
+            ${pf("Password", "password", `type="password" autocomplete="new-password" minlength="8" aria-describedby="pw-hint"`)}
+            ${pf("Confirm password", "confirm", `type="password" autocomplete="new-password"`)}
+            <p class="fineprint" id="pw-hint">At least 8 characters.</p>
+            ${formErr}
+            <div class="x-acts"><button class="x-btn" type="submit">Create my account</button><button type="button" class="x-sbtn" data-act="claimReset">Not you? Start again</button></div>
+          </form></div>` :
+        `<form class="x-form" data-portal="claimFind" novalidate aria-label="Find my record">
           ${psel("Select your college", "college_id", [["", "Select"], ...DB.listColleges().map((c) => [c.id, `${c.name}, ${c.city}`])])}
           ${pf("Or enter college code", "code", `placeholder="SHX-1001" autocapitalize="characters"`, false, false)}
-          ${pf("Full name", "name", `autocomplete="name"`)}
-          ${pf("Roll / admission number", "roll")}
-          ${psel("Branch (B.Tech)", "branch", [["", "Select"], ...BRANCHES], "", "required")}
-          ${psel("Admission type", "admType", [["Regular", "Regular (Year 1–4)"], ["Lateral Entry", "Lateral Entry (joins in Year 2)"]], "Regular")}
-          ${psel("Current year", "curYear", YEAR_OPTS, 1)}
-          ${pf("Section", "sec", `placeholder="Sec A"`)}
-          ${pf("Email", "email", `type="email" autocomplete="email"`)}
-          ${pf("Phone", "phone", `type="tel" autocomplete="tel" placeholder="+91"`)}
-          ${pf("Password", "password", `type="password" autocomplete="new-password" minlength="8" aria-describedby="pw-hint"`)}
-          ${pf("Confirm password", "confirm", `type="password" autocomplete="new-password"`)}
-          <p class="fineprint" id="pw-hint">At least 8 characters. Your account starts as Pending approval.</p>
+          ${pf("Roll / admission number", "roll", `autocapitalize="characters"`)}
           ${formErr}
-          <div class="x-acts"><button class="x-btn" type="submit">Register</button><a class="x-sbtn" href="#/portal">I already have an account</a></div>
-        </form>`);
+          <div class="x-acts"><button class="x-btn" type="submit">Find my record</button><a class="x-sbtn" href="#/portal">I already have an account</a></div>
+        </form>`));
+      };
 
       /* 3b. Platform owner console: college registrations wait here for a decision (07) */
       let ownerLoading = false, ownerSig = "";
@@ -3113,7 +3195,7 @@
       function adminDocsHTML(pv) {
         const docs = DB.getDocuments(pv.id);
         const byKind = (k) => docs.filter((d) => d.kind === k);
-        return `<h3>Admission documents</h3><div class="x-tw"><table><thead><tr><th scope="col">Document</th><th scope="col">File</th><th scope="col">Status</th><th scope="col"><span class="x-sr">Actions</span></th></tr></thead><tbody>${DOC_KINDS_UI.map((k) => { const ds = byKind(k); if (!ds.length) return `<tr><th scope="row">${k}</th><td class="muted">Not uploaded</td><td>—</td><td></td></tr>`; return ds.map((d) => `<tr><th scope="row">${esc(d.kind)}</th><td>${esc(d.name)}<small>${fmtSize(d.size)} · ${fmtDT(d.at)}</small></td><td>${d.status === "Verified" ? `<span class="chip">Verified</span>` : d.status === "Rejected" ? `<span class="chip chip--solid">Rejected</span>` : `<span class="chip">Pending</span>`}</td><td><div class="x-acts">${d.data ? `<a class="x-sbtn" href="${d.data}" download="${esc(d.name)}">Download</a>` : ""}${d.status !== "Verified" ? `<button type="button" class="x-sbtn" data-act="docVerify" data-id="${d.id}">Verify</button>` : ""}${d.status !== "Rejected" ? `<button type="button" class="x-sbtn" data-act="docReject" data-id="${d.id}">Reject</button>` : ""}</div></td></tr>`).join(""); }).join("")}</tbody></table></div>`;
+        return `<h3>Admission documents</h3><div class="x-tw"><table><thead><tr><th scope="col">Document</th><th scope="col">File</th><th scope="col">Status</th><th scope="col"><span class="x-sr">Actions</span></th></tr></thead><tbody>${DOC_KINDS_UI.map((k) => { const ds = byKind(k); if (!ds.length) return `<tr><th scope="row">${k}</th><td class="muted">Not uploaded</td><td>—</td><td></td></tr>`; return ds.map((d) => `<tr><th scope="row">${esc(d.kind)}</th><td>${esc(d.name)}<small>${fmtSize(d.size)} · ${fmtDT(d.at)}</small></td><td>${docStatusChip(d)}</td><td><div class="x-acts">${d.data ? `<a class="x-sbtn" href="${d.data}" download="${esc(d.name)}">Download</a>` : ""}<button type="button" class="x-sbtn" data-act="docDel" data-id="${d.id}">Delete</button></div></td></tr>`).join(""); }).join("")}</tbody></table></div>`;
       }
       /* 4. Admin dashboard */
       const ADMIN_TABS = [["overview", "Overview"], ["students", "Students"], ["faculty", "Faculty"], ["fees", "Fees"], ["payments", "Payments"], ["attendance", "Attendance"], ["marks", "Marks"], ["notices", "Notices"], ["certs", "Certificates"], ["college", "College"], ["data", "Import / Export"]];
@@ -3125,17 +3207,15 @@
           return (UI.flash ? `<aside class="callout x-callout-wide" aria-label="Your college code"><p class="callout__head">College registered</p><p class="callout__lead"><strong>Your college code is ${esc(UI.flash)}.</strong> Share this code with your students so they can register.</p></aside>` : "") +
             `<h2>Overview</h2><section class="stats" aria-label="Key figures">
               <div class="stat"><span class="stat__fig">${o.students}</span><span class="stat__label">Students</span></div>
-              <div class="stat"><span class="stat__fig">${o.pending}</span><span class="stat__label">Pending approvals</span></div>
               <div class="stat"><span class="stat__fig">${inrShort(o.collected)}</span><span class="stat__label">Fees collected · ${inrShort(o.due)} due now · ${inrShort(o.upcoming)} upcoming</span></div>
               <div class="stat"><span class="stat__fig">${pctTxt(o.todayPct)}</span><span class="stat__label">Today's attendance${o.todayMarked ? "" : " · not marked"}</span></div>
             </section>` +
-            (o.pending ? `<p><button type="button" class="x-sbtn" data-act="goPending">Review ${o.pending} pending ${o.pending === 1 ? "student" : "students"}</button></p>` : "") +
             (DB.classSummary().length ? `<h3>By class</h3><div class="x-tw x-tw--s"><table><caption>Attendance for ${fmtM(todayISO().slice(0, 7))}</caption><thead><tr><th scope="col">Class</th><th scope="col">Students</th><th scope="col">Attendance</th><th scope="col">Fees due now</th></tr></thead><tbody>${DB.classSummary().map((r) => `<tr><th scope="row">${esc(r.cls)}</th><td>${r.students}</td><td class="num">${pctTxt(r.attPct)}</td><td class="num">${inr(r.due)}</td></tr>`).join("")}</tbody></table></div>`
               : `<p>No students yet. Share code <b>${esc(me.college.code)}</b>, or add students in the Students tab.</p>`);
         },
         students() {
           const s = UI.edit && UI.edit !== "new" ? DB.getStudents().find((x) => x.id === UI.edit) : null, pv = !UI.edit && UI.view ? DB.getStudents().find((x) => x.id === UI.view) : null;
-          return `<div class="x-phead"><div><h2>Students</h2></div><button type="button" class="x-btn" data-act="stuNew">Add student</button></div>` +
+          return `<div class="x-phead"><div><h2>Students</h2></div>${UI.edit ? "" : `<button type="button" class="x-btn" data-act="stuNew">Add student</button>`}</div>` +
             (UI.edit ? studentForm(s) : "") +
             (pv ? `<section class="x-stack x-profbox" data-admin-profile aria-labelledby="pa-prof-h"><div class="x-phead"><div><p class="x-kicker">Student profile</p><h3 id="pa-prof-h" tabindex="-1" data-prof-head>${esc(pv.name)}</h3><p>${esc(pv.roll)} · ${esc(courseLine(pv))}</p></div><div class="x-acts"><button type="button" class="x-btn" data-act="stuEdit" data-id="${pv.id}">Edit profile</button><button type="button" class="x-sbtn" data-act="viewClose">Close</button></div></div>${okMsg()}${photoHTML(pv)}<p><label class="x-sbtn x-file">${pv.photo ? "Replace photo" : "Upload photo"}<input type="file" class="x-sr" accept="image/*" data-upload="stuPhoto" aria-label="Upload photo for ${esc(pv.name)}" /></label></p>${profileView(pv)}${adminDocsHTML(pv)}${adminIdCardHTML(pv)}</section>` : "") +
             `<div class="x-bar">
@@ -3308,7 +3388,7 @@
       function studentsList() {
         const rows = DB.getStudents({ q: UI.sQ, cls: UI.sCls, status: UI.sStatus });
         if (!rows.length) return `<p>No students match.</p>`;
-        return `<div class="x-tw"><table><caption>${rows.length} ${rows.length === 1 ? "student" : "students"}</caption><thead><tr><th scope="col">Student</th><th scope="col">Roll</th><th scope="col">Course</th><th scope="col">Admission</th><th scope="col">Mobile</th><th scope="col">Status</th><th scope="col"><span class="x-sr">Actions</span></th></tr></thead><tbody>${rows.map((s) => `<tr data-stu="${esc(s.roll)}"${s.status === "pending" ? ` class="is-highlight"` : ""}><th scope="row">${s.photo ? `<img class="x-thumb" src="${s.photo}" alt="" />` : ""}${esc(s.name)}<small>${esc(s.email)}</small></th><td>${esc(s.roll)}</td><td>${esc(s.course)} ${esc(s.branch)}<small>Year ${s.curYear} · ${esc(s.sec)}</small></td><td>${s.admType === "Lateral Entry" ? `<span class="chip chip--solid">Lateral entry</span>` : `<span class="chip">Regular</span>`}</td><td>${esc(s.phone)}</td><td>${chipFor(s.status)}</td><td><div class="x-acts">${s.status !== "approved" ? `<button type="button" class="x-sbtn" data-act="approve" data-id="${s.id}" aria-label="Approve ${esc(s.name)}">Approve</button>` : ""}${s.status === "pending" ? `<button type="button" class="x-sbtn" data-act="reject" data-id="${s.id}" aria-label="Reject ${esc(s.name)}">Reject</button>` : ""}<button type="button" class="x-sbtn" data-act="stuView" data-id="${s.id}" aria-label="View profile of ${esc(s.name)}">Profile</button><button type="button" class="x-sbtn" data-act="stuEdit" data-id="${s.id}" aria-label="Edit ${esc(s.name)}">Edit</button>${delBtn("stuDel", s.id, s.name)}</div></td></tr>`).join("")}</tbody></table></div>`;
+        return `<div class="x-tw"><table><caption>${rows.length} ${rows.length === 1 ? "student" : "students"}</caption><thead><tr><th scope="col">Student</th><th scope="col">Roll</th><th scope="col">Course</th><th scope="col">Admission</th><th scope="col">Mobile</th><th scope="col">Status</th><th scope="col"><span class="x-sr">Actions</span></th></tr></thead><tbody>${rows.map((s) => `<tr data-stu="${esc(s.roll)}"><th scope="row">${s.photo ? `<img class="x-thumb" src="${s.photo}" alt="" />` : ""}${esc(s.name)}<small>${esc(s.email)}</small></th><td>${esc(s.roll)}</td><td>${esc(s.course)} ${esc(s.branch)}<small>Year ${s.curYear} · ${esc(s.sec)}</small></td><td>${s.admType === "Lateral Entry" ? `<span class="chip chip--solid">Lateral entry</span>` : `<span class="chip">Regular</span>`}</td><td>${esc(s.phone)}</td><td>${chipFor(s.status)}</td><td><div class="x-acts"><button type="button" class="x-sbtn" data-act="stuView" data-id="${s.id}" aria-label="View profile of ${esc(s.name)}">Profile</button><button type="button" class="x-sbtn" data-act="stuEdit" data-id="${s.id}" aria-label="Edit ${esc(s.name)}">Edit</button>${delBtn("stuDel", s.id, s.name)}</div></td></tr>`).join("")}</tbody></table></div>`;
       }
       function adminRcptModal() {
         if (!UI.rcpt) return "";
@@ -3350,7 +3430,7 @@
 
       function studentDocsHTML() {
         const docs = DB.myDocuments();
-        return `<h3>Admission documents</h3><p class="fineprint">Upload each document once. Your college office verifies them; the status shows here.</p><div class="x-tw"><table><thead><tr><th scope="col">Document</th><th scope="col">File</th><th scope="col">Status</th><th scope="col"><span class="x-sr">Actions</span></th></tr></thead><tbody>${DOC_KINDS_UI.map((k) => { const ds = docs.filter((d) => d.kind === k); const up = `<label class="x-sbtn x-file">Upload<input type="file" class="x-sr" data-upload="doc" data-kind="${esc(k)}" aria-label="Upload ${esc(k)}" /></label>`; if (!ds.length) return `<tr><th scope="row">${k}</th><td class="muted">Not uploaded</td><td>—</td><td>${up}</td></tr>`; return ds.map((d) => `<tr><th scope="row">${esc(d.kind)}</th><td>${esc(d.name)}<small>${fmtSize(d.size)} · ${fmtDT(d.at)}</small></td><td>${d.status === "Verified" ? `<span class="chip">Verified</span>` : d.status === "Rejected" ? `<span class="chip chip--solid">Rejected</span>` : `<span class="chip">Pending</span>`}</td><td><div class="x-acts">${d.data ? `<a class="x-sbtn" href="${d.data}" download="${esc(d.name)}">Download</a>` : ""}<button type="button" class="x-sbtn" data-act="docDel" data-id="${d.id}">Delete</button>${up}</div></td></tr>`).join(""); }).join("")}</tbody></table></div>`;
+        return `<h3>Admission documents</h3><p class="fineprint">Your college office uploads your admission documents; you can view them and their status here.</p><div class="x-tw"><table><thead><tr><th scope="col">Document</th><th scope="col">File</th><th scope="col">Status</th><th scope="col"><span class="x-sr">Actions</span></th></tr></thead><tbody>${DOC_KINDS_UI.map((k) => { const ds = docs.filter((d) => d.kind === k); if (!ds.length) return `<tr><th scope="row">${k}</th><td class="muted">Not uploaded</td><td>—</td><td></td></tr>`; return ds.map((d) => `<tr><th scope="row">${esc(d.kind)}</th><td>${esc(d.name)}<small>${fmtSize(d.size)} · ${fmtDT(d.at)}</small></td><td>${docStatusChip(d)}</td><td>${d.data ? `<a class="x-sbtn" href="${d.data}" download="${esc(d.name)}">Download</a>` : ""}</td></tr>`).join(""); }).join("")}</tbody></table></div>`;
       }
       function studentCertsHTML() {
         const certs = DB.myCertificates(), issued = certs.filter((x) => x.status === "Issued"), reqs = certs.filter((x) => x.status === "Requested");
@@ -3732,14 +3812,35 @@
         return el;
       };
       const FORMS = {
-        async login(f, d) { const s = await DB.login(UI.loginRole, d.email, d.password); const role = UI.loginRole; UI = UI0(); UI.loginRole = role; go("/portal/" + s.role); },
+        async login(f, d) {
+          const role = UI.loginRole;
+          const s = role === "student" && UI.stuMode === "roll"
+            ? await DB.loginByRoll({ college_id: d.college_id, code: d.code }, d.roll, d.password)
+            : await DB.login(role, d.email, d.password);
+          UI = UI0(); UI.loginRole = role; go("/portal/" + s.role);
+        },
         async regCollege(f, d) { const c = await DB.registerCollege(d); UI = UI0(); UI.flash = c.code; go("/portal/admin"); },
-        async regStudent(f, d) { await DB.registerStudent(d); UI = UI0(); UI.loginRole = "student"; go("/portal/student"); },
+        async claimFind(f, d) { UI.claim = await DB.findClaim(d); paint(); },
+        async claimCreate(f, d) { const c = UI.claim; await DB.claimStudent({ college_id: c.college.id, roll: c.roll, password: d.password, confirm: d.confirm }); UI = UI0(); UI.loginRole = "student"; go("/portal/student"); },
         async ownerLogin(f, d) { await DB.ownerLogin(d.email, d.password); UI = UI0(); go("/portal/owner"); },
         async ownerRegister(f, d) { await DB.ownerRegister(d); UI = UI0(); UI.oMsg = "Owner account created. College registrations will wait here for your decision."; go("/portal/owner"); },
-        student(f, d) {
-          if (UI.edit === "new") { const s = DB.addStudent(d); UI.msg = `${s.name} added and approved. Password: ${d.password || "Welcome@123"}.`; }
-          else { const s = DB.updateStudent(UI.edit, d); UI.msg = `${s.name}'s profile saved.`; UI.view = s.id; UI.showAad = false; }
+        async student(f, d) {
+          /* Staged admission documents (edit form only): the picked files sit
+             in the form's file inputs until this submit runs — selecting a
+             file never writes anything by itself. */
+          const staged = [];
+          if (UI.edit && UI.edit !== "new") {
+            for (const input of f.querySelectorAll("[data-stage-doc]")) {
+              const file = input.files && input.files[0]; if (!file) continue;
+              const data = await new Promise((done) => { if (file.type && file.type.startsWith("image/")) readScaled(file, 1024, false, done); else readPlain(file, done); });
+              staged.push({ kind: input.dataset.stageDoc, name: file.name, size: file.size, mime: file.type, data });
+            }
+          }
+          let s;
+          if (UI.edit === "new") { s = DB.addStudent(d); UI.msg = `${s.name} added and approved. Password: ${d.password || "Welcome@123"}.`; }
+          else { s = DB.updateStudent(UI.edit, d); UI.msg = `${s.name}'s profile saved.`; UI.view = s.id; UI.showAad = false; }
+          for (const doc of staged) DB.replaceDocument({ student_id: s.id, ...doc });
+          if (staged.length) UI.msg += ` ${staged.length} admission ${staged.length === 1 ? "document" : "documents"} saved as Verified.`;
           const back = UI.edit === "new"; UI.edit = null; paint(back ? '[data-act="stuNew"]' : "#v-dyn [data-prof-head]");
         },
         faculty(f, d) { const r = DB.addFaculty(d); UI.msg = `Faculty record added · ${r.name} · ${r.dept}.`; paint('[data-portal="faculty"] [type="submit"]'); },
@@ -3783,11 +3884,12 @@
         ownerReject(id) { if (UI.oConfirm !== "r:" + id) { UI.oConfirm = "r:" + id; UI.oMsg = ""; paint(); return; } UI.oConfirm = null; return DB.ownerSetStatus(id, "rejected").then(() => { UI.oMsg = "College registration rejected."; paint(); }); },
         ownerConfirmCancel() { UI.oConfirm = null; paint(); },
         role(id) { UI.loginRole = id; paint(`[data-act="role"][data-id="${id}"]`); },
-        fill(email, b) { UI.loginRole = b.dataset.role; paint(); const lf = document.querySelector('#v-dyn form[data-portal="login"]'); if (lf) { const em = lf.querySelector('[name="email"]'), pw = lf.querySelector('[name="password"]'); if (em) em.value = email; if (pw) pw.value = "Demo@1234"; const sb = lf.querySelector('button[type="submit"]'); if (sb) sb.focus(); } },
+        stuMode(id) { UI.stuMode = id; paint(); },
+        claimReset() { UI.claim = null; paint(); },
+        fill(email, b) { UI.loginRole = b.dataset.role; if (b.dataset.role === "student") UI.stuMode = "email"; paint(); const lf = document.querySelector('#v-dyn form[data-portal="login"]'); if (lf) { const em = lf.querySelector('[name="email"]'), pw = lf.querySelector('[name="password"]'); if (em) em.value = email; if (pw) pw.value = "Demo@1234"; const sb = lf.querySelector('button[type="submit"]'); if (sb) sb.focus(); } },
         tab(id) { Object.assign(UI, { tab: id, msg: "", edit: null, confirm: null, feeEdit: null, pay: null, rcpt: null, note: "", imp: null, impErr: "", impResult: null, view: null, showAad: false }); paint(`[data-act="tab"][data-id="${id}"]`); },
         stab(id) { UI.stab = id; UI.msg = ""; paint(`[data-act="stab"][data-id="${id}"]`); },
         facDel(id) { const f = DB.removeFaculty(id); UI.confirm = null; UI.msg = `${f.name} removed from faculty.`; paint(); },
-        goPending() { Object.assign(UI, { tab: "students", sStatus: "pending", sQ: "", sCls: "", msg: "" }); paint('[data-act="tab"][data-id="students"]'); },
         stuNew() { Object.assign(UI, { edit: "new", msg: "", view: null }); paint(); },
         stuEdit(id) { Object.assign(UI, { edit: id, msg: "", view: null }); paint(); },
         stuView(id) { Object.assign(UI, { view: id, edit: null, msg: "", showAad: false }); paint("#v-dyn [data-prof-head]"); },
@@ -3797,8 +3899,6 @@
         contactEdit() { Object.assign(UI, { contactEdit: true, pmsg: "" }); paint(); },
         contactCancel() { UI.contactEdit = false; paint('#v-dyn [data-act="contactEdit"]'); },
         cancel() { Object.assign(UI, { edit: null, feeEdit: null, pay: null }); paint(); },
-        approve(id) { const s = DB.setStudentStatus(id, "approved"); UI.msg = `${s.name} approved. They can now see their records.`; paint(); },
-        reject(id) { const s = DB.setStudentStatus(id, "rejected"); UI.msg = `${s.name} rejected.`; paint(); },
         askDel(id) { UI.confirm = id; paint(`[data-id="${id}"][data-focus-after]`); },
         cancelDel() { UI.confirm = null; paint(); },
         stuDel(id) { DB.removeStudent(id); UI.confirm = null; UI.msg = "Student removed, with their fees, attendance and marks."; paint(); },
@@ -3822,9 +3922,7 @@
         allP() { document.querySelectorAll('#v-dyn [data-portal="att"] input[type=radio][value="P"]').forEach((r) => (r.checked = true)); },
         logoRemove() { DB.updateCollege({ logo: "" }); UI.msg = "College logo removed."; paint(); },
         noticeAttClear() { const f = document.querySelector('#v-dyn [data-portal="notice"]'); if (f) { UI.noticeTitle = f.title.value; UI.noticeText = f.text.value; } UI.noticeAtt = null; paint(); },
-        docVerify(id) { const d = DB.verifyDocument(id, "Verified"); UI.msg = `${d.kind} of the student marked Verified.`; paint(); },
-        docReject(id) { const d = DB.verifyDocument(id, "Rejected"); UI.msg = `${d.kind} marked Rejected.`; paint(); },
-        docDel(id) { DB.removeDocument(id); UI.pmsg = "Document deleted."; paint(); },
+        docDel(id) { const d = DB.removeDocument(id); if (DB.me() && DB.me().role === "admin") UI.msg = `${d.kind} deleted.`; else UI.pmsg = "Document deleted."; paint(); },
         certIssue(id) { const ct = DB.issueCertRequest(id); UI.msg = `${ct.type} issued · ${ct.serial}.`; paint(); },
         certPrint(id) {
           const me = DB.me(), list = me.role === "admin" ? DB.getCertificates() : DB.myCertificates(), ct = list.find((x) => x.id === id); if (!ct) return;
@@ -3892,6 +3990,7 @@
       });
       document.addEventListener("change", (e) => {
         const el = e.target; if (!el.closest || !el.closest("#v-dyn")) return;
+        if (el.matches("[data-stage-doc]")) { const file = el.files && el.files[0], cell = el.closest("td"), note = cell && cell.querySelector("[data-stage-note]"); if (note) note.textContent = file ? `Selected: ${file.name} · ${fmtSize(file.size)} — saved only when you click Save changes.` : ""; return; }
         if (el.matches("input[type=file][data-import]")) { const file = el.files && el.files[0]; readImport(file); el.value = ""; return; }
         if (el.name === "impMode" && UI.imp) { UI.impMode = el.value === "replace" ? "replace" : "merge"; paint(`#v-dyn input[name="impMode"][value="${UI.impMode}"]`); return; }
         if (el.matches("[data-pm-mode]") && UI.pm) {
