@@ -1948,24 +1948,41 @@
             startSession(self);
             return clone(T.students.find((x) => x.id === f.rec.student_id));
           },
-          /* Roll sign-in: college + roll + password, deriving the same
-             synthetic email the claim created. Every credential failure is
-             the same generic message — which part was wrong is never said. */
-          async loginByRoll(ref, roll, password) {
-            if (!tx(roll)) fail("Required.", "roll");
+          /* Student sign-in (10-student-login-resolve.sql): ONE identifier
+             field — the email on the college record OR the Roll / admission
+             number. resolve_student_login matches it against approved
+             colleges' records and answers which Auth email to sign in with
+             (a claimed account's own login email — the synthetic claim
+             email when the record's email was typed) or why not:
+             not_registered (a record exists but nobody claimed it),
+             ambiguous (claimed in more than one college), not_found (no
+             record at all). 'direct' means an email no record carries —
+             demo/legacy accounts sign in with the typed address itself.
+             Every credential failure is the same generic message. If the
+             RPC is missing (pre-10 deployment), an email identifier falls
+             back to the old direct sign-in; a roll cannot be resolved
+             without it and gets the generic error. */
+          async loginByIdentifier(identifier, password) {
+            const idf = tx(identifier);
+            if (!idf) fail("Required.", "identifier");
             if (!password) fail("Required.", "password");
-            if (!sb) fail("The portal cannot reach its server right now. Check your connection and try again.", "roll");
-            ref = ref || {};
-            if (!tx(ref.code) && !ref.college_id) fail("Pick your college or enter its code.", "college_id");
-            const G = "Wrong roll number or password.";
-            let college = null;
-            const code = tx(ref.code).toUpperCase();
-            if (code) { try { const { data, error } = await sb.rpc("find_college_by_code", { p_code: code }); if (!error) college = data && data[0]; } catch (_) { /* fall through to the generic error */ } }
-            if (!college && ref.college_id) college = collegeDir.find((c) => c.id === ref.college_id) || await directCollege("id", ref.college_id);
-            if (college && college.status && college.status !== "approved") college = null;
-            if (!college) fail(G, "password");
+            if (!sb) fail("The portal cannot reach its server right now. Check your connection and try again.", "identifier");
+            const G = "Incorrect email / roll number or password.";
+            let row = null;
+            try { const r = await sb.rpc("resolve_student_login", { p_identifier: idf }); if (!r.error && r.data && r.data[0]) row = r.data[0]; } catch (_) { /* RPC missing: fall back below */ }
+            let authEmail = null;
+            if (row) {
+              if (row.status === "not_registered") fail("You have not registered yet. Please register first.", "identifier");
+              if (row.status === "ambiguous") fail("This was found in more than one college. Please sign in with your email instead.", "identifier");
+              if (row.status === "not_found") fail(G, "identifier");
+              authEmail = row.auth_email; // 'ok' or 'direct'
+            } else {
+              if (!idf.includes("@")) fail(G, "identifier");
+              authEmail = idf;
+            }
+            if (!authEmail) fail(G, "identifier");
             await syncChain; // flush the previous session's writes before switching accounts
-            const { data, error } = await sb.auth.signInWithPassword({ email: synthStudentEmail(college.code, roll), password: String(password) });
+            const { data, error } = await sb.auth.signInWithPassword({ email: lc(authEmail), password: String(password) });
             if (error || !data || !data.user) fail(G, "password");
             const prof = await fetchProfile(data.user.id);
             if (!prof || prof.role !== "student") { await sb.auth.signOut(); fail(G, "password"); }
@@ -1985,7 +2002,7 @@
             const self = await loadAll(prof);
             return startSession(self);
           },
-          logout() { session = null; T = blank(); collegeDir = []; saveSession(); if (sb) syncChain = syncChain.then(() => sb.auth.signOut()).catch(() => {}); },
+          logout() { session = null; T = blank(); collegeDir = []; saveSession(); refreshCollegeDir(); if (sb) syncChain = syncChain.then(() => sb.auth.signOut()).catch(() => {}); },
           /* ----- Platform owner (07-college-approval.sql) -----
              The owner is NOT a college session: no loadAll, no T, no sync.
              The console reads and writes colleges/profiles with direct
@@ -2706,10 +2723,10 @@
         }
         async function fetchProfile(userId) { const { data, error } = await sb.from("profiles").select("*").eq("id", userId).single(); return error ? null : data; }
         /* Claim support (08): directCollege is the session fallback for
-           resolving a college (the code RPC is the logged-out path);
-           resolveClaimCollege resolves the college and claimVerdict owns
-           the find_student_for_claim verdict, translating the record's
-           state into the claim page's exact errors. */
+           resolving a college the directory has not listed;
+           resolveClaimCollege resolves the picked college and claimVerdict
+           owns the find_student_for_claim verdict, translating the
+           record's state into the claim page's exact errors. */
         async function directCollege(field, value) {
           let hasSession = !!session;
           if (!hasSession && sb && sb.auth && sb.auth.getSession) {
@@ -2719,23 +2736,25 @@
           const { data } = await sb.from("colleges").select("id,name,code,city,status").eq(field, value);
           return data && data[0];
         }
-        /* Step 1's college resolution: code first (find_college_by_code is
-           the logged-out path), then the picked college via the directory
-           or the session fallback. */
+        /* Step 1's college resolution (10): the claim page only SELECTS a
+           college from the dropdown — there is no code field any more. The
+           dropdown is fed by list_colleges_dir (approved colleges only);
+           the session fallback (directCollege) can still resolve a row the
+           directory has not listed, so hold every path to the same
+           approved-only rule. */
         async function resolveClaimCollege(ref) {
-          const code = tx(ref.code).toUpperCase();
           let college = null;
-          if (code) {
-            try { const { data, error } = await sb.rpc("find_college_by_code", { p_code: code }); if (!error) college = data && data[0]; } catch (_) { /* RPC missing: the session fallback below may still resolve it */ }
-            if (!college) college = await directCollege("code", code);
-          } else if (ref.college_id) {
-            college = collegeDir.find((c) => c.id === ref.college_id) || await directCollege("id", ref.college_id);
+          if (ref.college_id) {
+            college = collegeDir.find((c) => c.id === ref.college_id) || null;
+            /* The in-memory directory can be stale or empty (logout clears
+               it; a signed-in session narrows it to its own college):
+               re-fetch the public directory once before the session
+               fallback / refusing the pick. */
+            if (!college && sb) { await refreshCollegeDir(); college = collegeDir.find((c) => c.id === ref.college_id) || null; }
+            if (!college) college = await directCollege("id", ref.college_id);
           }
-          /* The lookup RPC returns approved colleges only; the other paths
-             can see pending/rejected rows, so hold them to the same rule. */
-          if (college && college.status && college.status !== "approved") college = null;
-          if (!college) fail(code ? "No college has this code. Check it with your college office." : "Pick your college or enter its code.", code ? "code" : "college_id");
-          if (ref.college_id && code && ref.college_id !== college.id) fail("The code does not match the college you picked.", "code");
+          if (!college) fail("Select your college.", "college_id");
+          if (college.status && college.status !== "approved") fail("This college is not accepting claims yet. Please check with your college office.", "college_id");
           return college;
         }
         /* The find_student_for_claim verdict for an already-resolved
@@ -2748,7 +2767,7 @@
           const { data, error } = await sb.rpc("find_student_for_claim", { p_college_id: college.id, p_roll: tx(roll) });
           if (error) { console.error("[shaalix] claim lookup failed", error); fail("Your record could not be checked right now. Please try again.", "roll"); }
           const row = data && data[0];
-          if (!row) fail("This roll number is not in the college's records. Please contact your college office.", "roll");
+          if (!row) fail("Incorrect college or Roll / admission number. Please check with your college office.", "roll");
           if (row.claimed) fail("An account already exists for this roll number. Please sign in.", "roll");
           if (row.status === "pending") fail("Your record is waiting for your college's approval. Please try after they approve it.", "roll");
           if (row.status === "rejected") fail("Your record was not approved. Please contact your college office.", "roll");
@@ -2912,7 +2931,7 @@
       const fmtM = (ym) => parseISO(ym + "-01").toLocaleDateString("en-IN", { month: "long", year: "numeric" });
       const pctTxt = (p) => (p === null || p === undefined ? "—" : p + "%");
       const lastMonths = (n) => { const out = []; const d = parseISO(todayISO()); for (let i = 0; i < n; i++) { const t = new Date(d.getFullYear(), d.getMonth() - i, 1); out.push(`${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}`); } return out; };
-      const UI0 = () => ({ loginRole: "admin", tab: "overview", stab: "overview", flash: null, msg: "", sQ: "", sCls: "", sStatus: "", edit: null, confirm: null, feeStu: "", feeSt: "", feeEdit: null, pay: null, attDate: todayISO(), attCls: "", attMonth: todayISO().slice(0, 7), mExam: "Unit Test 1", mCls: "", mSub: "", mMax: "", mAtt: "Regular", memoStu: "", payStu: "", pm: null, rcpt: null, noticeAtt: null, noticeTitle: "", noticeText: "", imp: null, impMode: "merge", impErr: "", impBusy: false, impResult: null, note: "", feeYear: "", feeQ: "", view: null, showAad: false, contactEdit: false, pmsg: "", oConfirm: null, oMsg: "", stuMode: "roll", claim: null, claimNote: "" });
+      const UI0 = () => ({ loginRole: "admin", tab: "overview", stab: "overview", flash: null, msg: "", sQ: "", sCls: "", sStatus: "", edit: null, confirm: null, feeStu: "", feeSt: "", feeEdit: null, pay: null, attDate: todayISO(), attCls: "", attMonth: todayISO().slice(0, 7), mExam: "Unit Test 1", mCls: "", mSub: "", mMax: "", mAtt: "Regular", memoStu: "", payStu: "", pm: null, rcpt: null, noticeAtt: null, noticeTitle: "", noticeText: "", imp: null, impMode: "merge", impErr: "", impBusy: false, impResult: null, note: "", feeYear: "", feeQ: "", view: null, showAad: false, contactEdit: false, pmsg: "", oConfirm: null, oMsg: "", claim: null, claimNote: "" });
       let UI = UI0();
       const demoNote = `<p class="x-note" role="note">Live mode: data is saved securely to the cloud. Sign in from any device to see the same records.</p>`;
       const pf = (label, nm, attrs = "", full = false, req = true) => `<label class="x-f${full ? " x-f--full" : ""}">${label}<input name="${nm}" ${attrs}${req ? " required" : ""} /><small class="x-err"></small></label>`;
@@ -3103,15 +3122,14 @@
       /* 1. Login */
       ROUTES["/portal"] = () => {
         const me = DB.me(), isA = UI.loginRole === "admin";
-        /* Student sign-in defaults to college + roll + password (the claim
-           model, 08); the email form stays one toggle away for accounts
-           registered earlier by email and for the demo accounts. */
+        /* Student sign-in (10): ONE identifier field — the email on the
+           college record or the Roll / admission number; no college
+           picker, no mode toggle. resolve_student_login works out which
+           account it belongs to. */
         const pwField = pf("Password", "password", `type="password" autocomplete="current-password"`, true);
         const fields = isA
           ? pf("Email", "email", `type="email" autocomplete="username" placeholder="admin@yourcollege.in"`, true) + pwField
-          : UI.stuMode === "email"
-            ? pf("Email", "email", `type="email" autocomplete="username" placeholder="you@example.com"`, true) + pwField + `<p class="fineprint">Claimed your account with your roll number? <button type="button" class="link" data-act="stuMode" data-id="roll">Sign in with your roll number instead</button></p>`
-            : psel("Your college", "college_id", [["", "Select"], ...DB.listColleges().map((c) => [c.id, `${c.name}, ${c.city}`])]) + pf("Or enter college code", "code", `placeholder="SHX-1001" autocapitalize="characters"`, false, false) + pf("Roll / admission number", "roll", `autocomplete="username" autocapitalize="characters"`) + pwField + `<p class="fineprint">Registered earlier with an email? <button type="button" class="link" data-act="stuMode" data-id="email">Sign in with email instead</button></p>`;
+          : pf("Email or Roll / admission number", "identifier", `autocomplete="username" placeholder="you@example.com or 24XX1A0000" autocapitalize="characters"`, true) + pwField + `<p class="fineprint">Not registered yet? <a class="link" href="#/portal/register-student">Register / claim your account</a></p>`;
         dyn(portalCrumbs("Login") + titleHero("Shaalix Portal · Demo", "Sign in to your portal", "College admins run students, fees, attendance, marks and notices. Students see their own records.") + demoNote +
           (me ? `<aside class="callout" aria-label="Signed in"><p class="callout__head">Signed in</p><p class="callout__lead"><strong>You are signed in as ${esc(me.name)}.</strong> ${esc(me.college.name)}</p><div class="links"><a class="btn" href="#/portal/${me.role}">Open my dashboard</a><button type="button" class="btn" data-act="logout">Log out</button></div></aside>` : "") +
           `<div class="x-auth"><div>
@@ -3159,7 +3177,7 @@
       ROUTES["/portal/register-student"] = () => {
         const cl = UI.claim;
         return void dyn(portalCrumbs("Claim your account") + titleHero("Shaalix Portal · Demo", "Claim your student account", "Your college office adds your record first. If your roll number is in your college's data, claim your login here.") + demoNote +
-        (cl ? `<div class="x-panel"><h2>Is this you?</h2><p><strong>${esc(cl.name)}</strong></p><p>${esc(cl.courseLine)} · ${esc(cl.college.name)}</p><p class="fineprint">Roll / admission number ${esc(cl.roll)} · ${esc(cl.college.name)}. Set a password to finish — afterwards you sign in with your college, this roll number and your password.</p>
+        (cl ? `<div class="x-panel"><h2>Is this you?</h2><p><strong>${esc(cl.name)}</strong></p><p>${esc(cl.courseLine)} · ${esc(cl.college.name)}</p><p class="fineprint">Roll / admission number ${esc(cl.roll)} · ${esc(cl.college.name)}. Set a password to finish — afterwards you sign in with this roll number (or the email on your college record) and your password.</p>
           <form class="x-form" data-portal="claimCreate" novalidate aria-label="Create my account">
             ${pf("Password", "password", `type="password" autocomplete="new-password" minlength="8" aria-describedby="pw-hint"`)}
             ${pf("Confirm password", "confirm", `type="password" autocomplete="new-password"`)}
@@ -3170,7 +3188,6 @@
         `<form class="x-form" data-portal="claimFind" novalidate aria-label="Find my record">
           ${UI.claimNote ? `<p class="x-err" role="alert">${esc(UI.claimNote)}</p>` : ""}
           ${psel("Select your college", "college_id", [["", "Select"], ...DB.listColleges().map((c) => [c.id, `${c.name}, ${c.city}`])])}
-          ${pf("Or enter college code", "code", `placeholder="SHX-1001" autocapitalize="characters"`, false, false)}
           ${pf("Roll / admission number", "roll", `autocapitalize="characters"`)}
           ${formErr}
           <div class="x-acts"><button class="x-btn" type="submit">Find my record</button><a class="x-sbtn" href="#/portal">I already have an account</a></div>
@@ -3871,8 +3888,8 @@
       const FORMS = {
         async login(f, d) {
           const role = UI.loginRole;
-          const s = role === "student" && UI.stuMode === "roll"
-            ? await DB.loginByRoll({ college_id: d.college_id, code: d.code }, d.roll, d.password)
+          const s = role === "student"
+            ? await DB.loginByIdentifier(d.identifier, d.password)
             : await DB.login(role, d.email, d.password);
           UI = UI0(); UI.loginRole = role; go("/portal/" + s.role);
         },
@@ -3950,9 +3967,8 @@
         ownerReject(id) { if (UI.oConfirm !== "r:" + id) { UI.oConfirm = "r:" + id; UI.oMsg = ""; paint(); return; } UI.oConfirm = null; return DB.ownerSetStatus(id, "rejected").then(() => { UI.oMsg = "College registration rejected."; paint(); }); },
         ownerConfirmCancel() { UI.oConfirm = null; paint(); },
         role(id) { UI.loginRole = id; paint(`[data-act="role"][data-id="${id}"]`); },
-        stuMode(id) { UI.stuMode = id; paint(); },
         claimReset() { UI.claim = null; UI.claimNote = ""; paint(); },
-        fill(email, b) { UI.loginRole = b.dataset.role; if (b.dataset.role === "student") UI.stuMode = "email"; paint(); const lf = document.querySelector('#v-dyn form[data-portal="login"]'); if (lf) { const em = lf.querySelector('[name="email"]'), pw = lf.querySelector('[name="password"]'); if (em) em.value = email; if (pw) pw.value = "Demo@1234"; const sb = lf.querySelector('button[type="submit"]'); if (sb) sb.focus(); } },
+        fill(email, b) { UI.loginRole = b.dataset.role; paint(); const lf = document.querySelector('#v-dyn form[data-portal="login"]'); if (lf) { const em = lf.querySelector('[name="email"]') || lf.querySelector('[name="identifier"]'), pw = lf.querySelector('[name="password"]'); if (em) em.value = email; if (pw) pw.value = "Demo@1234"; const sb = lf.querySelector('button[type="submit"]'); if (sb) sb.focus(); } },
         tab(id) { Object.assign(UI, { tab: id, msg: "", edit: null, confirm: null, feeEdit: null, pay: null, rcpt: null, note: "", imp: null, impErr: "", impResult: null, view: null, showAad: false }); paint(`[data-act="tab"][data-id="${id}"]`); },
         stab(id) { UI.stab = id; UI.msg = ""; paint(`[data-act="stab"][data-id="${id}"]`); },
         facDel(id) { const f = DB.removeFaculty(id); UI.confirm = null; UI.msg = `${f.name} removed from faculty.`; paint(); },

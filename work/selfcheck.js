@@ -32,10 +32,11 @@
 //  7. Student claim (08-student-claim.sql): self-registration is gone.
 //     Where the old check registered a student by code, the college office
 //     now adds the record (DB.addStudent) and the student claims it
-//     (DB.findClaim / DB.claimStudent), then signs back in by roll
-//     (DB.loginByRoll). The stub emulates find_student_for_claim + the
-//     claim profile-insert rule, and the fixture carries one approved,
-//     unclaimed Green Valley record (Suresh Menon, 24GV1A0502).
+//     (DB.findClaim / DB.claimStudent), then signs back in with the single
+//     identifier field (DB.loginByIdentifier, 10). The stub emulates
+//     find_student_for_claim + the claim profile-insert rule, and the
+//     fixture carries one approved, unclaimed Green Valley record
+//     (Suresh Menon, 24GV1A0502).
 //  8. Admin student profile / add / edit render as popup cards (.x-smodal)
 //     over the blurred Students list (the list stays rendered underneath).
 //     The edit lifecycle discards via ACTS.stuBack (the popup's back arrow,
@@ -50,6 +51,14 @@
 //     stored state — and asserts a no-stored-state refusal. The logged-out
 //     college directory now comes from the list_colleges_dir RPC, which
 //     the stub emulates (approved colleges only, name order).
+// 10. Student sign-in simplification (10-student-login-resolve.sql): the
+//     claim page loses its college code field (dropdown only), and the
+//     student login is ONE "Email or Roll / admission number" field —
+//     DB.loginByIdentifier resolves it through the resolve_student_login
+//     RPC (stub-emulated: ok / not_registered / ambiguous / direct /
+//     not_found). The new-college section signs the claimed student back
+//     in by roll AND by the email on the college record, and the login
+//     render asserts carry no college picker, code field or mode toggle.
 const fs = require("fs"), vm = require("vm"), path = require("path");
 const { createStub } = require("./sb-stub.js");
 const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, "demo-fixture.json"), "utf8"));
@@ -194,19 +203,19 @@ if (!/Ravi/.test(studentHtml) || /Lakshmi/.test(studentHtml)) fails.push("Studen
 await expectErr("Student cannot list students", () => DB.getStudents());
 await expectErr("Student cannot write fees", () => DB.upsertFee({ year: 1, type: "Tuition", amount: 1, due: "2026-01-01" }));
 await expectErr("Student cannot edit a full profile", () => DB.updateStudent(DB.me().student.id, { name: "X" }));
-await DB.settle(); await DB.login("student", "anil@srividya.demo", "Demo@1234");
+await DB.settle(); await DB.loginByIdentifier("anil@srividya.demo", "Demo@1234");
 if (!/Waiting for your college to approve/.test(renderAs("student/pending", "/portal/student"))) fails.push("Pending student does not see the waiting message");
 await expectErr("Pending student cannot read fees", () => DB.myFees());
 await expectErr("Pending student cannot edit contact", () => DB.updateMyContact({ phone: "9876543210", email: "anil2@x.in", address: "x" }));
 // New college flow (07): registration is a REQUEST — the college starts pending,
 // its admin sees the waiting screen, students cannot join yet; the platform
-// owner approves it in the owner console, then the usual flow resumes
-// (student joins by code, college admin approves the student).
+// owner approves it in the owner console, then the office adds records and
+// students claim them (08).
 const c = await DB.registerCollege({ name: "Test College", type: "Engineering", city: "Vizag", state: "AP", admin: "T", email: "t@test.in", phone: "9876543210", password: "abcdefgh", confirm: "abcdefgh" });
 if (!/^SHX-\d{4}$/.test(c.code)) fails.push("College code format: " + c.code);
 if (c.status !== "pending") fails.push("New college should start pending owner approval, got: " + c.status);
 if (!/Registration submitted/.test(renderAs("admin/new-college-waiting", "/portal/admin"))) fails.push("Pending college admin does not see the waiting screen");
-await expectErr("Student cannot claim into a pending college", () => DB.findClaim({ code: c.code, roll: "0" }), "code");
+await expectErr("Student cannot claim into a pending college", () => DB.findClaim({ college_id: c.id, roll: "0" }), "roll");
 // Owner console: the request is listed with the admin's contact details
 await DB.settle(); await DB.ownerLogin("mohan@shaalix.com", "Owner@1234");
 const ostate = DB.ownerState();
@@ -234,38 +243,60 @@ const nsYears = DB.getFees(ns.id).map((f) => f.yearLabel + " " + f.type).join(",
 if (nsYears !== "Year 2 Tuition,Year 2 Affiliation,Year 3 Tuition,Year 3 Affiliation,Year 4 Tuition,Year 4 Affiliation") fails.push("Office-added lateral student should get Year 2-4 fees: " + nsYears);
 await DB.settle(); // the office record must reach the backend before the claim lookup reads it
 DB.logout();
-const foundC = await DB.findClaim({ code: c.code, roll: "1" });
+const foundC = await DB.findClaim({ college_id: c.id, roll: "1" });
 if (foundC.student_id !== ns.id || foundC.name !== "New S") fails.push("Claim lookup did not find the office record");
 // Fix 09 (the live bug): the create step gets the stored lookup + passwords
-// only — no college_id/code/roll fields are re-supplied, exactly like the
-// real claimCreate form — and a create with no stored lookup is refused.
+// only — no college/roll fields are re-supplied, exactly like the real
+// claimCreate form — and a create with no stored lookup is refused.
 await expectErr("Claim create without a stored lookup", () => DB.claimStudent(null, { password: "abcdefgh", confirm: "abcdefgh" }), "roll");
 await DB.claimStudent(foundC, { password: "abcdefgh", confirm: "abcdefgh" });
 if (DB.me().student.id !== ns.id || DB.me().student.status !== "approved") fails.push("Claimed student should land approved on the office record");
 if (DB.me().student.cls !== "B.Tech CSE 2nd Year") fails.push("Class should be derived from course, branch and year: " + DB.me().student.cls);
-await expectErr("Second claim of the same roll", () => DB.findClaim({ code: c.code, roll: "1" }), "roll");
-await expectErr("Claim: unknown roll", () => DB.findClaim({ code: c.code, roll: "ZZZ" }), "roll");
+await expectErr("Second claim of the same roll", () => DB.findClaim({ college_id: c.id, roll: "1" }), "roll");
+{ let eU = null; try { await DB.findClaim({ college_id: c.id, roll: "ZZZ" }); } catch (e) { eU = e; }
+  if (!eU || eU.field !== "roll" || !/Incorrect college or Roll \/ admission number/.test(eU.message)) fails.push("Claim: unknown roll should give the incorrect-college-or-roll error: " + (eU && eU.message)); }
 DB.logout();
-const backC = await DB.loginByRoll({ code: c.code }, "1", "abcdefgh");
-if (backC.student_id !== ns.id) fails.push("Roll sign-in did not reopen the claimed record");
+/* Identifier sign-in (10): the roll alone — no college context anywhere —
+   reopens the claimed record, and so does the email on the college record
+   (the session it opens is the synthetic-email claim account). */
+const backC = await DB.loginByIdentifier("1", "abcdefgh");
+if (backC.student_id !== ns.id) fails.push("Roll identifier sign-in did not reopen the claimed record");
+const backE = await DB.loginByIdentifier("s@test.in", "abcdefgh");
+if (backE.student_id !== ns.id) fails.push("Record-email identifier sign-in did not reopen the claimed record");
+await expectErr("Identifier sign-in: wrong password", () => DB.loginByIdentifier("1", "nope-nope"), "password");
 await DB.settle(); await DB.login("admin", "t@test.in", "abcdefgh");
 await expectErr("Lateral student: no Year 1 fee", () => DB.upsertFee({ student_id: ns.id, year: "1", type: "Tuition", amount: 85000, due: "2026-11-15" }), "year");
 await expectErr("Duplicate fee line", () => DB.upsertFee({ student_id: ns.id, year: "2", type: "Affiliation", amount: 6000, due: "2026-11-15" }), "type");
 const ns2 = DB.addStudent({ name: "Reg S", roll: "2", branch: "ECE", admType: "Regular", curYear: "1", sec: "Sec A", email: "r2@test.in", phone: "9876543212" });
 if (DB.getFees(ns2.id).length !== 8 || DB.getFees(ns2.id)[0].amount !== 85000 || DB.getFees(ns2.id)[1].amount !== 6000) fails.push("New regular student should get 8 fee lines (Year 1-4, Tuition 85000 + Affiliation 6000)");
 await expectErr("Regular -> Lateral with Year 1 fees", () => DB.updateStudent(ns2.id, { admType: "Lateral Entry", curYear: "2" }), "admType");
+/* Identifier verdicts (10): an office record nobody claimed yet says
+   "not registered"; an identifier no record carries is the generic error. */
+await DB.settle(); // the office record must reach the backend before the resolve RPC reads it
+{ let eN = null; try { await DB.loginByIdentifier("2", "abcdefgh"); } catch (e) { eN = e; }
+  if (!eN || eN.field !== "identifier" || !/not registered yet/i.test(eN.message)) fails.push("Unclaimed identifier should say not registered: " + (eN && eN.message)); }
+{ let eX = null; try { await DB.loginByIdentifier("ZZZ9", "abcdefgh"); } catch (e) { eX = e; }
+  if (!eX || !/Incorrect email \/ roll number or password/.test(eX.message)) fails.push("Unknown identifier should give the generic error: " + (eX && eX.message)); }
 DB.logout();
 for (const p of ["/portal", "/portal/register-college", "/portal/register-student"]) renderAs("signed-out " + p, p);
 const claimHtml = renderAs("signed-out claim page", "/portal/register-student");
 if (!/Claim your student account/.test(claimHtml) || !/Find my record/.test(claimHtml)) fails.push("Claim page does not render the record-lookup step");
 if (/Register as a student/.test(claimHtml) || /data-portal="regStudent"/.test(claimHtml)) fails.push("Claim page still shows the old self-registration form");
-P.setUI({ loginRole: "student", stuMode: "roll" });
-const loginRoll = renderAs("portal/login-roll-mode", "/portal");
-if (!/Your college/.test(loginRoll) || !/Roll \/ admission number/.test(loginRoll)) fails.push("Student sign-in does not default to roll mode");
-P.setUI({ loginRole: "student", stuMode: "email" });
-const loginEmail = renderAs("portal/login-email-mode", "/portal");
-if (!/name="email"/.test(loginEmail)) fails.push("Student sign-in email mode does not render the email field");
-P.setUI({ loginRole: "admin", stuMode: "roll" });
+if (/name="code"/.test(claimHtml) || /Or enter college code/.test(claimHtml)) fails.push("Claim page still carries the college code field (10: dropdown only)");
+if (!/name="college_id"/.test(claimHtml)) fails.push("Claim page does not render the college dropdown");
+P.setUI({ loginRole: "student" });
+const loginStu = renderAs("portal/login-student", "/portal");
+if (!/name="identifier"/.test(loginStu) || !/Email or Roll \/ admission number/.test(loginStu)) fails.push("Student sign-in does not render the single identifier field");
+if (/name="college_id"|name="code"|name="roll"|data-act="stuMode"|Your college/.test(loginStu)) fails.push("Student sign-in still carries a college picker, code field or mode toggle (10)");
+if (!/Not registered yet\?/.test(loginStu) || !/Register \/ claim your account/.test(loginStu)) fails.push("Student sign-in lacks the register / claim line");
+/* Ravi through the identifier field: his demo email and his roll both
+   resolve to his account through resolve_student_login. */
+await DB.settle(); await DB.loginByIdentifier("ravi@srividya.demo", "Demo@1234");
+if (!DB.me() || !DB.me().student || DB.me().student.roll !== "24SV1A0501") fails.push("Identifier sign-in by demo email did not open Ravi");
+await DB.settle(); await DB.loginByIdentifier("24SV1A0501", "Demo@1234");
+if (!DB.me() || !DB.me().student || DB.me().student.roll !== "24SV1A0501") fails.push("Identifier sign-in by roll did not open Ravi");
+DB.logout();
+P.setUI({ loginRole: "admin" });
 
 // B.Tech year-wise fees: regular Year 1-4, lateral Year 2-4; past paid, current open, future upcoming
 const yearsOf = (fees) => [...new Set(fees.map((f) => f.year))].join(",");
