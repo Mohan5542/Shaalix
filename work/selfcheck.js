@@ -235,6 +235,9 @@ const secretSpan = markup.match(/<span([^>]*)data-owner-secret([^>]*)>©<\/span>
 if (!secretSpan) fails.push("Footer © secret hook (a span with data-owner-secret) is missing from the footer");
 else if (/\b(title|href)\s*=/.test(secretSpan[1] + secretSpan[2])) fails.push("Footer © secret hook must not carry a title or href");
 if (!code.includes('closest("[data-owner-secret]")') || !code.includes('location.hash = "#/portal/owner"')) fails.push("The secret © click handler is not wired to the owner route");
+// Footer credit line: one centered link under the bar, gold on hover.
+if (!markup.includes('<a class="x-credit" href="https://mohan.brandique.in" target="_blank" rel="noopener">Designed and developed by K. Mohan Rao</a>')) fails.push("Footer credit link (Designed and developed by K. Mohan Rao → mohan.brandique.in) is missing");
+if (!/\.x-credit:hover\{color:#facc15\}/.test(html)) fails.push("Footer credit hover rule (.x-credit:hover → #facc15) is missing");
 // The office adds the record first (approved, fees created); the student
 // then claims it (08) — no pending step — and signs back in by roll.
 await DB.settle(); await DB.login("admin", "t@test.in", "abcdefgh");
