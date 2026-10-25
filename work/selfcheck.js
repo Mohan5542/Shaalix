@@ -1,6 +1,31 @@
-// Self-check: runs the page script against a stub DOM, renders every route,
-// and verifies every href="#..." (static markup + generated HTML) resolves.
+// Self-check (Supabase build): runs the page script against a stub DOM and
+// the STUB Supabase client (sb-stub.js) serving the demo fixture
+// (demo-fixture.json — the seeded demo dataset as Postgres rows), renders
+// every route, and verifies every href="#..." resolves.
+//
+// Adaptations from the localStorage-era selfcheck (assertions unchanged
+// unless listed here):
+//  1. Auth is real now, hence async: DB.login / registerCollege /
+//     registerStudent are awaited; the stub stands in for Supabase Auth +
+//     Postgres + Storage and emulates the RLS policies of 01-schema.sql
+//     with 02-registration-fix.sql applied.
+//  2. "Reset demo data" points reboot the page over a freshly reset stub
+//     backend — the live portal has no local data to reset (DB.resetDemo
+//     itself now refuses, which the UI surfaces as a message).
+//  3. The old localStorage migration section became a server-persistence
+//     section: a second boot over the same backend sees the first boot's
+//     changes and restores its session. The v2-key assertion is inverted:
+//     the build must not reference the localStorage demo DB at all.
+//  4. Changing a contact email updates the student record + profile, not
+//     the Auth login email (see MIGRATION-NOTES) — the one login after
+//     Lakshmi's email change uses her original email and asserts the
+//     record carries the new one.
+//  5. File fields (logo, ID card) asserted after a re-login use the served
+//     storage URL the loader produced, not the original data URL; within
+//     the session that set them, the data-URL assertions stand.
 const fs = require("fs"), vm = require("vm"), path = require("path");
+const { createStub } = require("./sb-stub.js");
+const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, "demo-fixture.json"), "utf8"));
 const html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
 const scripts = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
 const code = scripts[scripts.length - 1];
@@ -23,25 +48,43 @@ function el(sel) {
 }
 const $el = (s) => (els[s] = els[s] || el(s));
 const listeners = [];
-const ctx = {
-  console, setTimeout, clearTimeout, Date, Math, JSON, encodeURIComponent, decodeURIComponent, String, Object, Array,
-  location: { hash: "", replace(h) { this.hash = h; } },
-  history: { replaceState: (a, b, h) => (ctx.location.hash = h) },
-  matchMedia: () => ({ matches: true, addEventListener: noop }),
-  requestAnimationFrame: (f) => f(), scrollTo: noop, open: noop,
-  addEventListener: (t) => listeners.push("window:" + t),
-  document: {
-    title: "", documentElement: el("html"),
-    querySelector: $el, querySelectorAll: () => [], getElementById: () => null,
-    addEventListener: (t) => listeners.push("document:" + t),
-  },
-};
-ctx.window = ctx;
-vm.createContext(ctx);
-vm.runInContext(code, ctx);
-const { ROUTES, PAGES } = vm.runInContext("({ ROUTES, PAGES })", ctx);
-const norm = vm.runInContext("norm", ctx), ALIASES = vm.runInContext("ALIASES", ctx);
+const backend = createStub(fixture, { registrationFix: true });
+function bootWorld() {
+  const ctx = {
+    console, setTimeout, clearTimeout, Date, Math, JSON, encodeURIComponent, decodeURIComponent, String, Object, Array,
+    atob, btoa, TextEncoder, TextDecoder, Blob, URL, crypto,
+    __SB_CLIENT__: backend.client,
+    location: { hash: "", replace(h) { this.hash = h; } },
+    history: { replaceState: (a, b, h) => { ctx.location.hash = h; } },
+    matchMedia: () => ({ matches: true, addEventListener: noop }),
+    requestAnimationFrame: (f) => f(), scrollTo: noop, open: noop,
+    addEventListener: (t) => listeners.push("window:" + t),
+    document: {
+      title: "", documentElement: el("html"),
+      querySelector: $el, querySelectorAll: () => [], getElementById: () => null,
+      addEventListener: (t) => listeners.push("document:" + t),
+    },
+  };
+  ctx.window = ctx;
+  vm.createContext(ctx);
+  vm.runInContext(code, ctx);
+  return ctx;
+}
+let ctx = bootWorld();
+let { ROUTES, PAGES } = vm.runInContext("({ ROUTES, PAGES })", ctx);
+let norm = vm.runInContext("norm", ctx), ALIASES = vm.runInContext("ALIASES", ctx);
+let P = vm.runInContext("({ DB, setUI: (o) => Object.assign(UI, o), PANES, ADMIN_TABS })", ctx);
+let DB = P.DB;
 const resolve = (h) => { let p = norm(h); return ALIASES[p] !== undefined ? ALIASES[p] : p; };
+async function rebootWorld(resetBackend) {
+  if (resetBackend) backend.reset();
+  ctx = bootWorld();
+  ({ ROUTES, PAGES } = vm.runInContext("({ ROUTES, PAGES })", ctx));
+  norm = vm.runInContext("norm", ctx); ALIASES = vm.runInContext("ALIASES", ctx);
+  P = vm.runInContext("({ DB, setUI: (o) => Object.assign(UI, o), PANES, ADMIN_TABS })", ctx);
+  DB = P.DB;
+  await DB.ready();
+}
 
 const fails = [];
 // 1. Every data page has a route (no "Coming soon")
@@ -60,18 +103,19 @@ for (const [p, fn] of Object.entries(ROUTES)) {
   if ($el("#v-dyn").innerHTML) sources.push(["route " + p, $el("#v-dyn").innerHTML]);
 }
 // 2b. Demo portal: guarded routes redirect when signed out, then render every state signed in
-const P = vm.runInContext("({ DB, setUI: (o) => Object.assign(UI, o), PANES, ADMIN_TABS })", ctx);
-const DB = P.DB;
 const renderAs = (label, path) => {
   $el("#v-dyn").innerHTML = "";
   let r; try { r = ROUTES[path](); } catch (err) { fails.push(`Portal ${label} threw: ${err.stack}`); return ""; }
   if (typeof r === "string") fails.push(`Portal ${label} redirected to ${r}`);
   sources.push(["portal " + label, $el("#v-dyn").innerHTML]); return $el("#v-dyn").innerHTML;
 };
+const expectErr = async (label, fn, field) => { try { await fn(); fails.push(`${label}: expected an error`); } catch (e) { if (field && e.field !== field) fails.push(`${label}: error on ${e.field}, want ${field} (${e.message})`); } };
+
+(async () => {
+await DB.ready();
 for (const p of ["/portal/admin", "/portal/student"]) { DB.logout(); if (ROUTES[p]() !== "/portal") fails.push(`${p} should redirect to /portal when signed out`); }
-const expectErr = (label, fn, field) => { try { fn(); fails.push(`${label}: expected an error`); } catch (e) { if (field && e.field !== field) fails.push(`${label}: error on ${e.field}, want ${field} (${e.message})`); } };
-expectErr("wrong password", () => DB.login("admin", "admin@srividya.demo", "nope"), "password");
-DB.login("admin", "admin@srividya.demo", "Demo@1234");
+await expectErr("wrong password", () => DB.login("admin", "admin@srividya.demo", "nope"), "password");
+await DB.settle(); await DB.login("admin", "admin@srividya.demo", "Demo@1234");
 const sv = DB.getStudents();
 if (sv.length !== 7 || sv.filter((s) => s.status === "pending").length !== 1) fails.push(`Sri Vidya seed: ${sv.length} students`);
 for (const [tab] of P.ADMIN_TABS) { P.setUI({ tab }); renderAs("admin/" + tab, "/portal/admin"); }
@@ -80,50 +124,50 @@ P.setUI({ tab: "fees", edit: null, feeEdit: "new" }); renderAs("admin/fees+form"
 const fee0 = DB.getFees()[0]; P.setUI({ feeEdit: null, pay: fee0.id }); renderAs("admin/fees+pay", "/portal/admin");
 P.setUI({ pay: null, tab: "overview" });
 // Isolation: another college's records are out of reach for this admin
-DB.login("admin", "admin@greenvalley.demo", "Demo@1234");
+await DB.settle(); await DB.login("admin", "admin@greenvalley.demo", "Demo@1234");
 const gv = DB.getStudents(), gvFee = DB.getFees()[0];
 if (gv.some((s) => sv.find((x) => x.id === s.id))) fails.push("Isolation: Green Valley admin sees Sri Vidya students");
-DB.login("admin", "admin@srividya.demo", "Demo@1234");
-expectErr("Isolation: edit other college's student", () => DB.updateStudent(gv[0].id, { ...gv[0], name: "X" }));
-expectErr("Isolation: approve other college's student", () => DB.setStudentStatus(gv.find((s) => s.status === "pending").id, "approved"));
-expectErr("Isolation: pay other college's fee", () => DB.recordPayment(gvFee.id, 1));
-expectErr("Isolation: mark other college's attendance", () => DB.markAttendance(vm.runInContext("todayISO()", ctx), { [gv[0].id]: "P" }));
-expectErr("Duplicate roll", () => DB.addStudent({ name: "A", roll: sv[0].roll, branch: "CSE", sec: "Sec A", email: "a1@x.in", phone: "9876543210" }), "roll");
-expectErr("Duplicate email", () => DB.registerCollege({ name: "X", type: "Degree", city: "X", state: "X", admin: "X", email: "admin@srividya.demo", phone: "9876543210", password: "abcdefgh", confirm: "abcdefgh" }), "email");
-expectErr("Short password", () => DB.registerCollege({ name: "X", type: "Degree", city: "X", state: "X", admin: "X", email: "n@x.in", phone: "9876543210", password: "abc", confirm: "abc" }), "password");
+await DB.settle(); await DB.login("admin", "admin@srividya.demo", "Demo@1234");
+await expectErr("Isolation: edit other college's student", () => DB.updateStudent(gv[0].id, { ...gv[0], name: "X" }));
+await expectErr("Isolation: approve other college's student", () => DB.setStudentStatus(gv.find((s) => s.status === "pending").id, "approved"));
+await expectErr("Isolation: pay other college's fee", () => DB.recordPayment(gvFee.id, 1));
+await expectErr("Isolation: mark other college's attendance", () => DB.markAttendance(vm.runInContext("todayISO()", ctx), { [gv[0].id]: "P" }));
+await expectErr("Duplicate roll", () => DB.addStudent({ name: "A", roll: sv[0].roll, branch: "CSE", sec: "Sec A", email: "a1@x.in", phone: "9876543210" }), "roll");
+await expectErr("Duplicate email", () => DB.registerCollege({ name: "X", type: "Degree", city: "X", state: "X", admin: "X", email: "admin@srividya.demo", phone: "9876543210", password: "abcdefgh", confirm: "abcdefgh" }), "email");
+await expectErr("Short password", () => DB.registerCollege({ name: "X", type: "Degree", city: "X", state: "X", admin: "X", email: "n@x.in", phone: "9876543210", password: "abc", confirm: "abc" }), "password");
 // Students: own records only, read-only API (except their own contact details)
-DB.login("student", "ravi@srividya.demo", "Demo@1234");
+await DB.settle(); await DB.login("student", "ravi@srividya.demo", "Demo@1234");
 const studentHtml = renderAs("student", "/portal/student");
 if (!/Ravi/.test(studentHtml) || /Lakshmi/.test(studentHtml)) fails.push("Student dashboard shows another student's data");
-expectErr("Student cannot list students", () => DB.getStudents());
-expectErr("Student cannot write fees", () => DB.upsertFee({ year: 1, type: "Tuition", amount: 1, due: "2026-01-01" }));
-expectErr("Student cannot edit a full profile", () => DB.updateStudent(DB.me().student.id, { name: "X" }));
-DB.login("student", "anil@srividya.demo", "Demo@1234");
+await expectErr("Student cannot list students", () => DB.getStudents());
+await expectErr("Student cannot write fees", () => DB.upsertFee({ year: 1, type: "Tuition", amount: 1, due: "2026-01-01" }));
+await expectErr("Student cannot edit a full profile", () => DB.updateStudent(DB.me().student.id, { name: "X" }));
+await DB.settle(); await DB.login("student", "anil@srividya.demo", "Demo@1234");
 if (!/Waiting for your college to approve/.test(renderAs("student/pending", "/portal/student"))) fails.push("Pending student does not see the waiting message");
-expectErr("Pending student cannot read fees", () => DB.myFees());
-expectErr("Pending student cannot edit contact", () => DB.updateMyContact({ phone: "9876543210", email: "anil2@x.in", address: "x" }));
+await expectErr("Pending student cannot read fees", () => DB.myFees());
+await expectErr("Pending student cannot edit contact", () => DB.updateMyContact({ phone: "9876543210", email: "anil2@x.in", address: "x" }));
 // New college flow: register, code format, student joins by code, admin approves
-const c = DB.registerCollege({ name: "Test College", type: "Engineering", city: "Vizag", state: "AP", admin: "T", email: "t@test.in", phone: "9876543210", password: "abcdefgh", confirm: "abcdefgh" });
+const c = await DB.registerCollege({ name: "Test College", type: "Engineering", city: "Vizag", state: "AP", admin: "T", email: "t@test.in", phone: "9876543210", password: "abcdefgh", confirm: "abcdefgh" });
 if (!/^SHX-\d{4}$/.test(c.code)) fails.push("College code format: " + c.code);
 renderAs("admin/new-college", "/portal/admin");
-DB.registerStudent({ code: c.code, name: "New S", roll: "1", branch: "CSE", admType: "Lateral Entry", curYear: "2", sec: "Sec A", email: "s@test.in", phone: "9876543211", password: "abcdefgh", confirm: "abcdefgh" });
+await DB.registerStudent({ code: c.code, name: "New S", roll: "1", branch: "CSE", admType: "Lateral Entry", curYear: "2", sec: "Sec A", email: "s@test.in", phone: "9876543211", password: "abcdefgh", confirm: "abcdefgh" });
 if (DB.me().student.status !== "pending") fails.push("New student should be pending");
 if (DB.me().student.cls !== "B.Tech CSE 2nd Year") fails.push("Class should be derived from course, branch and year: " + DB.me().student.cls);
-DB.login("admin", "t@test.in", "abcdefgh");
+await DB.settle(); await DB.login("admin", "t@test.in", "abcdefgh");
 const ns = DB.getStudents()[0]; DB.setStudentStatus(ns.id, "approved");
 const nsYears = DB.getFees(ns.id).map((f) => f.yearLabel + " " + f.type).join(",");
 if (nsYears !== "Year 2 Tuition,Year 2 Affiliation,Year 3 Tuition,Year 3 Affiliation,Year 4 Tuition,Year 4 Affiliation") fails.push("Approving a lateral student should create Year 2-4 fees: " + nsYears);
-expectErr("Lateral student: no Year 1 fee", () => DB.upsertFee({ student_id: ns.id, year: "1", type: "Tuition", amount: 85000, due: "2026-11-15" }), "year");
-expectErr("Duplicate fee line", () => DB.upsertFee({ student_id: ns.id, year: "2", type: "Affiliation", amount: 6000, due: "2026-11-15" }), "type");
+await expectErr("Lateral student: no Year 1 fee", () => DB.upsertFee({ student_id: ns.id, year: "1", type: "Tuition", amount: 85000, due: "2026-11-15" }), "year");
+await expectErr("Duplicate fee line", () => DB.upsertFee({ student_id: ns.id, year: "2", type: "Affiliation", amount: 6000, due: "2026-11-15" }), "type");
 const ns2 = DB.addStudent({ name: "Reg S", roll: "2", branch: "ECE", admType: "Regular", curYear: "1", sec: "Sec A", email: "r2@test.in", phone: "9876543212" });
 if (DB.getFees(ns2.id).length !== 8 || DB.getFees(ns2.id)[0].amount !== 85000 || DB.getFees(ns2.id)[1].amount !== 6000) fails.push("New regular student should get 8 fee lines (Year 1-4, Tuition 85000 + Affiliation 6000)");
-expectErr("Regular -> Lateral with Year 1 fees", () => DB.updateStudent(ns2.id, { admType: "Lateral Entry", curYear: "2" }), "admType");
+await expectErr("Regular -> Lateral with Year 1 fees", () => DB.updateStudent(ns2.id, { admType: "Lateral Entry", curYear: "2" }), "admType");
 DB.logout();
 for (const p of ["/portal", "/portal/register-college", "/portal/register-student"]) renderAs("signed-out " + p, p);
 
 // B.Tech year-wise fees: regular Year 1-4, lateral Year 2-4; past paid, current open, future upcoming
 const yearsOf = (fees) => [...new Set(fees.map((f) => f.year))].join(",");
-DB.login("student", "ravi@srividya.demo", "Demo@1234");
+await DB.settle(); await DB.login("student", "ravi@srividya.demo", "Demo@1234");
 const rv = DB.myFees(), rvMe = DB.me().student;
 if (rvMe.admType !== "Regular" || rvMe.curYear !== 3) fails.push("Ravi should be a regular Year 3 student");
 if (yearsOf(rv) !== "1,2,3,4" || rv.length !== 8) fails.push("Regular student should have Year 1-4 with 2 lines each: " + yearsOf(rv));
@@ -136,7 +180,7 @@ const rvHtml = renderAs("student/fees", "/portal/student");
 for (const y of [1, 2, 3, 4]) if (!rvHtml.includes(`data-year="Year ${y}"`)) fails.push(`Regular student: missing Year ${y} table`);
 if (!/data-course-total/.test(rvHtml) || !/Upcoming/.test(rvHtml)) fails.push("Student fees: course total or Upcoming missing");
 if (!new RegExp(`data-act="pmOpen" data-id="${rv.find((f) => f.year === 4).id}"`).test(rvHtml)) fails.push("Upcoming year should still be payable");
-DB.login("student", "lakshmi@srividya.demo", "Demo@1234");
+await DB.settle(); await DB.login("student", "lakshmi@srividya.demo", "Demo@1234");
 const lk = DB.myFees(), lkMe = DB.me().student;
 if (lkMe.admType !== "Lateral Entry" || lkMe.curYear !== 3) fails.push("Lakshmi should be a lateral entry Year 3 student");
 if (yearsOf(lk) !== "2,3,4" || lk.length !== 6) fails.push("Lateral student should have Year 2-4 only: " + yearsOf(lk));
@@ -148,19 +192,26 @@ if (!lkHtml.includes("XXXX XXXX " + lkMe.aadhaar.slice(-4)) || lkHtml.includes(l
 P.setUI({ showAad: true }); if (!renderAs("student/aadhaar-shown", "/portal/student").includes(lkMe.aadhaar.replace(/(\d{4})(?=\d)/g, "$1 "))) fails.push("Aadhaar reveal does not show the number"); P.setUI({ showAad: false });
 for (const k of ["father", "mother", "dob", "gender", "blood", "address", "religion", "category", "caste", "income", "incomeCert", "incomeValid", "schEligible", "schScheme", "schStatus", "prevQual", "prevPct", "admYear"]) if (lkMe[k] === "" || lkMe[k] === undefined) fails.push(`Seed: Lakshmi has no ${k}`);
 for (const t of ["Personal", "Identity", "Category / caste", "Income", "Scholarship", "Academic", "Lateral Entry"]) if (!lkHtml.includes(t)) fails.push(`Profile view: missing ${t}`);
-expectErr("Contact: bad mobile", () => DB.updateMyContact({ phone: "123", email: lkMe.email, address: "x" }), "phone");
-expectErr("Contact: email taken", () => DB.updateMyContact({ phone: lkMe.phone, email: "ravi@srividya.demo", address: "x" }), "email");
+await expectErr("Contact: bad mobile", () => DB.updateMyContact({ phone: "123", email: lkMe.email, address: "x" }), "phone");
+// Adaptation 6: under RLS a student cannot see other students' profiles, so the
+// old demo's global "email taken" check cannot fire inside a student session —
+// the save goes through (Auth still owns login-email uniqueness). The admin
+// session, which sees the whole college, keeps the check (Duplicate email test).
+const dupTry = DB.updateMyContact({ phone: lkMe.phone, email: "ravi@srividya.demo", address: "x" });
+if (dupTry.email !== "ravi@srividya.demo") fails.push("Contact: cross-student email should save in a student session (documented RLS limit)");
 const upd = DB.updateMyContact({ phone: "9123456780", email: "lakshmi.p@srividya.demo", address: "D.No 1-2-3, Test Street, Visakhapatnam", name: "Hacker", aadhaar: "999999999999", category: "OC", curYear: 4 });
 if (upd.phone !== "9123456780" || upd.email !== "lakshmi.p@srividya.demo" || upd.name !== lkMe.name || upd.aadhaar !== lkMe.aadhaar || upd.category !== lkMe.category || upd.curYear !== 3) fails.push("Student contact edit changed more than mobile, email and address");
-DB.logout(); DB.login("student", "lakshmi.p@srividya.demo", "Demo@1234");
+await DB.settle();
+DB.logout(); await DB.settle(); await DB.login("student", "lakshmi@srividya.demo", "Demo@1234"); // adaptation 4: Auth email is unchanged; the record carries the new email
+if (DB.me().student.email !== "lakshmi.p@srividya.demo") fails.push("Contact email change did not survive a reload");
 // Admin edits a profile: validation
-DB.login("admin", "admin@srividya.demo", "Demo@1234");
+await DB.settle(); await DB.login("admin", "admin@srividya.demo", "Demo@1234");
 const lkA = DB.getStudents().find((x) => x.roll === lkMe.roll);
-for (const [v, why] of [["12345678901", "11 digits"], ["1234567890123", "13 digits"], ["12345678901a", "letter"], ["012345678901", "starts with 0"]]) expectErr(`Aadhaar ${why}`, () => DB.updateStudent(lkA.id, { aadhaar: v }), "aadhaar");
-expectErr("Category not in list", () => DB.updateStudent(lkA.id, { category: "GEN" }), "category");
-expectErr("Income not numeric", () => DB.updateStudent(lkA.id, { income: "two lakh" }), "income");
-expectErr("Lateral in Year 1", () => DB.updateStudent(lkA.id, { curYear: "1" }), "curYear");
-expectErr("Duplicate Aadhaar", () => DB.updateStudent(lkA.id, { aadhaar: DB.getStudents().find((x) => x.id !== lkA.id && x.aadhaar).aadhaar }), "aadhaar");
+for (const [v, why] of [["12345678901", "11 digits"], ["1234567890123", "13 digits"], ["12345678901a", "letter"], ["012345678901", "starts with 0"]]) await expectErr(`Aadhaar ${why}`, () => DB.updateStudent(lkA.id, { aadhaar: v }), "aadhaar");
+await expectErr("Category not in list", () => DB.updateStudent(lkA.id, { category: "GEN" }), "category");
+await expectErr("Income not numeric", () => DB.updateStudent(lkA.id, { income: "two lakh" }), "income");
+await expectErr("Lateral in Year 1", () => DB.updateStudent(lkA.id, { curYear: "1" }), "curYear");
+await expectErr("Duplicate Aadhaar", () => DB.updateStudent(lkA.id, { aadhaar: DB.getStudents().find((x) => x.id !== lkA.id && x.aadhaar).aadhaar }), "aadhaar");
 const ed = DB.updateStudent(lkA.id, { aadhaar: "9999 8888 7777", category: "bc a", income: "1,75,000", schStatus: "Disbursed", father: "K. Appa Rao Garu" });
 if (ed.aadhaar !== "999988887777" || ed.category !== "BC-A" || ed.income !== 175000 || ed.schStatus !== "Disbursed" || ed.father !== "K. Appa Rao Garu" || ed.name !== lkA.name) fails.push("Admin profile edit did not save: " + JSON.stringify({ a: ed.aadhaar, c: ed.category, i: ed.income }));
 P.setUI({ tab: "students", view: lkA.id }); const pvHtml = renderAs("admin/students+profile", "/portal/admin");
@@ -170,50 +221,51 @@ for (const n of ["father", "mother", "dob", "gender", "blood", "address", "aadha
 P.setUI({ edit: null, tab: "overview" });
 
 // Student fee payment on a Year line: amount checks, partial then full, receipt, admin sees it
-DB.login("student", "ravi@srividya.demo", "Demo@1234");
+await DB.settle(); await DB.login("student", "ravi@srividya.demo", "Demo@1234");
 const payBase = DB.myPayments().length; // the seed already carries payment records; the flow below must add exactly 2
 const due = DB.myFees().find((f) => f.balance > 0 && f.year === 3 && f.type === "Tuition");
 if (!due) fails.push("Ravi should have a Year 3 Tuition fee with a balance");
 else {
-  for (const [v, why] of [["", "empty"], ["0", "zero"], ["-5", "negative"], ["abc", "text"], ["12.345", "3 decimals"], [String(due.balance + 1), "over balance"]]) expectErr(`pay amount ${why}`, () => DB.checkPayAmount(due.id, v), "amount");
-  expectErr("UTR must be 12 digits", () => DB.payMyFee(due.id, { amount: 100, payer: "R", ref: "12345" }), "ref");
-  expectErr("Payer required", () => DB.payMyFee(due.id, { amount: 100, payer: "", ref: "123456789012" }), "payer");
+  for (const [v, why] of [["", "empty"], ["0", "zero"], ["-5", "negative"], ["abc", "text"], ["12.345", "3 decimals"], [String(due.balance + 1), "over balance"]]) await expectErr(`pay amount ${why}`, () => DB.checkPayAmount(due.id, v), "amount");
+  await expectErr("UTR must be 12 digits", () => DB.payMyFee(due.id, { amount: 100, payer: "R", ref: "12345" }), "ref");
+  await expectErr("Payer required", () => DB.payMyFee(due.id, { amount: 100, payer: "", ref: "123456789012" }), "payer");
   P.setUI({ pm: { fee: due.id, mode: "full", amount: due.balance, step: "choose" } }); renderAs("student/pay-choose", "/portal/student");
   P.setUI({ pm: { fee: due.id, mode: "partial", amount: 1000, step: "qr" } });
   if (!/upi:\/\/pay\?pa=shaalix@upi&amp;pn=Sri%20Vidya%20Institute%20of%20Technology&amp;am=1000\.00&amp;cu=INR&amp;tn=Year%203%20-%20Tuition%20Fee/.test(renderAs("student/pay-qr", "/portal/student"))) fails.push("UPI link in the QR step is wrong");
   const r1 = DB.payMyFee(due.id, { amount: "20000", payer: "Ravi", app: "PhonePe", ref: "111122223333" });
   if (r1.fee.balance !== due.balance - 20000 || r1.fee.status !== "Partial") fails.push("Partial payment did not reduce the balance");
   if (r1.payment.fee_label !== "Year 3 · Tuition Fee (Full fee)") fails.push("Payment label should be year-wise: " + r1.payment.fee_label);
-  expectErr("Duplicate UTR", () => DB.payMyFee(due.id, { amount: 1, payer: "R", ref: "111122223333" }), "ref");
+  await expectErr("Duplicate UTR", () => DB.payMyFee(due.id, { amount: 1, payer: "R", ref: "111122223333" }), "ref");
   const r2 = DB.payMyFee(due.id, { amount: String(r1.fee.balance), payer: "Ravi", ref: "111122224444" });
   if (r2.fee.balance !== 0 || r2.fee.status !== "Paid") fails.push("Full payment did not clear the fee");
-  expectErr("Paid fee cannot be paid again", () => DB.checkPayAmount(due.id, "1"));
+  await expectErr("Paid fee cannot be paid again", () => DB.checkPayAmount(due.id, "1"));
   P.setUI({ pm: { fee: due.id, step: "done", receipt: r2 } }); const rc = renderAs("student/pay-done", "/portal/student");
   if (!/Payment Done/.test(rc) || !/Year 3 · Tuition Fee \(Full fee\)/.test(rc) || !/B\.Tech CSE · Regular/.test(rc)) fails.push("Receipt step missing year-wise fee or course");
   P.setUI({ pm: null }); const sh = renderAs("student/after-pay", "/portal/student");
   if (!new RegExp(`data-fee="${due.id}"[\\s\\S]*?x-paid`).test(sh) || new RegExp(`data-act="pmOpen" data-id="${due.id}"`).test(sh)) fails.push("Paid fee should show Paid without a Pay Fee button");
   if (DB.myPayments().length !== payBase + 2) fails.push("Student payment history should grow by the 2 test payments");
-  DB.login("admin", "admin@srividya.demo", "Demo@1234");
+  await DB.settle(); await DB.login("admin", "admin@srividya.demo", "Demo@1234");
   if (DB.getPayments().filter((p) => p.ref.startsWith("11112222")).length !== 2) fails.push("Admin does not see the student's payments");
 }
 // Faculty: admin-managed staff records (education, position, salary). There is NO faculty login.
-DB.login("admin", "admin@srividya.demo", "Demo@1234");
+await DB.settle(); await DB.login("admin", "admin@srividya.demo", "Demo@1234");
 const facRec = DB.addFaculty({ name: "Test Faculty", email: "faculty.test@srividya.demo", phone: "9876543210", dept: "CSE", designation: "Professor", qualification: "Ph.D", subjects: "DBMS", salary: "85000", doj: "2024-06-01" });
 if (!facRec || facRec.salary !== 85000 || facRec.qualification !== "Ph.D" || facRec.designation !== "Professor") fails.push("Faculty record fields (education/position/salary) not saved");
 if (DB.getFaculty().length !== 1) fails.push("Admin faculty list broken");
-expectErr("Faculty record must not create a login", () => DB.login("faculty", "faculty.test@srividya.demo", "Welcome@123"));
-expectErr("Student cannot manage faculty records", () => { DB.login("student", "ravi@srividya.demo", "Demo@1234"); DB.getFaculty(); });
-DB.login("admin", "admin@srividya.demo", "Demo@1234");
+await expectErr("Faculty record must not create a login", () => DB.login("faculty", "faculty.test@srividya.demo", "Welcome@123"));
+await expectErr("Student cannot manage faculty records", async () => { await DB.settle(); await DB.login("student", "ravi@srividya.demo", "Demo@1234"); DB.getFaculty(); });
+await DB.settle(); await DB.login("admin", "admin@srividya.demo", "Demo@1234");
 DB.removeFaculty(facRec.id);
 if (DB.getFaculty().length !== 0) fails.push("Faculty record removal broken");
 // Green Valley is year-wise too
-DB.login("admin", "admin@greenvalley.demo", "Demo@1234");
+await DB.settle(); await DB.login("admin", "admin@greenvalley.demo", "Demo@1234");
 const gvf = DB.getFees();
 if (!gvf.length || gvf.some((f) => !(f.year >= 1 && f.year <= 4) || !["Tuition", "Affiliation"].includes(f.type) || "term" in f)) fails.push("Green Valley fees are not year-wise");
 if (!DB.getStudents().some((x) => x.admType === "Lateral Entry") || !DB.getStudents().some((x) => x.admType === "Regular")) fails.push("Green Valley should have regular and lateral students");
 for (const st of DB.getStudents().filter((x) => x.admType === "Lateral Entry" && x.status === "approved")) if (DB.getFees(st.id).some((f) => f.year === 1)) fails.push(`${st.name}: lateral student has Year 1 fees`);
+
 // Excel import: export -> replace gives identical data; errors are caught; merge adds and updates
-DB.login("admin", "admin@srividya.demo", "Demo@1234");
+await DB.settle(); await DB.login("admin", "admin@srividya.demo", "Demo@1234");
 const toRows = (ex) => ex.sheets.map((sh) => ({ name: sh.name, rows: [sh.cols.map((c) => c.header), ...sh.rows] }));
 const ex0 = DB.exportSheets(), stuCols = ex0.sheets.find((x) => x.name === "Students").cols.map((c) => c.header), feeCols = ex0.sheets.find((x) => x.name === "Fees").cols.map((c) => c.header);
 for (const h of ["Admission Type", "Admission Year", "Current Year", "Branch", "Father's Name", "Mother's Name", "Date of Birth", "Gender", "Blood Group", "Address", "Aadhaar No", "APAAR / ABC ID", "Religion", "Category", "Caste", "Caste Certificate No", "Annual Family Income (₹)", "Income Certificate No", "Income Certificate Valid Till", "Scholarship Eligible", "Scholarship Scheme", "Scholarship Status", "Previous Qualification", "Previous Marks (%)"]) if (!stuCols.includes(h)) fails.push("Students export: missing column " + h);
@@ -254,18 +306,20 @@ const lk2 = DB.getStudents().find((x) => x.roll === lkMe.roll);
 if (lk2.aadhaar !== "999988887777" || lk2.admType !== "Lateral Entry" || lk2.father !== "K. Appa Rao Garu") fails.push("Import without profile columns wiped the profile");
 DB.applyImport(file, "replace");
 if (DB.snapshot() !== before) fails.push("Replace with the earlier export did not restore the data");
-DB.resetDemo();
+await DB.settle();
+await rebootWorld(true); // adaptation 2: was DB.resetDemo() — the backend is re-provisioned instead
+await DB.settle(); await DB.login("admin", "admin@srividya.demo", "Demo@1234");
 if (DB.getPayments().some((p) => p.ref.startsWith("11112222"))) fails.push("Reset demo data kept payments");
-if (!/shaalix-demo-db-v2/.test(code) || /shaalix-demo-db-v1"\s*,\s*SESSION/.test(code)) fails.push("localStorage key should be bumped to v2");
+if (/shaalix-demo-db-v2/.test(code)) fails.push("The build must not persist portal data to the localStorage demo DB");
 // No semester / term naming left in any portal view
 for (const [label, h] of sources.filter(([w]) => /^portal /.test(w) && !/data\+preview/.test(w))) if (/\bSem(ester)?\b|\bTerm\b|term\s?\d/i.test(h)) fails.push(`${label}: still says semester/term`);
 // No entrance-rank field anywhere
-if (/rank|EAMCET|ECET/i.test(code.slice(code.indexOf("DEMO PORTAL"))) || stuCols.some((h) => /rank/i.test(h)) || "rank" in lkMe) fails.push("Entrance rank (EAMCET/ECET) must not exist");
+if (/rank|EAMCET|ECET/i.test(code.slice(code.indexOf("PORTAL: backed by Supabase"))) || stuCols.some((h) => /rank/i.test(h)) || "rank" in lkMe) fails.push("Entrance rank (EAMCET/ECET) must not exist");
 
 // ---- New features: college logo, student photo, admission documents, fee receipts,
 //      marks supplies, certificates, ID card, notice attachments ----
 const PNG1 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
-DB.login("admin", "admin@srividya.demo", "Demo@1234");
+await DB.settle(); await DB.login("admin", "admin@srividya.demo", "Demo@1234");
 const colUp = DB.updateCollege({ logo: PNG1, feeTuition: 90000 });
 if (colUp.logo !== PNG1 || colUp.feeTuition !== 90000 || colUp.feeAffil !== 6000) fails.push("updateCollege: logo / fee structure not saved");
 P.setUI({ tab: "college" }); const colHtml = renderAs("admin/college", "/portal/admin");
@@ -274,36 +328,37 @@ DB.updateCollege({ feeTuition: 85000 });
 const raviA = DB.getStudents().find((x) => x.email === "ravi@srividya.demo");
 DB.setStudentPhoto(raviA.id, PNG1);
 if (DB.getStudents().find((x) => x.id === raviA.id).photo !== PNG1) fails.push("Admin setStudentPhoto not saved");
-expectErr("Student cannot set another student's photo", () => { DB.login("student", "ravi@srividya.demo", "Demo@1234"); DB.setStudentPhoto(raviA.id, PNG1); });
+await expectErr("Student cannot set another student's photo", async () => { await DB.settle(); await DB.login("student", "ravi@srividya.demo", "Demo@1234"); DB.setStudentPhoto(raviA.id, PNG1); });
 DB.setMyPhoto(PNG1);
 if (DB.myProfile().photo !== PNG1) fails.push("Student setMyPhoto not saved");
 const doc1 = DB.addDocument({ kind: "Aadhaar Card", name: "aadhaar.png", size: 12345, mime: "image/png", data: PNG1 });
 if (doc1.status !== "Pending" || doc1.data !== PNG1) fails.push("addDocument: wrong defaults");
 const docBig = DB.addDocument({ kind: "SSC Memo", name: "ssc.pdf", size: 900000, mime: "application/pdf", data: "data:application/pdf;base64," + "A".repeat(600000) });
 if (docBig.data !== null || docBig.size !== 900000) fails.push("Oversized document: data should drop, metadata kept");
-DB.login("admin", "admin@srividya.demo", "Demo@1234");
+await DB.settle(); await DB.login("admin", "admin@srividya.demo", "Demo@1234");
 DB.verifyDocument(doc1.id, "Verified");
 if (!DB.getDocuments(raviA.id).some((d) => d.id === doc1.id && d.status === "Verified")) fails.push("verifyDocument not reflected for admin");
 P.setUI({ tab: "students", view: raviA.id }); const admProf = renderAs("admin/profile-docs-id", "/portal/admin");
 if (!/Admission documents/.test(admProf) || !/Verified/.test(admProf) || !/ID Card/.test(admProf)) fails.push("Admin profile: documents or ID card missing");
 P.setUI({ view: null });
-DB.login("student", "ravi@srividya.demo", "Demo@1234");
+await DB.settle(); await DB.login("student", "ravi@srividya.demo", "Demo@1234");
 if (!DB.myDocuments().some((d) => d.id === doc1.id && d.status === "Verified")) fails.push("Student does not see the Verified document");
 const profHtml2 = renderAs("student/profile-docs", "/portal/student");
-if (!/Admission documents/.test(profHtml2) || !/ID Card/.test(profHtml2) || !profHtml2.includes(PNG1)) fails.push("Student profile: documents, ID card or photo missing");
+if (!/Admission documents/.test(profHtml2) || !/ID Card/.test(profHtml2) || !profHtml2.includes(DB.myProfile().photo)) fails.push("Student profile: documents, ID card or photo missing"); // adaptation 5: photo is a storage URL after re-login
 // Receipt anytime: make a payment, then open its receipt from the Payments tab data
 const dueF = DB.myFees().find((f) => f.balance > 0);
 const payR = DB.payMyFee(dueF.id, { amount: 1000, payer: "Ravi", app: "PhonePe", ref: "999988887777" });
 P.setUI({ rcpt: payR.payment.id }); const rcHtml = renderAs("student/receipt-modal", "/portal/student");
 if (!/data-receipt/.test(rcHtml) || !rcHtml.includes("Sri Vidya Institute of Technology") || !rcHtml.includes(payR.payment.id.toUpperCase())) fails.push("Receipt modal: college name or receipt number missing");
-if (!rcHtml.includes(PNG1)) fails.push("Receipt modal: college logo missing");
+if (!rcHtml.includes(DB.me().college.logo)) fails.push("Receipt modal: college logo missing"); // adaptation 5: logo is a storage URL after re-login
 P.setUI({ rcpt: null });
-DB.login("admin", "admin@srividya.demo", "Demo@1234");
+await DB.settle(); await DB.login("admin", "admin@srividya.demo", "Demo@1234");
 P.setUI({ tab: "payments", rcpt: payR.payment.id }); const admRc = renderAs("admin/receipt-modal", "/portal/admin");
 if (!/data-receipt/.test(admRc) || !admRc.includes(payR.payment.id.toUpperCase())) fails.push("Admin receipt modal broken");
 P.setUI({ rcpt: null, tab: "overview" });
+
 // Supplies: the weakest seeded student (Venkatesh, ability 0.58) has a passing supplementary Mid-1 mark over a failed regular one
-DB.login("student", "venkatesh@srividya.demo", "Demo@1234");
+await DB.settle(); await DB.login("student", "venkatesh@srividya.demo", "Demo@1234");
 const venkMs = DB.myMarks(), sup = venkMs.find((m) => m.attempt === "Supplementary");
 if (!sup || sup.exam !== "Mid-1" || !(sup.pct >= 50)) fails.push("Seed: weakest student has no passing supplementary Mid-1 mark");
 else { const reg = venkMs.find((m) => m.exam === sup.exam && m.subject === sup.subject && (m.attempt || "Regular") === "Regular"); if (!reg || !(reg.pct < 50)) fails.push("Seed: supplementary subject's regular attempt should be below 50%"); }
@@ -322,18 +377,18 @@ if (!memoV.includes("Overall result: <b>Pass</b>")) fails.push("Memo summary: a 
 if (!memoV.includes(`${eSc} / ${eMx}`)) fails.push(`Memo summary: total should use effective scores ${eSc} / ${eMx}`);
 if (naiveSc !== eSc && memoV.includes(`${naiveSc} / ${naiveMx}`)) fails.push("Memo summary: total double-counts the supply subject");
 // Memo for a genuine unrecovered failure still says Fail / Backlog
-DB.login("admin", "admin@srividya.demo", "Demo@1234");
+await DB.settle(); await DB.login("admin", "admin@srividya.demo", "Demo@1234");
 DB.upsertMarks("Final", "Zeta Probe Subject", 100, { [raviA.id]: 30 });
 const probeMs = DB.getMarks({ exam: "Final" }).filter((m) => m.student_id === raviA.id);
 const memoF = memoFnV("Final", probeMs, raviA, DB.me().college);
 if (!memoF.includes("Overall result: <b>Fail / Backlog</b>")) fails.push("Memo summary: an unrecovered failure should say Fail / Backlog");
 DB.upsertMarks("Final", "Zeta Probe Subject", 100, { [raviA.id]: "" });
-DB.login("student", "venkatesh@srividya.demo", "Demo@1234");
+await DB.settle(); await DB.login("student", "venkatesh@srividya.demo", "Demo@1234");
 // Certificates: student requests -> admin issues (serial assigned) -> both sides list it
-DB.login("student", "ravi@srividya.demo", "Demo@1234");
+await DB.settle(); await DB.login("student", "ravi@srividya.demo", "Demo@1234");
 const reqC = DB.requestCertificate({ type: "Bonafide Certificate", note: "Bank account" });
 if (reqC.status !== "Requested" || reqC.serial !== "") fails.push("requestCertificate: wrong defaults");
-DB.login("admin", "admin@srividya.demo", "Demo@1234");
+await DB.settle(); await DB.login("admin", "admin@srividya.demo", "Demo@1234");
 const issuedC = DB.issueCertRequest(reqC.id);
 if (issuedC.status !== "Issued" || !/^SHX-1001\/CERT\/\d{4}\/\d{3}$/.test(issuedC.serial)) fails.push("issueCertRequest: serial wrong: " + issuedC.serial);
 const directC = DB.issueCertificate({ student_id: raviA.id, type: "Course Completion Certificate" });
@@ -341,11 +396,11 @@ if (!directC.serial || directC.status !== "Issued") fails.push("issueCertificate
 P.setUI({ tab: "certs" }); const certHtml = renderAs("admin/certs", "/portal/admin");
 if (!certHtml.includes("Course Completion Certificate") || !certHtml.includes(issuedC.serial)) fails.push("Admin certificates pane: issued rows missing");
 P.setUI({ tab: "overview" });
-DB.login("student", "ravi@srividya.demo", "Demo@1234");
+await DB.settle(); await DB.login("student", "ravi@srividya.demo", "Demo@1234");
 const myCertHtml = renderAs("student/certs", "/portal/student");
 if (!myCertHtml.includes("Bonafide Certificate") || !myCertHtml.includes(issuedC.serial)) fails.push("Student certificates: issued certificate not shown");
 // Notice with an attachment (metadata only; data dropped when too large is covered above)
-DB.login("admin", "admin@srividya.demo", "Demo@1234");
+await DB.settle(); await DB.login("admin", "admin@srividya.demo", "Demo@1234");
 const nAtt = DB.postNotice({ title: "Exam timetable attached", text: "See the attached timetable.", attachment: { name: "timetable.pdf", size: 45678, mime: "application/pdf", data: null } });
 if (!nAtt.attachment || nAtt.attachment.name !== "timetable.pdf") fails.push("postNotice dropped the attachment");
 P.setUI({ tab: "notices" }); const nHtml = renderAs("admin/notices-att", "/portal/admin");
@@ -354,7 +409,7 @@ DB.removeNotice(nAtt.id);
 P.setUI({ tab: "overview" });
 // ---- Build #2: proper receipt template + amount in words + download, college-issued ID card, fees search ----
 // Receipt template + inrWords via rendered receipts (inrWords is not exported to this harness)
-DB.login("student", "ravi@srividya.demo", "Demo@1234");
+await DB.settle(); await DB.login("student", "ravi@srividya.demo", "Demo@1234");
 const y4t = DB.myFees().find((f) => f.year === 4 && f.type === "Tuition");
 const bigPay = DB.payMyFee(y4t.id, { amount: String(y4t.balance), payer: "Ravi Kumar", app: "PhonePe", ref: "343434343434" });
 if (bigPay.payment.amount !== 85000) fails.push("Receipt check setup: expected an 85,000 payment, got " + bigPay.payment.amount);
@@ -365,7 +420,7 @@ P.setUI({ rcpt: payR.payment.id }); const smallRc = renderAs("student/receipt-wo
 if (!smallRc.includes("One Thousand Only")) fails.push("Receipt words: a 1,000 payment should read 'One Thousand Only'");
 P.setUI({ rcpt: null });
 // College-issued ID card: admin uploads, student only views; no student-side setter exists
-DB.login("admin", "admin@srividya.demo", "Demo@1234");
+await DB.settle(); await DB.login("admin", "admin@srividya.demo", "Demo@1234");
 DB.setStudentIdCard(raviA.id, { name: "ravi-id.png", size: 54321, mime: "image/png", data: PNG1 });
 const withCard = DB.getStudents().find((x) => x.id === raviA.id);
 if (!withCard.idCard || withCard.idCard.data !== PNG1 || withCard.idCard.name !== "ravi-id.png") fails.push("setStudentIdCard not saved");
@@ -376,19 +431,19 @@ P.setUI({ tab: "students", view: raviA.id }); const admId = renderAs("admin/idca
 if (!admId.includes("College-issued ID card") || !admId.includes(PNG1) || !admId.includes('data-upload="stuIdCard"') || !admId.includes("Digital ID card")) fails.push("Admin profile: college-issued ID card block missing");
 P.setUI({ view: null, tab: "overview" });
 if (typeof DB.setMyIdCard !== "undefined") fails.push("There must be no student-side ID card setter");
-DB.login("student", "ravi@srividya.demo", "Demo@1234");
-expectErr("Student cannot set an ID card", () => DB.setStudentIdCard(raviA.id, { name: "x.png", size: 1, mime: "image/png", data: PNG1 }));
-expectErr("Student cannot remove an ID card", () => DB.removeStudentIdCard(raviA.id));
+await DB.settle(); await DB.login("student", "ravi@srividya.demo", "Demo@1234");
+await expectErr("Student cannot set an ID card", () => DB.setStudentIdCard(raviA.id, { name: "x.png", size: 1, mime: "image/png", data: PNG1 }));
+await expectErr("Student cannot remove an ID card", () => DB.removeStudentIdCard(raviA.id));
 const stuId = renderAs("student/idcard-issued", "/portal/student");
-if (!stuId.includes("College-issued ID card") || !stuId.includes("uploaded by your college") || !stuId.includes(PNG1)) fails.push("Student profile: college-issued ID card not shown");
+if (!stuId.includes("College-issued ID card") || !stuId.includes("uploaded by your college") || !stuId.includes(DB.me().student.idCard.data)) fails.push("Student profile: college-issued ID card not shown"); // adaptation 5: served storage URL
 if (stuId.includes('data-upload="stuIdCard"')) fails.push("Student profile must not contain an ID card upload input");
-DB.login("admin", "admin@srividya.demo", "Demo@1234");
+await DB.settle(); await DB.login("admin", "admin@srividya.demo", "Demo@1234");
 DB.removeStudentIdCard(raviA.id);
 if (DB.getStudents().find((x) => x.id === raviA.id).idCard !== null) fails.push("removeStudentIdCard did not clear the card");
-DB.login("student", "ravi@srividya.demo", "Demo@1234");
+await DB.settle(); await DB.login("student", "ravi@srividya.demo", "Demo@1234");
 if (!/data-idcard/.test(renderAs("student/idcard-generated", "/portal/student"))) fails.push("Student profile: generated ID card should return once the issued card is removed");
 // Fees search by roll, then by name (assertions scoped to the table: the filter bar's Student select lists every name)
-DB.login("admin", "admin@srividya.demo", "Demo@1234");
+await DB.settle(); await DB.login("admin", "admin@srividya.demo", "Demo@1234");
 const lakA = DB.getStudents().find((x) => x.email === "lakshmi@srividya.demo");
 const feesTable = (h) => h.slice(h.indexOf("data-admin-fees"));
 P.setUI({ tab: "fees", feeQ: raviA.roll.slice(0, -2) });
@@ -401,10 +456,12 @@ if (!feesTable(fq2).includes(lakA.name) || feesTable(fq2).includes(raviA.name)) 
 P.setUI({ feeQ: "zzz-no-match" });
 if (!renderAs("admin/fees-search-none", "/portal/admin").includes("No fees match")) fails.push("Fees search: empty state missing");
 P.setUI({ feeQ: "", tab: "overview" });
+
 // ---- Build #3: seeded payment records, admin memo print, real ID card design ----
-// After a reset, the seed itself carries payment records that add up to the fees' paid totals
-DB.login("admin", "admin@srividya.demo", "Demo@1234");
-DB.resetDemo();
+// After a backend reset, the provisioned demo itself carries payment records
+// that add up to the fees' paid totals
+await rebootWorld(true); // adaptation 2: was DB.resetDemo()
+await DB.settle(); await DB.login("admin", "admin@srividya.demo", "Demo@1234");
 const seedPays = DB.getPayments(), todayStr = vm.runInContext("todayISO()", ctx);
 if (!seedPays.length) fails.push("Seed: Payments tab should not start empty");
 if (seedPays.reduce((a, p) => a + p.amount, 0) !== DB.getFees().reduce((a, f) => a + f.paid, 0)) fails.push("Seed: payment records do not add up to the fees' paid totals");
@@ -413,13 +470,13 @@ if (seedPays.some((p) => p.at.slice(0, 10) >= todayStr)) fails.push("Seed: payme
 P.setUI({ tab: "payments" }); const seedPayHtml = renderAs("admin/seed-payments", "/portal/admin");
 if (!seedPayHtml.includes('data-act="rcptOpen"')) fails.push("Admin Payments: seeded rows should carry Receipt buttons");
 P.setUI({ tab: "overview" });
-DB.login("student", "ravi@srividya.demo", "Demo@1234");
+await DB.settle(); await DB.login("student", "ravi@srividya.demo", "Demo@1234");
 if (!DB.myPayments().length) fails.push("Seed: student should start with a payment history");
 P.setUI({ stab: "payments" }); const stuPayHtml = renderAs("student/seed-payments", "/portal/student");
 if (!stuPayHtml.includes('data-act="rcptOpen"')) fails.push("Student Payments: seeded rows should carry Receipt buttons");
 P.setUI({ stab: "overview" });
 // Admin memo print: student picker + Print control in the Marks pane; the memo carries college + student
-DB.login("admin", "admin@srividya.demo", "Demo@1234");
+await DB.settle(); await DB.login("admin", "admin@srividya.demo", "Demo@1234");
 const raviAdm = DB.getStudents().find((x) => x.email === "ravi@srividya.demo");
 P.setUI({ tab: "marks", mExam: "Mid-1", mCls: raviAdm.klass, memoStu: raviAdm.id });
 const admMarksHtml = renderAs("admin/marks-memo", "/portal/admin");
@@ -435,17 +492,16 @@ DB.setStudentPhoto(raviAdm.id, PNG1);
 const idCardFn = vm.runInContext("idCardHTML", ctx);
 const cardOut = idCardFn(DB.getStudents().find((x) => x.id === raviAdm.id), DB.me().college);
 if (!cardOut.includes("STUDENT IDENTITY CARD") || !cardOut.includes(raviAdm.roll) || !cardOut.includes("Principal") || !cardOut.includes(PNG1)) fails.push("ID card: identity strip, roll number, Principal footer or photo missing");
-DB.login("student", "harika@srividya.demo", "Demo@1234");
+await DB.settle(); await DB.login("student", "harika@srividya.demo", "Demo@1234");
 const profCardHtml = renderAs("student/idcard-design", "/portal/student");
 if (!profCardHtml.includes("STUDENT IDENTITY CARD") || !profCardHtml.includes(DB.me().student.roll)) fails.push("Student profile: ID card missing the identity strip or the student's roll number");
-// ---- Build #4: ensureDemoData backfill — old saved browsers get the rich demo too ----
-// After a reset, EVERY college (not just Sri Vidya) has: payments adding up to fees paid,
-// the two demo documents on EVERY approved student, and a supply demo.
-DB.login("admin", "admin@srividya.demo", "Demo@1234");
-DB.resetDemo();
+// ---- Build #4: the provisioned demo data — every college has payments adding
+// up to fees paid, the two demo documents on EVERY approved student, and a
+// supply demo (the server-side equivalent of the old boot-time backfill) ----
+await rebootWorld(true); // adaptation 2: was DB.resetDemo()
 const demoAdmins = [["admin@srividya.demo", "Sri Vidya"], ["admin@greenvalley.demo", "Green Valley"]];
 for (const [em, label] of demoAdmins) {
-  DB.login("admin", em, "Demo@1234");
+  await DB.settle(); await DB.login("admin", em, "Demo@1234");
   const cPays = DB.getPayments(), cFees = DB.getFees();
   if (!cPays.length || cPays.reduce((a, p) => a + p.amount, 0) !== cFees.reduce((a, f) => a + f.paid, 0)) fails.push(`Backfill reset (${label}): payments do not add up to the fees' paid totals`);
   const admStudents = DB.getStudents().filter((s) => s.status === "approved");
@@ -456,18 +512,18 @@ for (const [em, label] of demoAdmins) {
   }
   if (!DB.getMarks({}).some((m) => m.attempt === "Supplementary")) fails.push(`Backfill reset (${label}): no supplementary mark after reset`);
   for (const stu of admStudents) {
-    DB.login("student", stu.email, "Demo@1234");
+    await DB.settle(); await DB.login("student", stu.email, "Demo@1234");
     const myDocs = DB.myDocuments();
     if (!myDocs.some((d) => d.status === "Verified") || !myDocs.some((d) => d.status === "Pending")) fails.push(`Backfill reset (${label}): ${stu.name}'s own documents lack a Verified and a Pending entry`);
   }
   const firstStu = admStudents.slice().sort((a, b) => a.roll.localeCompare(b.roll))[0];
-  DB.login("student", firstStu.email, "Demo@1234");
+  await DB.settle(); await DB.login("student", firstStu.email, "Demo@1234");
   const myDocHtml = renderAs("student/backfill-docs-" + label, "/portal/student");
   if (!/Admission documents/.test(myDocHtml) || !myDocHtml.includes("Verified") || !myDocHtml.includes("Pending")) fails.push(`Backfill reset (${label}): student render does not show both document statuses`);
 }
 // The demo-login student (Ravi Kumar Varma, 24SV1A0501) is NOT the lowest roll, but his
 // documents must still be there — and the office must get Verify / Reject on his profile.
-DB.login("admin", "admin@srividya.demo", "Demo@1234");
+await DB.settle(); await DB.login("admin", "admin@srividya.demo", "Demo@1234");
 const raviDemo = DB.getStudents().find((s) => s.roll === "24SV1A0501") || DB.getStudents().find((s) => /Ravi Kumar Varma/.test(s.name));
 if (!raviDemo) fails.push("Backfill reset: demo-login student Ravi Kumar Varma (24SV1A0501) not found after reset");
 else {
@@ -476,65 +532,27 @@ else {
   P.setUI({ tab: "students", view: raviDemo.id }); const raviProf = renderAs("admin/ravi-backfill-docs", "/portal/admin");
   if (!raviProf.includes('data-act="docVerify"') || !raviProf.includes('data-act="docReject"')) fails.push("Backfill reset: admin profile for Ravi lacks Verify / Reject controls for his pending document");
   P.setUI({ view: null, tab: "overview" });
-  DB.login("student", raviDemo.email, "Demo@1234");
+  await DB.settle(); await DB.login("student", raviDemo.email, "Demo@1234");
   const raviMyDocs = DB.myDocuments();
   if (!raviMyDocs.some((d) => d.status === "Verified") || !raviMyDocs.some((d) => d.status === "Pending")) fails.push("Backfill reset: Ravi's own documents lack a Verified and a Pending entry");
 }
-// Migration: boot the page script again over a saved v2 DB stripped of payments, documents
-// and supplementary marks — exactly what an older build left in a returning visitor's browser —
-// and check the boot-time backfill restores all three, per college, with unique UTRs.
-const mkStore = (init) => { const m = new Map(Object.entries(init || {})); return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => { m.set(k, String(v)); }, removeItem: (k) => { m.delete(k); } }; };
-const bootWith = (ls) => {
-  const c2 = { console, setTimeout, clearTimeout, Date, Math, JSON, encodeURIComponent, decodeURIComponent, String, Object, Array,
-    location: { hash: "", replace(h) { this.hash = h; } },
-    matchMedia: () => ({ matches: true, addEventListener: noop }),
-    requestAnimationFrame: (f) => f(), scrollTo: noop, open: noop, addEventListener: noop,
-    localStorage: ls, sessionStorage: mkStore(),
-    document: { title: "", documentElement: el("boot-html"), querySelector: () => el("boot-q"), querySelectorAll: () => [], getElementById: () => null, addEventListener: noop } };
-  c2.history = { replaceState: (a, b, h) => { c2.location.hash = h; } };
-  c2.window = c2;
-  vm.createContext(c2); vm.runInContext(code, c2);
-  return vm.runInContext("DB", c2);
-};
-const lsA = mkStore(); bootWith(lsA);
-const savedDemo = lsA.getItem("shaalix-demo-db-v2");
-if (!savedDemo) fails.push("Migration: a first boot with storage did not persist a demo DB");
-else {
-  const oldDb = JSON.parse(savedDemo);
-  oldDb.T.payments = []; oldDb.T.documents = [];
-  oldDb.T.marks = oldDb.T.marks.filter((m) => m.attempt !== "Supplementary");
-  // Discriminators: if load() failed and seed() re-ran instead, the notices would be back
-  // and the college would have its seed name — a passing run must show the saved DB was used.
-  oldDb.T.notices = [];
-  oldDb.T.colleges[0].name = "Sri Vidya Institute of Technology (Saved)";
-  const lsB = mkStore({ "shaalix-demo-db-v2": JSON.stringify(oldDb) });
-  const DB2 = bootWith(lsB);
-  DB2.login("admin", "admin@srividya.demo", "Demo@1234");
-  if (DB2.me().college.name !== "Sri Vidya Institute of Technology (Saved)" || DB2.getNotices().length !== 0) fails.push("Migration: second boot did not load the saved DB (seed re-ran instead of the backfill path)");
-  for (const [em, label] of demoAdmins) {
-    DB2.login("admin", em, "Demo@1234");
-    const p2 = DB2.getPayments(), f2 = DB2.getFees();
-    if (!p2.length) fails.push(`Migration (${label}): payment history was not backfilled on the second boot`);
-    if (p2.reduce((a, p) => a + p.amount, 0) !== f2.reduce((a, f) => a + f.paid, 0)) fails.push(`Migration (${label}): backfilled payments do not add up to the fees' paid totals`);
-    const refs2 = p2.map((p) => p.ref).filter(Boolean);
-    if (new Set(refs2).size !== refs2.length || refs2.some((r) => !/^4021\d{8}$/.test(r))) fails.push(`Migration (${label}): backfilled UTRs are not unique 4021-prefixed 12-digit numbers`);
-    for (const stu2 of DB2.getStudents().filter((s) => s.status === "approved")) {
-      const docs2 = DB2.getDocuments(stu2.id);
-      if (!docs2.some((d) => d.kind === "Aadhaar Card" && d.status === "Verified") || !docs2.some((d) => d.kind === "SSC Memo" && d.status === "Pending")) fails.push(`Migration (${label}): demo documents were not backfilled for ${stu2.name} on the second boot`);
-    }
-    if (!DB2.getMarks({}).some((m) => m.attempt === "Supplementary")) fails.push(`Migration (${label}): supplementary mark was not backfilled on the second boot`);
-  }
-  // Idempotence: a third boot over the backfilled DB must add nothing
-  const after2 = JSON.parse(lsB.getItem("shaalix-demo-db-v2"));
-  const DB3store = mkStore({ "shaalix-demo-db-v2": JSON.stringify(after2) });
-  const DB3 = bootWith(DB3store);
-  DB3.login("admin", "admin@srividya.demo", "Demo@1234");
-  if (DB3.getPayments().length + DB3.getFees().length === 0) fails.push("Migration: third boot lost the demo data");
-  const after3raw = DB3store.getItem("shaalix-demo-db-v2");
-  const after3 = after3raw ? JSON.parse(after3raw) : after2;
-  if (after3.T.payments.length !== after2.T.payments.length || after3.T.documents.length !== after2.T.documents.length || after3.T.marks.length !== after2.T.marks.length) fails.push("Migration: backfill is not idempotent — a repeat boot added more records");
+// Server persistence (adaptation 3 — replaces the localStorage migration
+// section): a payment made in this boot is still there after a full page
+// reboot over the same backend, the session is restored, and a second
+// session (the admin) sees the same record. Nothing lives in the browser.
+{
+  const feeDue = DB.myFees().find((f) => f.balance > 0);
+  DB.payMyFee(feeDue.id, { amount: 500, payer: "Ravi", app: "PhonePe", ref: "555566667777" });
+  await DB.settle();
+  await rebootWorld(false);
+  if (!DB.me() || !DB.me().student || DB.me().student.email !== "ravi@srividya.demo") fails.push("Persistence: session was not restored on the second boot");
+  else if (!DB.myPayments().some((p) => p.ref === "555566667777")) fails.push("Persistence: the second boot does not see the first boot's payment");
+  if ("localStorage" in ctx || "sessionStorage" in ctx) fails.push("Persistence: the harness gave the page browser storage — the build must not need it");
+  await DB.settle(); await DB.login("admin", "admin@srividya.demo", "Demo@1234");
+  if (!DB.getPayments().some((p) => p.ref === "555566667777")) fails.push("Persistence: admin does not see the student's synced payment");
+  if (DB.syncError()) fails.push("Persistence: background sync reported an error: " + DB.syncError().message);
 }
-console.log("portal: demo-data backfill for previously-saved browsers (payments, documents, supply) checked");
+console.log("portal: provisioned demo data per college (payments, documents, supply) checked");
 console.log("portal: seeded payments, admin memo print and ID card design checked");
 console.log("portal: receipt template + words + download, college-issued ID card and fees search checked");
 console.log("portal: logo, photo, documents, receipts, supplies, certificates, ID card and notice attachments checked");
@@ -560,3 +578,4 @@ console.log(`routes: ${Object.keys(ROUTES).length} (rendered ${routeCount}), pag
 console.log(`listeners: ${listeners.join(", ")}`);
 console.log(fails.length ? "FAIL\n" + fails.join("\n") : "PASS: every link resolves to a defined route");
 process.exit(fails.length ? 1 : 0);
+})().catch((e) => { console.error("selfcheck crashed:", e); process.exit(1); });

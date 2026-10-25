@@ -658,6 +658,7 @@
     </a>
 
     <script src="app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <script>
       /* ---------- Site data: add pages here ---------- */
       const PAGES = {
@@ -1669,27 +1670,29 @@
       }
 
       /* =====================================================================
-         DEMO PORTAL: front-end only. All state lives in the DB module below
-         and is saved to this browser's localStorage, so payments and imports
-         survive a refresh. Admins can wipe it with "Reset demo data".
+         PORTAL: backed by Supabase (auth + Postgres with row-level security
+         per college, files in Storage). The DB module below keeps the signed-in
+         college's data in memory and diff-syncs every change to the server,
+         so the same data appears on every device.
          ===================================================================== */
       const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
       const shiftISO = (iso, days) => { const [y, m, d] = iso.split("-").map(Number); const t = new Date(y, m - 1, d + days); return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`; };
       const dowOf = (iso) => { const [y, m, d] = iso.split("-").map(Number); return new Date(y, m - 1, d).getDay(); };
       const gradeOf = (pct) => (pct >= 90 ? "A+" : pct >= 80 ? "A" : pct >= 70 ? "B" : pct >= 60 ? "C" : pct >= 50 ? "D" : "F");
 
-      // TODO: replace with Supabase (auth + Postgres with row-level security per college_id)
-      //   - register*/login/logout/me    -> supabase.auth (signUp, signInWithPassword, signOut, getUser) + a profiles table
-      //   - every other function          -> one select/insert/update/delete on its table
-      //   - need(), mine() and myStudent() below become RLS policies:
-      //       admins: college_id = auth.jwt() ->> 'college_id'; students: student_id = auth.uid(), status = 'approved'
-      //   The UI only ever talks to DB, so swapping the body of this module is the whole migration.
+      // Supabase-backed portal data layer. The UI only ever talks to DB:
+      //   - register*/login/logout/me -> sb.auth (signUp, signInWithPassword,
+      //     signOut, getSession) + the profiles table (see the bridge below)
+      //   - every other function reads/writes the in-memory copy of the
+      //     caller's college; RLS enforces the same rules server-side:
+      //     admins see their college_id, students their own student_id.
+      //   need(), mine() and myStudent() remain as the client-side checks.
       const DB = (() => {
         const blank = () => ({ colleges: [], users: [], students: [], fees: [], payments: [], attendance: {}, marks: [], notices: [], faculty: [], documents: [], certificates: [] });
         const DOC_KINDS = ["Aadhaar Card", "SSC Memo", "Inter Memo", "Caste Certificate", "Income Certificate", "Transfer Certificate"];
         const CERT_TYPES = ["Bonafide Certificate", "Study & Conduct Certificate", "Course Completion Certificate", "Transfer Certificate (TC)"];
         let T = blank(), session = null, seq = 1000;
-        const uid = (p) => `${p}_${(++seq).toString(36)}`;
+        const uid = () => { try { return crypto.randomUUID(); } catch (_) { return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (ch) => { const r = (Math.random() * 16) | 0; return (ch === "x" ? r : (r & 0x3) | 0x8).toString(16); }); } };
         const clone = (x) => (x === undefined ? x : JSON.parse(JSON.stringify(x)));
         const fail = (message, field) => { const e = new Error(message); e.field = field; throw e; };
         const hash = (s) => { let h = 5381; for (const c of String(s)) h = (h * 33 + c.charCodeAt(0)) >>> 0; return "demo$" + h.toString(36); }; // demo only, not secure
@@ -1870,36 +1873,82 @@
         const api = {
           /* ----- Public ----- */
           collegeTypes: () => TYPES.slice(),
-          listColleges: () => T.colleges.map((c) => ({ id: c.id, name: c.name, code: c.code, city: c.city })),
-          registerCollege(d) {
+          listColleges: () => collegeDir.slice(),
+          async registerCollege(d) {
             req(d, ["name", "type", "city", "state", "admin", "email", "phone", "password", "confirm"]);
             if (!TYPES.includes(d.type)) fail("Pick a college type.", "type");
-            checkEmail(d.email); checkPhone(d.phone); checkPass(d);
-            const c = { id: uid("col"), name: tx(d.name), code: newCode(), type: d.type, city: tx(d.city), state: tx(d.state), phone: tx(d.phone), created: todayISO(), feeTuition: 85000, feeAffil: 6000 };
-            T.colleges.push(c);
-            const u = { id: uid("usr"), college_id: c.id, role: "admin", email: lc(d.email), pass: hash(d.password), name: tx(d.admin) };
-            T.users.push(u); startSession(u);
-            return clone(c);
+            if (!EMAIL.test(tx(d.email))) fail("Enter a valid email.", "email");
+            checkPhone(d.phone); checkPass(d);
+            const auth = await sbSignUp(d.email, d.password);
+            const c = { id: uid(), name: tx(d.name), code: newCode(), type: d.type, city: tx(d.city), state: tx(d.state), phone: tx(d.phone), created: todayISO(), feeTuition: 85000, feeAffil: 6000, logo: "", upi_id: null };
+            let ins = await sb.from("colleges").insert(await collegeToRow(c));
+            if (ins.error && /duplicate key|unique/i.test(ins.error.message || "")) { c.code = newCode(); ins = await sb.from("colleges").insert(await collegeToRow(c)); }
+            if (ins.error) { console.error("[shaalix] college insert failed", ins.error); fail("Your college could not be created. Please try again.", "name"); }
+            const prof = { id: auth.id, role: "admin", college_id: c.id, student_id: null, email: lc(d.email), display_name: tx(d.admin) };
+            const pins = await sb.from("profiles").insert(prof);
+            if (pins.error) { console.error("[shaalix] profile insert failed", pins.error); fail("Your account was created but its profile could not be saved. Sign in to finish setting up.", "email"); }
+            const self = await loadAll(prof);
+            startSession(self);
+            return clone(collegeOf(c.id));
           },
-          registerStudent(d) {
+          async registerStudent(d) {
+            if (!sb) fail("The portal cannot reach its server right now. Check your connection and try again.", "email");
             const code = tx(d.code).toUpperCase();
-            const c = code ? T.colleges.find((x) => x.code === code) : collegeOf(d.college_id);
-            if (!c) fail(code ? "No college has this code. Check it with your college office." : "Pick your college or enter its code.", code ? "code" : "college_id");
-            if (d.college_id && code && d.college_id !== c.id) fail("The code does not match the college you picked.", "code");
-            checkPass(d);
-            const st = makeStudent(c.id, d, "pending");
-            startSession(T.users.find((u) => u.student_id === st.id));
-            return clone(st);
+            let college = null;
+            const directCollege = async (field, value) => {
+              let hasSession = !!session;
+              if (!hasSession && sb.auth && sb.auth.getSession) {
+                try { const { data } = await sb.auth.getSession(); hasSession = !!(data && data.session); } catch (_) { /* no session to fall back with */ }
+              }
+              if (!hasSession) return null;
+              const { data } = await sb.from("colleges").select("id,name,code,city").eq(field, value);
+              return data && data[0];
+            };
+            if (code) {
+              try {
+                const { data, error } = await sb.rpc("find_college_by_code", { p_code: code });
+                if (!error) college = data && data[0];
+              } catch (_) { /* RPC not installed yet: the session fallback below may still resolve it */ }
+              if (!college) college = await directCollege("code", code);
+            } else if (d.college_id) {
+              college = await directCollege("id", d.college_id);
+            }
+            if (!college) fail(code ? "No college has this code. Check it with your college office." : "Pick your college or enter its code.", code ? "code" : "college_id");
+            if (d.college_id && code && d.college_id !== college.id) fail("The code does not match the college you picked.", "code");
+            req(d, ["name", "roll", "sec", "email", "phone"]);
+            if (!EMAIL.test(tx(d.email))) fail("Enter a valid email.", "email");
+            checkPhone(d.phone); checkPass(d);
+            const prof0 = cleanProfile(d);
+            const auth = await sbSignUp(d.email, d.password);
+            const st = { id: uid(), college_id: college.id, name: tx(d.name), roll: tx(d.roll).toUpperCase(), cls: tx(d.cls) || clsOf(prof0), sec: tx(d.sec), email: lc(d.email), phone: tx(d.phone), status: "pending", created: todayISO(), photo: "", idCard: null, ...prof0 };
+            const sins = await sb.from("students").insert(await studentToRow(st));
+            if (sins.error) {
+              console.error("[shaalix] student insert failed", sins.error);
+              if (/duplicate key|unique/i.test(sins.error.message || "")) fail("This roll number is already used in this college.", "roll");
+              if (sins.error.code === "42501") fail("Your college is not accepting online registrations yet. Please contact the college office.", "code");
+              fail("Your registration could not be saved. Please try again.", "name");
+            }
+            const prof = { id: auth.id, role: "student", college_id: college.id, student_id: st.id, email: st.email, display_name: st.name };
+            const pins = await sb.from("profiles").insert(prof);
+            if (pins.error) { console.error("[shaalix] profile insert failed", pins.error); fail("Your account was created but its profile could not be saved. Sign in to finish setting up.", "email"); }
+            const self = await loadAll(prof);
+            startSession(self);
+            return clone(T.students.find((x) => x.id === st.id) || st);
           },
-          login(role, email, password) {
+          async login(role, email, password) {
             if (!tx(email)) fail("Required.", "email");
             if (!password) fail("Required.", "password");
-            const u = T.users.find((x) => x.email === lc(email));
-            if (u && u.role !== role && u.pass === hash(password)) fail(`This is a ${{ admin: "College Admin", student: "Student", faculty: "Faculty" }[u.role] || "different"} account. Switch the tab above.`, "password");
-            if (!u || u.role !== role || u.pass !== hash(password)) fail("Wrong email or password.", "password");
-            return startSession(u);
+            if (!sb) fail("The portal cannot reach its server right now. Check your connection and try again.", "email");
+            await syncChain; // flush the previous session's writes before switching accounts
+            const { data, error } = await sb.auth.signInWithPassword({ email: lc(email), password: String(password) });
+            if (error || !data || !data.user) fail("Wrong email or password.", "password");
+            const prof = await fetchProfile(data.user.id);
+            if (!prof) { await sb.auth.signOut(); fail("Wrong email or password.", "password"); }
+            if (prof.role !== role) { await sb.auth.signOut(); fail(`This is a ${{ admin: "College Admin", student: "Student", faculty: "Faculty" }[prof.role] || "different"} account. Switch the tab above.`, "password"); }
+            const self = await loadAll(prof);
+            return startSession(self);
           },
-          logout() { session = null; saveSession(); },
+          logout() { session = null; T = blank(); collegeDir = []; saveSession(); if (sb) syncChain = syncChain.then(() => sb.auth.signOut()).catch(() => {}); },
           me() {
             if (!session) return null;
             const u = T.users.find((x) => x.id === session.user_id);
@@ -2198,176 +2247,13 @@
           snapshot() {
             const s = need("admin"), cid = s.college_id, canon = (x) => (Array.isArray(x) ? x.map(canon) : x && typeof x === "object" ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, canon(x[k])])) : x);
             const by = (arr) => arr.map(canon).map((x) => JSON.stringify(x)).sort();
-            return JSON.stringify({ college: canon(collegeOf(cid)), users: by(T.users.filter((u) => u.college_id === cid)), students: by(studentsIn(cid)), fees: by(T.fees.filter((x) => x.college_id === cid)), payments: by(T.payments.filter((x) => x.college_id === cid)), attendance: by(Object.entries(T.attendance).filter(([, v]) => v.college_id === cid).map(([k, v]) => ({ k, ...v }))), marks: by(T.marks.filter((x) => x.college_id === cid)), notices: by(T.notices.filter((x) => x.college_id === cid)) });
+            return JSON.stringify({ college: canon(collegeOf(cid)), users: by(T.users.filter((u) => u.college_id === cid).map(({ id, pass, ...u }) => u)), students: by(studentsIn(cid)), fees: by(T.fees.filter((x) => x.college_id === cid)), payments: by(T.payments.filter((x) => x.college_id === cid).map(({ receipt_path, ...p }) => p)), attendance: by(Object.entries(T.attendance).filter(([, v]) => v.college_id === cid).map(([k, v]) => ({ k, ...v }))), marks: by(T.marks.filter((x) => x.college_id === cid)), notices: by(T.notices.filter((x) => x.college_id === cid)) });
           },
           resetDemo() {
-            need("admin"); T = blank(); seq = 1000; seed();
-            try { ensureDemoData(); } catch (_) { /* backfill must never break a reset */ }
-            const u = session && T.users.find((x) => x.id === session.user_id && x.email);
-            if (!u) { session = null; saveSession(); }
-            return !!session;
+            need("admin");
+            fail("Demo reset is not available: portal data lives in Supabase now, not in this browser, so there is no local copy to reset.");
           },
         };
-
-        /* ----- Seed data: two B.Tech colleges, so the demo works on first load. Every personal detail is fake. ----- */
-        function seed() {
-          let r = 20261011; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647;
-          const today = todayISO(), days = [], AY = acadStart();
-          for (let d = today; days.length < 20; d = shiftISO(d, -1)) if (dowOf(d) !== 0) days.push(d);
-          const BR = { CSE: "05", ECE: "04", EEE: "02", MECH: "03", CIVIL: "01", IT: "12" };
-          const SUBJ = { CSE: ["Data Structures", "DBMS", "Operating Systems", "Computer Networks"], IT: ["Web Technologies", "DBMS", "Software Engineering", "Computer Networks"], ECE: ["Signals & Systems", "Analog Circuits", "Digital Electronics", "EM Waves"], EEE: ["Power Systems", "Electrical Machines", "Control Systems", "Power Electronics"], MECH: ["Thermodynamics", "Fluid Mechanics", "Machine Design", "Manufacturing"], CIVIL: ["Structural Analysis", "Surveying", "Fluid Mechanics", "Building Materials"] };
-          /* name, branch, admission, current year, section, ability, current-year [tuition paid, affiliation paid],
-             gender, father, mother, dob, blood, religion, category, caste, income, scholarship scheme, scholarship status, previous marks % */
-          const COLS = [
-            { code: "SHX-1001", jc: "SV", name: "Sri Vidya Institute of Technology", type: "Engineering", city: "Visakhapatnam", state: "Andhra Pradesh", st: "AP", phone: "+91 89123 45670", admin: "K. Srinivasa Rao", email: "admin@srividya.demo", dom: "srividya.demo", feeTuition: 85000, feeAffil: 6000,
-              addr: ["MVP Colony, Visakhapatnam, Andhra Pradesh 530017", "Gajuwaka, Visakhapatnam, Andhra Pradesh 530026", "Pendurthi, Visakhapatnam, Andhra Pradesh 531173", "Madhurawada, Visakhapatnam, Andhra Pradesh 530048"],
-              students: [
-                ["Ravi Kumar Varma", "CSE", "Regular", 3, "Sec A", 0.86, [40000, 0], "Male", "P. Suryanarayana Varma", "P. Padmavathi", "2006-03-14", "B+", "Hindu", "OC", "Raju", 650000, "", "Not eligible", 94.2],
-                ["Lakshmi Prasanna", "ECE", "Lateral Entry", 3, "Sec A", 0.93, [0, 6000], "Female", "K. Appa Rao", "K. Satyavathi", "2004-08-22", "O+", "Hindu", "BC-D", "Turpu Kapu", 180000, "Jagananna Vidya Deevena (RTF)", "Sanctioned", 88.6],
-                ["Sai Teja Reddy", "CSE", "Regular", 3, "Sec A", 0.68, [85000, 0], "Male", "M. Venkat Reddy", "M. Sunitha", "2006-01-09", "A+", "Hindu", "OC", "Reddy", 900000, "", "Not eligible", 82.5],
-                ["Harika Naidu", "ECE", "Regular", 2, "Sec B", 0.78, [50000, 6000], "Female", "B. Ramana Naidu", "B. Lalitha", "2007-05-30", "AB+", "Hindu", "BC-D", "Koppula Velama", 240000, "Jagananna Vidya Deevena (RTF)", "Under verification", 90.1],
-                ["Venkatesh Rao", "MECH", "Lateral Entry", 2, "Sec A", 0.58, [0, 0], "Male", "G. Simhachalam", "G. Kanaka Durga", "2005-11-02", "B-", "Hindu", "SC", "Mala", 120000, "Post-Matric Scholarship (RTF/MTF)", "Applied", 71.4],
-                ["Divya Sree", "EEE", "Regular", 4, "Sec A", 0.82, [85000, 6000], "Female", "T. Srinivas", "T. Annapurna", "2005-02-17", "O-", "Christian", "BC-C", "Converted Christian", 150000, "Jagananna Vidya Deevena (RTF)", "Disbursed", 86.0],
-              ],
-              pending: ["Anil Kumar Patnaik", "CSE", "Regular", 1, "Sec B", 0, [0, 0], "Male", "R. Prakash Patnaik", "R. Sarojini", "2008-04-11", "A-", "Hindu", "EWS", "Karanam", 500000, "", "Not applied", 89.3],
-              notices: [["Year-wise fee payment open", "Tuition and affiliation fees for this academic year can be paid by UPI from the student portal or at the accounts office. Tuition is due by 15 November and the affiliation fee by 15 December.", -2], ["Mid-1 exams from next Monday", "B.Tech Mid-1 exams start next Monday. The branch-wise timetable is on the notice board; bring your college ID card to every exam.", -6]] },
-            { code: "SHX-1002", jc: "GV", name: "Green Valley College of Engineering", type: "Engineering", city: "Hyderabad", state: "Telangana", st: "TS", phone: "+91 90000 12345", admin: "Dr. Meena Iyer", email: "admin@greenvalley.demo", dom: "greenvalley.demo", feeTuition: 78000, feeAffil: 5500,
-              addr: ["Kukatpally, Hyderabad, Telangana 500072", "Dilsukhnagar, Hyderabad, Telangana 500060", "Uppal, Hyderabad, Telangana 500039", "Miyapur, Hyderabad, Telangana 500049"],
-              students: [
-                ["Priya Sharma", "CSE", "Regular", 3, "Sec A", 0.88, [78000, 0], "Female", "Rakesh Sharma", "Neha Sharma", "2006-06-05", "B+", "Hindu", "OC", "Brahmin", 1200000, "", "Not eligible", 96.4],
-                ["Mohammed Arif", "IT", "Lateral Entry", 3, "Sec A", 0.72, [30000, 0], "Male", "Mohammed Rafiq", "Ayesha Begum", "2004-12-19", "O+", "Muslim", "BC-E", "Shaik", 160000, "TS ePASS Post-Matric (RTF)", "Sanctioned", 79.8],
-                ["Sneha Reddy", "CSE", "Regular", 4, "Sec A", 0.95, [78000, 5500], "Female", "K. Mahender Reddy", "K. Swapna", "2005-03-28", "A+", "Hindu", "OC", "Reddy", 800000, "", "Not eligible", 97.0],
-                ["Karthik Goud", "ECE", "Lateral Entry", 2, "Sec B", 0.61, [0, 0], "Male", "B. Yadagiri Goud", "B. Sujatha", "2006-09-14", "B+", "Hindu", "BC-B", "Goud", 210000, "TS ePASS Post-Matric (RTF)", "Applied", 68.2],
-                ["Ananya Rao", "IT", "Regular", 1, "Sec A", 0.84, [40000, 5500], "Female", "D. Srinivasa Rao", "D. Madhavi", "2008-01-23", "AB-", "Hindu", "ST", "Lambada", 95000, "Post-Matric Scholarship (RTF/MTF)", "Applied", 84.7],
-                ["Rahul Yadav", "CIVIL", "Regular", 2, "Sec A", 0.66, [0, 5500], "Male", "Ramesh Yadav", "Kavitha Yadav", "2007-07-07", "O+", "Hindu", "BC-D", "Yadava", 230000, "TS ePASS Post-Matric (RTF)", "Under verification", 78.9],
-              ],
-              pending: ["Fatima Begum", "CSE", "Regular", 1, "Sec B", 0, [0, 0], "Female", "Abdul Kareem", "Rukhsana Begum", "2008-02-02", "B+", "Muslim", "BC-E", "Shaik", 140000, "TS ePASS Post-Matric (RTF)", "Not applied", 88.0],
-              notices: [["Affiliation fee reminder", "The university affiliation fee for this academic year is due by 15 December. Pay it by UPI from the student portal, or at the accounts office.", -1], ["Industrial visit to Genome Valley", "B.Tech 2nd Year students visit Genome Valley next Friday. Submit the consent form to your class teacher by Wednesday.", -8]] },
-          ];
-          let payN = 0;
-          COLS.forEach((C, ci) => {
-            const c = { id: uid("col"), name: C.name, code: C.code, type: C.type, city: C.city, state: C.state, phone: C.phone, created: shiftISO(today, -120), feeTuition: C.feeTuition, feeAffil: C.feeAffil };
-            T.colleges.push(c);
-            T.users.push({ id: uid("usr"), college_id: c.id, role: "admin", email: C.email, pass: hash("Demo@1234"), name: C.admin });
-            const serial = {};
-            const mk = (row, status, i) => {
-              const [name, branch, admType, curYear, sec, , , gender, father, mother, dob, blood, religion, category, caste, income, scheme, schStatus, prevPct] = row;
-              const lat = admType === "Lateral Entry", admYear = AY - (curYear - (lat ? 2 : 1)), key = `${admYear}${lat}${branch}`;
-              serial[key] = (serial[key] || 0) + 1;
-              /* JNTU-style roll: batch year, college code, 1A regular or 5A lateral, branch code, serial */
-              const roll = `${String(admYear).slice(2)}${C.jc}${lat ? "5A" : "1A"}${BR[branch]}${String(serial[key]).padStart(2, "0")}`;
-              const oc = category === "OC" || category === "EWS";
-              return makeStudent(c.id, {
-                name, roll, sec, email: `${name.split(" ")[0].toLowerCase()}@${C.dom}`, phone: `9${String(848000000 + i * 1373 + C.code.charCodeAt(7) * 7919).slice(0, 9)}`, password: "Demo@1234",
-                course: "B.Tech", branch, admType, admYear, curYear, father, mother, dob, gender, blood, religion, category, caste,
-                address: `${C.st === "AP" ? "D.No" : "H.No"} ${10 + i}-${3 + ci}-${100 + i * 7}, ${C.addr[i % C.addr.length]}`,
-                aadhaar: `9999${ci + 1}${String(4823150 + i * 7919).slice(-7)}`, apaar: i % 2 ? `10${ci + 1}${String(77351000 + i * 4021).padStart(9, "0").slice(-9)}` : "",
-                casteCert: oc && category === "OC" ? "" : `CC/${C.st}/DEMO/${admYear - 1}/${10230 + i * 17 + ci}`,
-                income, incomeCert: `IC/${C.st}/DEMO/${AY}/${55010 + i * 13 + ci}`, incomeValid: `${i === 5 && ci === 0 ? AY : AY + 1}-03-31`,
-                schEligible: scheme ? "Yes" : "No", schScheme: scheme, schStatus, prevQual: lat ? "Diploma" : "Inter", prevPct,
-              }, status);
-            };
-            let weakSt = null, weakAb = Infinity;
-            C.students.forEach((row, i) => {
-              const st = mk(row, "approved", i + 1), ability = row[5], [tPaid, aPaid] = row[6];
-              if (ability < weakAb) { weakAb = ability; weakSt = st; }
-              genFees(st);
-              /* Past years paid in full, the current year partly or wholly unpaid, future years upcoming */
-              T.fees.filter((f) => f.student_id === st.id).forEach((f) => { f.paid = f.year < st.curYear ? f.amount : f.year === st.curYear ? (f.type === "Tuition" ? tPaid : aPaid) : 0; });
-              /* One payment record per fee already paid, so the Payments tabs agree with the fee totals:
-                 office cash and student UPI alternate, on past dates, with unique UTRs for the UPI ones */
-              T.fees.filter((f) => f.student_id === st.id && f.paid > 0).forEach((f) => { T.payments.push(seedPaymentFor(f, st, payN++)); });
-              days.forEach((d) => { const x = rnd(); T.attendance[`${st.id}|${d}`] = { college_id: c.id, student_id: st.id, date: d, status: x < 0.06 + (1 - ability) * 0.15 ? "A" : x > 0.965 ? "L" : "P" }; });
-              [["Unit Test 1", 25], ["Mid-1", 100]].forEach(([exam, max]) => SUBJ[st.branch].forEach((subject) => {
-                const score = Math.max(0, Math.min(max, Math.round(max * (ability + (rnd() - 0.5) * 0.18))));
-                T.marks.push({ id: uid("mrk"), college_id: c.id, student_id: st.id, exam, subject, max, score, attempt: "Regular" });
-              }));
-            });
-            /* Supplies demo: the weakest student of this college has one Mid-1 backlog cleared in a supplementary attempt */
-            (() => {
-              const weak = weakSt;
-              if (!weak) return;
-              const ms = T.marks.filter((m) => m.student_id === weak.id && m.exam === "Mid-1").sort((a, b) => a.score / a.max - b.score / b.max), worst = ms[0];
-              if (!worst) return;
-              if (worst.score / worst.max >= 0.5) worst.score = Math.floor(worst.max * 0.32);
-              T.marks.push({ id: uid("mrk"), college_id: c.id, student_id: weak.id, exam: "Mid-1", subject: worst.subject, max: worst.max, score: Math.round(worst.max * 0.62), attempt: "Supplementary" });
-            })();
-            mk(C.pending, "pending", 9);
-            C.notices.forEach(([title, text, ago]) => T.notices.push({ id: uid("ntc"), college_id: c.id, title, text, date: shiftISO(today, ago) }));
-          });
-          save();
-        }
-
-        /* One demo payment record for a fee that already has money against it: even indexes are
-           office cash records, odd ones student UPI payments carrying a deterministic 12-digit UTR.
-           Shared by seed() (fresh demo) and ensureDemoData() (backfill for older saved demos). */
-        function seedPaymentFor(fee, student, n) {
-          const at = `${shiftISO(todayISO(), -(2 + (n * 13) % 115))} ${String(9 + (n % 8)).padStart(2, "0")}:${String((n * 7) % 60).padStart(2, "0")}`;
-          if (n % 2) return { id: uid("pay"), college_id: fee.college_id, student_id: student.id, fee_id: fee.id, fee_label: feeLabel(fee), amount: r2(fee.paid), at, payer: student.name, mode: "PhonePe", ref: `4021${String(50000000 + n * 7919).slice(0, 8)}`, by: "Student (UPI)" };
-          return { id: uid("pay"), college_id: fee.college_id, student_id: student.id, fee_id: fee.id, fee_label: feeLabel(fee), amount: r2(fee.paid), at, payer: "", mode: "Cash / office", ref: "", by: "College office" };
-        }
-
-        /* ----- Backfill for browsers whose saved demo predates the richer seed -----
-           seed() only runs on a first visit, so anyone with a saved demo DB would otherwise never
-           see seeded payment records (Receipt buttons), demo admission documents or the supply
-           demo. Each piece is guarded (per college; documents per student) and skipped when
-           it already exists, which makes this a no-op for up-to-date data.
-           Returns true when anything was added. */
-        function ensureDemoData() {
-          let changed = false;
-          const today = todayISO();
-          /* (1) Payment history: one record per fee that has money against it but no record yet.
-                 Start the index where the existing records left off; UTRs that are already
-                 taken are skipped so a backfilled ref never collides with a real one. */
-          const usedRefs = new Set(T.payments.map((p) => p.ref).filter(Boolean));
-          let payN = T.payments.length;
-          T.colleges.forEach((c) => {
-            T.fees.filter((f) => f.college_id === c.id && f.paid > 0 && !T.payments.some((p) => p.fee_id === f.id)).forEach((f) => {
-              const st = T.students.find((x) => x.id === f.student_id); if (!st) return;
-              let rec = seedPaymentFor(f, st, payN);
-              while (rec.ref && usedRefs.has(rec.ref)) { payN++; rec = seedPaymentFor(f, st, payN); }
-              payN++; if (rec.ref) usedRefs.add(rec.ref);
-              T.payments.push(rec); changed = true;
-            });
-          });
-          /* (2) Demo documents: EVERY approved student who has no documents of their own
-                 gets two — an Aadhaar Card already Verified and an SSC Memo still Pending —
-                 so whichever student a visitor signs in as, their documents table shows real
-                 statuses and the office sees Verify / Reject controls on their profile.
-                 The upload day drifts a little per student so the stamps are not identical. */
-          let docN = 0;
-          T.colleges.forEach((c) => {
-            T.students.filter((x) => x.college_id === c.id && x.status === "approved").forEach((st) => {
-              if (T.documents.some((d) => d.student_id === st.id)) return;
-              const day = -(30 + (docN % 40)), hr = 9 + (docN % 9); docN++;
-              T.documents.push(
-                { id: uid("doc"), college_id: c.id, student_id: st.id, kind: "Aadhaar Card", name: "aadhaar-card.jpg", size: 184320, mime: "image/jpeg", data: null, status: "Verified", at: `${shiftISO(today, day)} ${String(hr).padStart(2, "0")}:24` },
-                { id: uid("doc"), college_id: c.id, student_id: st.id, kind: "SSC Memo", name: "ssc-memo.pdf", size: 237568, mime: "application/pdf", data: null, status: "Pending", at: `${shiftISO(today, day)} ${String(hr).padStart(2, "0")}:26` }
-              );
-              changed = true;
-            });
-          });
-          /* (3) Supply demo: a college with marks but no supplementary attempt gets one — the
-                 weakest approved student (lowest average) has their weakest Mid-1 regular mark
-                 below 50% and a passing supplementary record for the same subject. */
-          T.colleges.forEach((c) => {
-            const marks = T.marks.filter((m) => m.college_id === c.id);
-            if (!marks.length || marks.some((m) => m.attempt === "Supplementary")) return;
-            let weak = null, weakAvg = Infinity;
-            T.students.filter((x) => x.college_id === c.id && x.status === "approved").forEach((st) => {
-              const ms = marks.filter((m) => m.student_id === st.id); if (!ms.length) return;
-              const avg = ms.reduce((a, m) => a + m.score / m.max, 0) / ms.length;
-              if (avg < weakAvg) { weakAvg = avg; weak = st; }
-            });
-            if (!weak) return;
-            const worst = marks.filter((m) => m.student_id === weak.id && m.exam === "Mid-1" && (m.attempt || "Regular") === "Regular").sort((a, b) => a.score / a.max - b.score / b.max)[0];
-            if (!worst) return;
-            if (worst.score / worst.max >= 0.5) { worst.score = Math.round(worst.max * 0.4); changed = true; }
-            T.marks.push({ id: uid("mrk"), college_id: c.id, student_id: weak.id, exam: "Mid-1", subject: worst.subject, max: worst.max, score: Math.round(worst.max * 0.62), attempt: "Supplementary" });
-            changed = true;
-          });
-          return changed;
-        }
 
         /* ----- Import: map sheets and headers, validate every row, then merge or replace ----- */
         function analyze(sheets, mode) {
@@ -2556,27 +2442,230 @@
           return res;
         }
 
-        /* ----- Persistence: this browser only. Real backend: drop these and let Supabase hold the data. ----- */
-        const STORE_KEY = "shaalix-demo-db-v2", SESSION_KEY = "shaalix-demo-session-v2", OLD_KEYS = ["shaalix-demo-db-v1", "shaalix-demo-session-v1"];
-        const storage = (k) => { try { return window[k] || null; } catch (_) { return null; } };
-        function save() { const ls = storage("localStorage"); if (ls) try { ls.setItem(STORE_KEY, JSON.stringify({ v: 2, seq, T })); } catch (_) { /* storage full or blocked: keep working in memory */ } }
-        function saveSession() { const ss = storage("sessionStorage"); if (ss) try { session ? ss.setItem(SESSION_KEY, JSON.stringify(session)) : ss.removeItem(SESSION_KEY); } catch (_) { /* ignore */ } }
-        function load() {
-          const ls = storage("localStorage"); if (!ls) return false;
-          try { OLD_KEYS.forEach((k) => { ls.removeItem(k); const ss = storage("sessionStorage"); if (ss) ss.removeItem(k); }); } catch (_) { /* ignore */ }
-          try {
-            const d = JSON.parse(ls.getItem(STORE_KEY) || "null");
-            if (!d || d.v !== 2 || !d.T || !["colleges", "users", "students", "fees", "payments", "marks", "notices"].every((k) => Array.isArray(d.T[k])) || typeof d.T.attendance !== "object") return false;
-            T = { ...blank(), ...d.T }; seq = Number(d.seq) || 1000; return true;
-          } catch (_) { return false; }
+        /* ----- Supabase bridge: auth + Postgres (RLS per college) + Storage -----
+           The UI above talks only to the synchronous in-memory state T, exactly
+           as it did in the localStorage demo. This bridge is the only part that
+           knows about Supabase:
+             * login / register are async: sb.auth first, then loadAll() fills T
+               from the caller's college rows (RLS decides what comes back).
+             * every mutation still ends in save(), which now schedules an
+               async diff-sync: T is mapped to table rows, compared with the
+               snapshot taken at load, and the changes are upserted / deleted.
+             * file fields (photo, logo, documents, ID card, notice files)
+               arrive from the UI as data URLs; the diff-sync uploads them to
+               Storage and stores the path. At load, paths become signed URLs
+               (public URL for logos) so <img src> and downloads keep working.
+           A stub client can be injected as window.__SB_CLIENT__ (tests). */
+        const SB_URL = "https://rgwbowqkihysehwopmrg.supabase.co", SB_KEY = "sb_publishable_QzWS92YeGSL2Vap2xhYMfg_4j0Egplb";
+        const sb = (typeof window !== "undefined" && window.__SB_CLIENT__) || (typeof window !== "undefined" && window.supabase ? window.supabase.createClient(SB_URL, SB_KEY) : null);
+        let collegeDir = [], syncErr = null, syncChain = Promise.resolve();
+        let lastSynced = { user: null, rows: null }; // rows last written to (or read from) the backend, per user
+        const filePathByKey = new Map(); // "<recordId>:<field>" -> storage path, for files loaded as URLs
+        const emptyRows = () => ({ colleges: new Map(), students: new Map(), fees: new Map(), payments: new Map(), marks: new Map(), attendance: new Map(), notices: new Map(), faculty: new Map(), documents: new Map(), certificates: new Map() });
+        function save() {
+          if (!sb || !session || !lastSynced.rows) return;
+          const SES = session;
+          const rowsP = buildRowsFromT(); // snapshot the post-mutation state NOW, under its own session
+          syncChain = syncChain.then(async () => {
+            const cur = await rowsP;
+            /* Diff against what the backend actually holds for this user —
+               the previous task's result, NOT a baseline captured earlier:
+               queued tasks must never re-send each other's writes. */
+            const S = lastSynced.user === SES.user_id ? lastSynced.rows : emptyRows();
+            await applyDiff(S, SES, cur);
+            if (lastSynced.user === SES.user_id) lastSynced.rows = cur;
+          }).catch((e) => { syncErr = e; console.error("[shaalix sync]", e); });
         }
-        if (!load()) seed();
-        /* Older saved demos miss the newer seed pieces; top them up. Never fatal: a backfill
-           hiccup must not stop the portal from booting. */
-        try { if (ensureDemoData()) save(); } catch (_) { /* ignore */ }
-        try { const ss = storage("sessionStorage"), sv = ss && JSON.parse(ss.getItem(SESSION_KEY) || "null"); if (sv && T.users.some((u) => u.id === sv.user_id && u.role === sv.role)) session = sv; } catch (_) { /* no saved session */ }
+        function saveSession() { /* Supabase persists its own session; nothing local to save. */ }
+
+        /* "YYYY-MM-DD HH:MM" (UI stamps) <-> ISO timestamps (timestamptz columns) */
+        const pad2b = (n) => String(n).padStart(2, "0");
+        function isoFromStamp(s) { const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(String(s || "")); return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]).toISOString() : new Date().toISOString(); }
+        function stampFromISO(iso) { const d = new Date(iso); return isNaN(d) ? "" : `${d.getFullYear()}-${pad2b(d.getMonth() + 1)}-${pad2b(d.getDate())} ${pad2b(d.getHours())}:${pad2b(d.getMinutes())}`; }
+        function b64ToBytes(b64) {
+          if (typeof atob === "function") { const bin = atob(b64); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
+          const T64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"; const out = [];
+          let buf = 0, bits = 0;
+          for (const ch of b64.replace(/=+$/, "")) { const v = T64.indexOf(ch); if (v < 0) continue; buf = (buf << 6) | v; bits += 6; if (bits >= 8) { bits -= 8; out.push((buf >> bits) & 255); } }
+          return new Uint8Array(out);
+        }
+        function dataUrlToBlob(durl) {
+          const m = /^data:([^;,]*)(;base64)?,([\s\S]*)$/.exec(String(durl || "")); if (!m) return null;
+          const bytes = m[2] ? b64ToBytes(m[3]) : new TextEncoder().encode(decodeURIComponent(m[3]));
+          return new Blob([bytes], { type: m[1] || "application/octet-stream" });
+        }
+        /* A UI file field at sync time is one of: "" / null (no file), a data URL
+           (new upload), or an http(s) URL we issued at load (unchanged file). */
+        async function fileToPath(bucket, key, value, collegeId, base) {
+          if (!value) { if (filePathByKey.has(key)) { const p = filePathByKey.get(key); filePathByKey.delete(key); try { await sb.storage.from(bucket).remove([p]); } catch (_) { /* already gone */ } } return null; }
+          if (typeof value === "string" && value.startsWith("data:")) {
+            const blob = dataUrlToBlob(value); if (!blob) return filePathByKey.get(key) || null;
+            const ext = (blob.type.split("/")[1] || "bin").replace(/[^a-z0-9]/gi, "") || "bin";
+            const path = `${collegeId}/${base}.${ext}`;
+            const { error } = await sb.storage.from(bucket).upload(path, blob, { upsert: true, contentType: blob.type });
+            if (error) { console.error("[shaalix] file upload failed", error); return filePathByKey.get(key) || null; }
+            filePathByKey.set(key, path); return path;
+          }
+          return filePathByKey.get(key) || null;
+        }
+        async function urlForFile(bucket, key, path) {
+          if (!path) return "";
+          filePathByKey.set(key, path);
+          if (bucket === "logos") { const { data } = sb.storage.from(bucket).getPublicUrl(path); return data.publicUrl; }
+          const { data } = await sb.storage.from(bucket).createSignedUrl(path, 60 * 60 * 6);
+          return data ? data.signedUrl : "";
+        }
+
+        /* ----- Row mapping: Postgres rows <-> the exact shapes the UI uses ----- */
+        const DETAIL_FROM_UI = { father: "father", mother: "mother", dob: "dob", gender: "gender", blood: "blood", religion: "religion", category: "category", caste: "caste", address: "address", aadhaar: "aadhaar", apaar: "apaar", casteCert: "caste_cert", income: "income", incomeCert: "income_cert", incomeValid: "income_valid", schEligible: "sch_eligible", schScheme: "sch_scheme", schStatus: "sch_status", prevQual: "prev_qual", prevPct: "prev_pct" };
+        const PROFILE_COLS = ["course", "branch", "admType", "admYear", "curYear"]; // profile keys that are real columns, not details
+        async function collegeToRow(c) { return { id: c.id, name: c.name, code: c.code, type: c.type, city: c.city, state: c.state, phone: c.phone, logo_path: await fileToPath("logos", `${c.id}:logo`, c.logo, c.id, `${c.id}-logo`), fee_tuition: c.feeTuition, fee_affil: c.feeAffil, upi_id: c.upi_id ?? null }; }
+        async function collegeFromRow(r) { return { id: r.id, name: r.name, code: r.code, type: r.type, city: r.city, state: r.state, phone: r.phone, created: (r.created_at || "").slice(0, 10), feeTuition: r.fee_tuition, feeAffil: r.fee_affil, upi_id: r.upi_id || null, logo: r.logo_path ? await urlForFile("logos", `${r.id}:logo`, r.logo_path) : "" }; }
+        async function studentToRow(s) {
+          const details = {}; PROFILE_KEYS.forEach((k) => { if (!PROFILE_COLS.includes(k)) details[DETAIL_FROM_UI[k] || k] = s[k] === undefined ? PROFILE_DEFAULTS[k] : s[k]; });
+          return { id: s.id, college_id: s.college_id, name: s.name, roll: s.roll, email: s.email, phone: s.phone, course: s.course, branch: s.branch, year: s.curYear, section: s.sec, adm_type: s.admType, adm_year: s.admYear, status: s.status, photo_path: await fileToPath("photos", `${s.id}:photo`, s.photo, s.college_id, `${s.id}-photo`), id_card: s.idCard ? { name: s.idCard.name, size: s.idCard.size, mime: s.idCard.mime, storage_path: await fileToPath("documents", `${s.id}:idCard`, s.idCard.data, s.college_id, `${s.id}-idcard`), at: s.idCard.at } : null, details };
+        }
+        async function studentFromRow(r) {
+          const d = r.details || {}, s = { id: r.id, college_id: r.college_id, name: r.name, roll: r.roll, email: r.email || "", phone: r.phone || "", sec: r.section || "", status: r.status, created: (r.created_at || "").slice(0, 10), photo: "", idCard: null };
+          PROFILE_KEYS.forEach((k) => { s[k] = PROFILE_DEFAULTS[k]; });
+          s.course = r.course || "B.Tech"; s.branch = r.branch || ""; s.admType = r.adm_type || "Regular"; s.admYear = r.adm_year ?? ""; s.curYear = r.year ?? "";
+          for (const [ui, col] of Object.entries(DETAIL_FROM_UI)) if (d[col] !== undefined) s[ui] = d[col];
+          s.cls = clsOf(s);
+          if (r.photo_path) s.photo = await urlForFile("photos", `${r.id}:photo`, r.photo_path);
+          if (r.id_card) s.idCard = { name: r.id_card.name || "", size: r.id_card.size || 0, mime: r.id_card.mime || "", data: r.id_card.storage_path ? await urlForFile("documents", `${r.id}:idCard`, r.id_card.storage_path) : null, at: r.id_card.at || "" };
+          return s;
+        }
+        const feeToRow = (f) => ({ id: f.id, college_id: f.college_id, student_id: f.student_id, year: f.year, type: f.type, amount: f.amount, paid: f.paid, due: f.due });
+        const feeFromRow = (r) => ({ id: r.id, college_id: r.college_id, student_id: r.student_id, year: r.year, type: r.type, amount: r.amount, paid: r.paid, due: r.due });
+        const paymentToRow = (p) => ({ id: p.id, college_id: p.college_id, student_id: p.student_id, fee_id: p.fee_id, fee_label: p.fee_label, amount: p.amount, mode: p.mode, ref: p.ref, payer: p.payer, by_role: p.by, receipt_path: p.receipt_path ?? null, paid_at: isoFromStamp(p.at) });
+        const paymentFromRow = (r) => ({ id: r.id, college_id: r.college_id, student_id: r.student_id, fee_id: r.fee_id, fee_label: r.fee_label, amount: r.amount, at: stampFromISO(r.paid_at), payer: r.payer, mode: r.mode, ref: r.ref, by: r.by_role, receipt_path: r.receipt_path || null });
+        const markToRow = (m) => ({ id: m.id, college_id: m.college_id, student_id: m.student_id, exam: m.exam, subject: m.subject, max: m.max, score: m.score, attempt: m.attempt || "Regular" });
+        const markFromRow = (r) => ({ id: r.id, college_id: r.college_id, student_id: r.student_id, exam: r.exam, subject: r.subject, max: r.max, score: r.score, attempt: r.attempt || "Regular" });
+        const attToRow = (a) => ({ college_id: a.college_id, student_id: a.student_id, day: a.date, status: a.status });
+        async function noticeToRow(n) { return { id: n.id, college_id: n.college_id, title: n.title, body: n.text, notice_date: n.date, attachment: n.attachment ? { name: n.attachment.name, size: n.attachment.size, mime: n.attachment.mime, storage_path: await fileToPath("documents", `${n.id}:attachment`, n.attachment.data, n.college_id, `${n.id}-attachment`) } : null }; }
+        async function noticeFromRow(r) { const n = { id: r.id, college_id: r.college_id, title: r.title, text: r.body || "", date: r.notice_date }; if (r.attachment) n.attachment = { name: r.attachment.name || "", size: r.attachment.size || 0, mime: r.attachment.mime || "", data: r.attachment.storage_path ? await urlForFile("documents", `${r.id}:attachment`, r.attachment.storage_path) : null }; return n; }
+        const facultyToRow = (f) => ({ id: f.id, college_id: f.college_id, name: f.name, email: f.email, phone: f.phone, dept: f.dept, designation: f.designation, qualification: f.qualification, subjects: f.subjects, salary: f.salary === "" || f.salary === undefined || f.salary === null ? null : Number(f.salary), doj: f.doj || null });
+        const facultyFromRow = (r) => ({ id: r.id, college_id: r.college_id, name: r.name, email: r.email || "", phone: r.phone || "", dept: r.dept || "", designation: r.designation || "", qualification: r.qualification || "", subjects: r.subjects || "", salary: r.salary === null || r.salary === undefined ? "" : r.salary, doj: r.doj || "" });
+        async function docToRow(d) { return { id: d.id, college_id: d.college_id, student_id: d.student_id, kind: d.kind, file_name: d.name, size_bytes: d.size, mime: d.mime, storage_path: await fileToPath("documents", `${d.id}:file`, d.data, d.college_id, `${d.id}-file`), status: d.status, uploaded_at: isoFromStamp(d.at) }; }
+        async function docFromRow(r) { return { id: r.id, college_id: r.college_id, student_id: r.student_id, kind: r.kind, name: r.file_name, size: r.size_bytes, mime: r.mime || "", data: r.storage_path ? await urlForFile("documents", `${r.id}:file`, r.storage_path) : null, status: r.status, at: stampFromISO(r.uploaded_at) }; }
+        const certToRow = (ct) => ({ id: ct.id, college_id: ct.college_id, student_id: ct.student_id, type: ct.type, serial: ct.serial || null, note: ct.note, status: ct.status, issued_date: ct.date || null });
+        const certFromRow = (r) => ({ id: r.id, college_id: r.college_id, student_id: r.student_id, type: r.type, serial: r.serial || "", date: r.issued_date || "", note: r.note || "", status: r.status, issuedBy: "" }); // issuedBy has no column in the schema (see MIGRATION-NOTES)
+
+        async function buildRowsFromT() {
+          const out = { colleges: new Map(), students: new Map(), fees: new Map(), payments: new Map(), marks: new Map(), attendance: new Map(), notices: new Map(), faculty: new Map(), documents: new Map(), certificates: new Map() };
+          for (const c of T.colleges) out.colleges.set(c.id, await collegeToRow(c));
+          for (const s of T.students) out.students.set(s.id, await studentToRow(s));
+          for (const f of T.fees) out.fees.set(f.id, feeToRow(f));
+          for (const p of T.payments) out.payments.set(p.id, paymentToRow(p));
+          for (const m of T.marks) out.marks.set(m.id, markToRow(m));
+          for (const a of Object.values(T.attendance)) out.attendance.set(`${a.student_id}|${a.date}`, attToRow(a));
+          for (const n of T.notices) out.notices.set(n.id, await noticeToRow(n));
+          for (const f of T.faculty) out.faculty.set(f.id, facultyToRow(f));
+          for (const d of T.documents) out.documents.set(d.id, await docToRow(d));
+          for (const ct of T.certificates) out.certificates.set(ct.id, certToRow(ct));
+          return out;
+        }
+
+        /* Diff T (as rows) against the snapshot and push only the changes.
+           Inserts go parents-first (colleges -> students -> children) and
+           deletes children-first, so foreign keys are never violated. */
+        async function applyDiff(S, SES, cur) {
+          /* Deletes first (children before parents): a replaced record set is
+             fully removed before its successor rows are written. */
+          for (const t of ["certificates", "documents", "faculty", "notices", "attendance", "marks", "payments", "fees", "students"]) {
+            for (const [k, old] of S[t]) if (!cur[t].has(k)) {
+              const q = sb.from(t).delete();
+              const { error } = t === "attendance" ? await q.eq("student_id", old.student_id).eq("day", old.day) : await q.eq("id", k);
+              if (error) throw new Error(`Sync delete ${t}: ${error.message}`);
+            }
+          }
+          /* Writes, parents first — except fees, which go LAST: a payment
+             insert makes the database trigger (03-fee-paid-trigger.sql) add
+             the amount to fees.paid, and the client's own fee row, written
+             after, settles the final value for changes it made itself.
+             Students never write fees at all (RLS: fees are admin-writable;
+             a student's payments move fees.paid through the trigger).
+             New rows INSERT, changed rows UPDATE — never a blanket upsert:
+             students hold insert-only policies for payments, documents and
+             certificates, so re-sending a synced row as an upsert would be
+             rejected as an UPDATE they are not allowed to make. */
+          for (const t of ["colleges", "students", "payments", "marks", "attendance", "notices", "faculty", "documents", "certificates", "fees"]) {
+            if (t === "fees" && SES.role !== "admin") continue;
+            const news = [], changed = [];
+            for (const [k, row] of cur[t]) { if (!S[t].has(k)) news.push(row); else if (JSON.stringify(S[t].get(k)) !== JSON.stringify(row)) changed.push([k, row]); }
+            if (news.length) { const { error } = await sb.from(t).insert(news); if (error) throw new Error(`Sync ${t}: ${error.message}`); }
+            for (const [k, row] of changed) {
+              const q = sb.from(t).update(row);
+              const { error } = t === "attendance" ? await q.eq("student_id", row.student_id).eq("day", row.day) : await q.eq("id", k);
+              if (error) throw new Error(`Sync ${t}: ${error.message}`);
+            }
+          }
+          /* A student's email/name also lives on their profiles row (login directory) */
+          for (const [k, row] of cur.students) { const old = S.students.get(k); if (old && (old.email !== row.email || old.name !== row.name)) await sb.from("profiles").update({ email: row.email, display_name: row.name }).eq("student_id", k); }
+        }
+
+        /* T.users is a local shadow of profiles (+ one entry per student who has
+           no login yet), so the existing access checks keep working unchanged. */
+        function buildUsers(profileRows, students) {
+          const have = new Set(profileRows.filter((p) => p.student_id).map((p) => p.student_id));
+          const users = profileRows.map((p) => ({ id: p.id, college_id: p.college_id, role: p.role, email: p.email, student_id: p.student_id || null, name: p.display_name || "" }));
+          students.forEach((s) => { if (!have.has(s.id)) users.push({ id: `shadow:${s.id}`, college_id: s.college_id, role: "student", email: s.email, student_id: s.id, name: s.name }); });
+          return users;
+        }
+        async function fetchProfile(userId) { const { data, error } = await sb.from("profiles").select("*").eq("id", userId).single(); return error ? null : data; }
+        async function loadAll(prof) {
+          const cid = prof.college_id;
+          const get = async (t) => { const { data, error } = await sb.from(t).select("*").eq("college_id", cid); if (error) throw new Error(`Load ${t}: ${error.message}`); return data || []; };
+          const cres = await sb.from("colleges").select("*").eq("id", cid).single();
+          if (cres.error) throw new Error("Load colleges: " + cres.error.message);
+          const [stuR, feeR, payR, mrkR, attR, ntcR, facR, docR, crtR, profR] = await Promise.all([get("students"), get("fees"), get("payments"), get("marks"), get("attendance"), get("notices"), get("faculty"), get("documents"), get("certificates"), get("profiles")]);
+          const college = await collegeFromRow(cres.data);
+          const students = []; for (const r of stuR) students.push(await studentFromRow(r));
+          const notices = []; for (const r of ntcR) notices.push(await noticeFromRow(r));
+          const documents = []; for (const r of docR) documents.push(await docFromRow(r));
+          const attendance = {}; attR.forEach((r) => { attendance[`${r.student_id}|${r.day}`] = { college_id: r.college_id, student_id: r.student_id, date: r.day, status: r.status }; });
+          T = { colleges: [college], users: buildUsers(profR, students), students, fees: feeR.map(feeFromRow), payments: payR.map(paymentFromRow), attendance, marks: mrkR.map(markFromRow), notices, faculty: facR.map(facultyFromRow), documents, certificates: crtR.map(certFromRow) };
+          collegeDir = [{ id: college.id, name: college.name, code: college.code, city: college.city }];
+          lastSynced = { user: prof.id, rows: await buildRowsFromT() };
+          return T.users.find((u) => u.id === prof.id) || { id: prof.id, college_id: cid, role: prof.role, email: prof.email, student_id: prof.student_id || null, name: prof.display_name || "" };
+        }
+        async function sbSignUp(email, password) {
+          if (!sb) fail("The portal cannot reach its server right now. Check your connection and try again.", "email");
+          await syncChain; // flush any previous session's writes before switching accounts
+          const { data, error } = await sb.auth.signUp({ email: lc(email), password: String(password) });
+          if (error) { if (/already registered|already exists/i.test(error.message || "")) fail("This email is already registered.", "email"); fail(error.message || "Sign-up failed.", "email"); }
+          if (data && data.user) {
+            if (!data.session) { const si = await sb.auth.signInWithPassword({ email: lc(email), password: String(password) }); if (si.error) fail("Account created. Please confirm your email, then sign in.", "email"); }
+            return data.user;
+          }
+          fail("Sign-up failed.", "email");
+        }
+        async function refreshCollegeDir() { if (!sb) return; try { const { data } = await sb.from("colleges").select("id,name,code,city"); if (data && data.length) collegeDir = data.map((c) => ({ id: c.id, name: c.name, code: c.code, city: c.city })); } catch (_) { /* directory is best-effort */ } }
+
+        /* Boot: empty state, then restore a Supabase session if one exists.
+           When the restore lands, a hashchange repaint swaps the login screen
+           for the dashboard (the router already listens for it). */
+        const bootPromise = (async () => {
+          try {
+            if (sb) {
+              const { data } = await sb.auth.getSession();
+              const sess = data && data.session;
+              if (sess && sess.user) {
+                const prof = await fetchProfile(sess.user.id);
+                if (prof && prof.college_id) { const self = await loadAll(prof); startSession(self); try { if (typeof window !== "undefined" && typeof window.dispatchEvent === "function" && typeof HashChangeEvent === "function") window.dispatchEvent(new HashChangeEvent("hashchange")); } catch (_) { /* no repaint hook in this environment */ } }
+              }
+            }
+          } catch (e) { console.error("[shaalix] session restore failed", e); }
+          refreshCollegeDir();
+        })();
+        api.ready = () => bootPromise;   // tests / callers that must wait for the restore
+        api.settle = () => syncChain;    // resolves when every queued sync has finished
+        api.syncError = () => syncErr;   // last background sync failure, if any
+        /* Every write is synced right away (async, in the background).
+           registerCollege / registerStudent are not wrapped: they persist
+           through their own inserts and finish by loading a fresh snapshot. */
         /* Every write is saved right away */
-        ["registerCollege", "registerStudent", "addFaculty", "removeFaculty", "addStudent", "updateStudent", "updateMyContact", "setStudentStatus", "removeStudent", "updateCollege", "setStudentPhoto", "setMyPhoto", "setStudentIdCard", "removeStudentIdCard", "addDocument", "removeDocument", "verifyDocument", "issueCertificate", "issueCertRequest", "requestCertificate", "upsertFee", "recordPayment", "removeFee", "markAttendance", "upsertMarks", "postNotice", "removeNotice", "payMyFee", "applyImport", "resetDemo"].forEach((k) => {
+        ["addFaculty", "removeFaculty", "addStudent", "updateStudent", "updateMyContact", "setStudentStatus", "removeStudent", "updateCollege", "setStudentPhoto", "setMyPhoto", "setStudentIdCard", "removeStudentIdCard", "addDocument", "removeDocument", "verifyDocument", "issueCertificate", "issueCertRequest", "requestCertificate", "upsertFee", "recordPayment", "removeFee", "markAttendance", "upsertMarks", "postNotice", "removeNotice", "payMyFee", "applyImport"].forEach((k) => {
           const fn = api[k]; api[k] = (...args) => { const r = fn(...args); save(); return r; };
         });
         return api;
@@ -2639,7 +2728,7 @@
       const lastMonths = (n) => { const out = []; const d = parseISO(todayISO()); for (let i = 0; i < n; i++) { const t = new Date(d.getFullYear(), d.getMonth() - i, 1); out.push(`${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}`); } return out; };
       const UI0 = () => ({ loginRole: "admin", tab: "overview", stab: "overview", flash: null, msg: "", sQ: "", sCls: "", sStatus: "", edit: null, confirm: null, feeStu: "", feeSt: "", feeEdit: null, pay: null, attDate: todayISO(), attCls: "", attMonth: todayISO().slice(0, 7), mExam: "Unit Test 1", mCls: "", mSub: "", mMax: "", mAtt: "Regular", memoStu: "", payStu: "", pm: null, rcpt: null, noticeAtt: null, noticeTitle: "", noticeText: "", imp: null, impMode: "merge", impErr: "", impBusy: false, impResult: null, note: "", feeYear: "", feeQ: "", view: null, showAad: false, contactEdit: false, pmsg: "" });
       let UI = UI0();
-      const demoNote = `<p class="x-note" role="note">Demo mode: changes are saved in this browser only. College admins can reset the demo data anytime.</p>`;
+      const demoNote = `<p class="x-note" role="note">Live mode: data is saved securely to the cloud. Sign in from any device to see the same records.</p>`;
       const pf = (label, nm, attrs = "", full = false, req = true) => `<label class="x-f${full ? " x-f--full" : ""}">${label}<input name="${nm}" ${attrs}${req ? " required" : ""} /><small class="x-err"></small></label>`;
       const psel = (label, nm, opts, val = "", attrs = "", full = false) => `<label class="x-f${full ? " x-f--full" : ""}">${label}<select name="${nm}" ${attrs}>${opts.map((o) => { const [v, l] = Array.isArray(o) ? o : [o, o]; return `<option value="${esc(v)}"${String(v) === String(val) ? " selected" : ""}>${esc(l)}</option>`; }).join("")}</select><small class="x-err"></small></label>`;
       const formErr = `<p class="x-err" data-err="_form" role="alert"></p>`;
@@ -2827,7 +2916,7 @@
             <div class="x-faq"><details open><summary>Try the demo</summary><div class="x-creds">
               <p class="fineprint">Every demo account uses the password <b>Demo@1234</b>. Pick one to fill the form.</p>
               <div class="x-tw"><table><thead><tr><th scope="col">Account</th><th scope="col">Email</th><th scope="col">College</th><th scope="col"><span class="x-sr">Action</span></th></tr></thead><tbody>
-              ${[["admin", "College Admin", "admin@srividya.demo", "Sri Vidya Institute of Technology · SHX-1001"], ["admin", "College Admin", "admin@greenvalley.demo", "Green Valley College of Engineering · SHX-1002"], ["student", "Student, regular", "ravi@srividya.demo", "B.Tech CSE · Year 3 · fees Year 1–4"], ["student", "Student, lateral entry", "lakshmi@srividya.demo", "B.Tech ECE · Year 3 · joined in Year 2, fees Year 2–4"], ["student", "Student, pending", "anil@srividya.demo", "Sri Vidya · waiting for approval"]].map(([r, l, e, c]) => `<tr><th scope="row">${l}</th><td>${e}</td><td class="muted">${c}</td><td><button type="button" class="x-sbtn" data-act="fill" data-role="${r}" data-id="${e}" aria-label="Use ${e}">Use</button></td></tr>`).join("")}
+              ${[["admin", "College Admin", "srividya-admin@brandique.in", "Sri Vidya Institute of Technology · SHX-1001"], ["admin", "College Admin", "greenvalley-admin@brandique.in", "Green Valley College of Engineering · SHX-1002"], ["student", "Student, regular", "ravi@brandique.in", "B.Tech CSE · Year 3 · fees Year 1–4"], ["student", "Student, lateral entry", "lakshmi@brandique.in", "B.Tech ECE · Year 3 · joined in Year 2, fees Year 2–4"], ["student", "Student, pending", "anil@brandique.in", "Sri Vidya · waiting for approval"]].map(([r, l, e, c]) => `<tr><th scope="row">${l}</th><td>${e}</td><td class="muted">${c}</td><td><button type="button" class="x-sbtn" data-act="fill" data-role="${r}" data-id="${e}" aria-label="Use ${e}">Use</button></td></tr>`).join("")}
               </tbody></table></div>
             </div></details></div>
             <div class="cards"><div><h3>What the demo shows</h3><ul><li>Admins approve students, manage full student profiles, collect year-wise B.Tech fees, mark attendance and enter marks.</li><li>Admins keep faculty records — education, position and salary — in the Faculty tab. Faculty do not sign in.</li><li>Students see only their own fees, attendance, marks and notices.</li><li>Each college sees only its own data.</li></ul></div></div>
@@ -3124,8 +3213,7 @@
       ROUTES["/portal/admin"] = () => {
         const me = DB.me(); if (!me || me.role !== "admin") return "/portal";
         const c = me.college;
-        const resetBtn = UI.confirm === "reset" ? `<button type="button" class="x-sbtn x-sbtn--warn" data-act="resetDemo" data-id="reset" data-focus-after>Yes, reset all demo data</button><button type="button" class="x-sbtn" data-act="cancelDel">Keep my data</button>` : `<button type="button" class="x-sbtn" data-act="askDel" data-id="reset">Reset demo data</button>`;
-        dyn(portalCrumbs("Admin dashboard") + `<div class="x-panel">${logoImg(c)}${phead("College admin · " + esc(me.name), esc(c.name), `College code <b>${esc(c.code)}</b> · ${esc(c.type)} · ${esc(c.city)}, ${esc(c.state)}`, `<div class="x-acts">${resetBtn}${logoutBtn}</div>`)}${demoNote}${UI.note ? `<p class="x-ok" role="status">${esc(UI.note)}</p>` : ""}</div>` +
+        dyn(portalCrumbs("Admin dashboard") + `<div class="x-panel">${logoImg(c)}${phead("College admin · " + esc(me.name), esc(c.name), `College code <b>${esc(c.code)}</b> · ${esc(c.type)} · ${esc(c.city)}, ${esc(c.state)}`, `<div class="x-acts">${logoutBtn}</div>`)}${demoNote}${UI.note ? `<p class="x-ok" role="status">${esc(UI.note)}</p>` : ""}</div>` +
           tabs(ADMIN_TABS, UI.tab, "tab", "Dashboard sections") + `<div class="x-panel" role="tabpanel" id="pa-panel" aria-labelledby="tab-tab-${UI.tab}">${PANES[UI.tab]()}</div>` + adminRcptModal());
       };
 
@@ -3149,7 +3237,7 @@
         const me = DB.me(); if (!me || me.role !== "student") return "/portal";
         const s = me.student, c = me.college;
         const top = portalCrumbs("Student dashboard") + `<div class="x-panel">${logoImg(c)}${phead("Student · " + esc(c.name), esc(s.name), `Roll ${esc(s.roll)} · ${esc(courseLine(s))} · ${esc(s.sec)}`, logoutBtn)}${demoNote}</div>`;
-        if (s.status !== "approved") return void dyn(top + `<div class="x-panel x-wait"><h2>${s.status === "rejected" ? "Your registration was not approved" : "Waiting for your college to approve"}</h2>${s.status === "rejected" ? `<p>${esc(c.name)} did not approve this account. Check your details with the college office.</p>` : `<p>${esc(c.name)} has your registration. Once the college office approves it, your fees, attendance, marks and notices appear here.</p><p><span class="chip chip--solid">Pending approval</span></p><p class="fineprint">Demo tip: sign in as admin@srividya.demo in another session to approve, or log out and back in after approval.</p>`}</div>`);
+        if (s.status !== "approved") return void dyn(top + `<div class="x-panel x-wait"><h2>${s.status === "rejected" ? "Your registration was not approved" : "Waiting for your college to approve"}</h2>${s.status === "rejected" ? `<p>${esc(c.name)} did not approve this account. Check your details with the college office.</p>` : `<p>${esc(c.name)} has your registration. Once the college office approves it, your fees, attendance, marks and notices appear here.</p><p><span class="chip chip--solid">Pending approval</span></p><p class="fineprint">Demo tip: sign in as srividya-admin@brandique.in in another session to approve, or log out and back in after approval.</p>`}</div>`);
         const fees = DB.myFees(), att = DB.myAttendance(), marks = DB.myMarks(), notices = DB.getNotices(), pays = DB.myPayments();
         const lat = s.admType === "Lateral Entry", start = lat ? 2 : 1, tsum = (l, k) => l.reduce((a, f) => a + f[k], 0);
         const PH = { Past: "Completed", Current: "Current year", Upcoming: "Upcoming" };
@@ -3507,9 +3595,9 @@
         return el;
       };
       const FORMS = {
-        login(f, d) { const s = DB.login(UI.loginRole, d.email, d.password); const role = UI.loginRole; UI = UI0(); UI.loginRole = role; go("/portal/" + s.role); },
-        regCollege(f, d) { const c = DB.registerCollege(d); UI = UI0(); UI.flash = c.code; go("/portal/admin"); },
-        regStudent(f, d) { DB.registerStudent(d); UI = UI0(); UI.loginRole = "student"; go("/portal/student"); },
+        async login(f, d) { const s = await DB.login(UI.loginRole, d.email, d.password); const role = UI.loginRole; UI = UI0(); UI.loginRole = role; go("/portal/" + s.role); },
+        async regCollege(f, d) { const c = await DB.registerCollege(d); UI = UI0(); UI.flash = c.code; go("/portal/admin"); },
+        async regStudent(f, d) { await DB.registerStudent(d); UI = UI0(); UI.loginRole = "student"; go("/portal/student"); },
         student(f, d) {
           if (UI.edit === "new") { const s = DB.addStudent(d); UI.msg = `${s.name} added and approved. Password: ${d.password || "Welcome@123"}.`; }
           else { const s = DB.updateStudent(UI.edit, d); UI.msg = `${s.name}'s profile saved.`; UI.view = s.id; UI.showAad = false; }
@@ -3546,13 +3634,13 @@
         e.preventDefault(); clearErrs(f);
         const empty = [...f.querySelectorAll("[required]")].filter((el) => !String(el.value).trim());
         if (empty.length) { empty.forEach((el) => fieldErr(f, el.name, "Required.")); empty[0].focus(); return; }
-        try { FORMS[k](f, Object.fromEntries(new FormData(f))); }
+        try { const r = FORMS[k](f, Object.fromEntries(new FormData(f))); if (r && typeof r.then === "function") r.catch((err) => { const el = fieldErr(f, err.field, err.message); (el || f.querySelector("button[type=submit]")).focus(); }); }
         catch (err) { const el = fieldErr(f, err.field, err.message); (el || f.querySelector("button[type=submit]")).focus(); }
       });
       const ACTS = {
         logout() { DB.logout(); UI = UI0(); go("/portal"); },
         role(id) { UI.loginRole = id; paint(`[data-act="role"][data-id="${id}"]`); },
-        fill(email, b) { UI.loginRole = b.dataset.role; paint(); const f = document.querySelector('#v-dyn [data-portal="login"]'); f.email.value = email; f.password.value = "Demo@1234"; f.querySelector("[type=submit]").focus(); },
+        fill(email, b) { UI.loginRole = b.dataset.role; paint(); alertBox("Demo accounts are being set up. Please sign in with your college account, or register your college / register as a student to start."); },
         tab(id) { Object.assign(UI, { tab: id, msg: "", edit: null, confirm: null, feeEdit: null, pay: null, rcpt: null, note: "", imp: null, impErr: "", impResult: null, view: null, showAad: false }); paint(`[data-act="tab"][data-id="${id}"]`); },
         stab(id) { UI.stab = id; UI.msg = ""; paint(`[data-act="stab"][data-id="${id}"]`); },
         facDel(id) { const f = DB.removeFaculty(id); UI.confirm = null; UI.msg = `${f.name} removed from faculty.`; paint(); },
@@ -3576,7 +3664,6 @@
         pay(id) { Object.assign(UI, { pay: id, feeEdit: null, msg: "" }); paint(); },
         feeDel(id) { DB.removeFee(id); UI.confirm = null; UI.msg = "Fee item removed."; paint(); },
         noticeDel(id) { DB.removeNotice(id); UI.confirm = null; UI.msg = "Notice removed."; paint(); },
-        resetDemo() { const tab = UI.tab, still = DB.resetDemo(); UI = UI0(); if (!still) return go("/portal"); UI.tab = tab; UI.note = "Demo data reset. Every change saved in this browser was cleared."; paint('[data-act="askDel"][data-id="reset"]'); },
         pmOpen(id) { const f = DB.myFees().find((x) => x.id === id); if (!f || !(f.balance > 0)) return; UI.msg = ""; UI.pm = { fee: id, mode: "full", amount: f.balance, step: "choose" }; paint(); },
         pmClose() { const id = UI.pm && UI.pm.fee; UI.pm = null; paint(`#v-dyn [data-act="pmOpen"][data-id="${id}"]`); },
         pmBack() { if (UI.pm) { UI.pm.step = "choose"; paint(); } },
