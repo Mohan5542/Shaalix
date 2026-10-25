@@ -23,6 +23,12 @@
 //  5. File fields (logo, ID card) asserted after a re-login use the served
 //     storage URL the loader produced, not the original data URL; within
 //     the session that set them, the data-URL assertions stand.
+//  6. College approval (07-college-approval.sql): a registered college now
+//     starts PENDING. The new-college section asserts the admin waiting
+//     screen, that a student cannot join a pending college, and that the
+//     fixture platform owner (mohan@shaalix.com / Owner@1234) sees the
+//     request in the owner console and approves it before the classic
+//     student-join flow resumes. Fixture colleges carry status "approved".
 const fs = require("fs"), vm = require("vm"), path = require("path");
 const { createStub } = require("./sb-stub.js");
 const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, "demo-fixture.json"), "utf8"));
@@ -146,10 +152,25 @@ await DB.settle(); await DB.login("student", "anil@srividya.demo", "Demo@1234");
 if (!/Waiting for your college to approve/.test(renderAs("student/pending", "/portal/student"))) fails.push("Pending student does not see the waiting message");
 await expectErr("Pending student cannot read fees", () => DB.myFees());
 await expectErr("Pending student cannot edit contact", () => DB.updateMyContact({ phone: "9876543210", email: "anil2@x.in", address: "x" }));
-// New college flow: register, code format, student joins by code, admin approves
+// New college flow (07): registration is a REQUEST — the college starts pending,
+// its admin sees the waiting screen, students cannot join yet; the platform
+// owner approves it in the owner console, then the usual flow resumes
+// (student joins by code, college admin approves the student).
 const c = await DB.registerCollege({ name: "Test College", type: "Engineering", city: "Vizag", state: "AP", admin: "T", email: "t@test.in", phone: "9876543210", password: "abcdefgh", confirm: "abcdefgh" });
 if (!/^SHX-\d{4}$/.test(c.code)) fails.push("College code format: " + c.code);
-renderAs("admin/new-college", "/portal/admin");
+if (c.status !== "pending") fails.push("New college should start pending owner approval, got: " + c.status);
+if (!/Registration submitted/.test(renderAs("admin/new-college-waiting", "/portal/admin"))) fails.push("Pending college admin does not see the waiting screen");
+await expectErr("Student cannot join a pending college", () => DB.registerStudent({ code: c.code, name: "Early S", roll: "0", branch: "CSE", admType: "Regular", curYear: "1", sec: "Sec A", email: "early@test.in", phone: "9876543219", password: "abcdefgh", confirm: "abcdefgh" }), "code");
+// Owner console: the request is listed with the admin's contact details
+await DB.settle(); await DB.ownerLogin("mohan@shaalix.com", "Owner@1234");
+const ostate = DB.ownerState();
+if (!ostate.user || ostate.user.email !== "mohan@shaalix.com") fails.push("Owner sign-in did not establish the owner session");
+if (!ostate.pending.some((r) => r.id === c.id && r.admin && r.admin.email === "t@test.in")) fails.push("Owner console does not list the pending college with its admin");
+if (!ostate.approved.some((r) => r.code === "SHX-1001")) fails.push("Owner console does not list approved colleges");
+if (!/Pending requests \(1\)/.test(renderAs("owner/console", "/portal/owner")) || !$el("#v-dyn").innerHTML.includes("Test College")) fails.push("Owner console does not render the pending request");
+await DB.ownerSetStatus(c.id, "approved");
+if (!DB.ownerState().approved.some((r) => r.id === c.id)) fails.push("Owner approval did not move the college to approved");
+await DB.ownerLogout();
 await DB.registerStudent({ code: c.code, name: "New S", roll: "1", branch: "CSE", admType: "Lateral Entry", curYear: "2", sec: "Sec A", email: "s@test.in", phone: "9876543211", password: "abcdefgh", confirm: "abcdefgh" });
 if (DB.me().student.status !== "pending") fails.push("New student should be pending");
 if (DB.me().student.cls !== "B.Tech CSE 2nd Year") fails.push("Class should be derived from course, branch and year: " + DB.me().student.cls);
