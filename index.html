@@ -647,7 +647,7 @@
           </div>
         </div>
         <div class="x-foot__bar">
-          <p>© 2026 Shaalix · A JJH Global Solutions venture</p>
+          <p><span data-owner-secret style="cursor:inherit">©</span> 2026 Shaalix · A JJH Global Solutions venture</p>
           <nav aria-label="Legal"><a href="#/privacy">Privacy</a><a href="#/terms">Terms</a><a href="#/data-privacy">Data Privacy</a><a href="#/cookies">Cookies</a></nav>
         </div>
       </footer>
@@ -2989,7 +2989,6 @@
               ${formErr}
               <div class="x-acts"><button class="x-btn" type="submit">Sign in as ${isA ? "College Admin" : "Student"}</button></div>
               <p class="fineprint">New here? <a class="link" href="#/portal/register-college">Register your college</a> or <a class="link" href="#/portal/register-student">register as a student</a>.</p>
-              <p class="fineprint">Platform owner? <a class="link" href="#/portal/owner">Open the owner console</a></p>
             </form>
           </div><div>
             <div class="x-faq"><details open><summary>Try the demo</summary><div class="x-creds">
@@ -3673,6 +3672,12 @@
         let target = norm(h.slice(1)); if (ALIASES[target] !== undefined) target = ALIASES[target];
         /* Same route: hashchange will not fire, so scroll to top here */
         if (target === shown || h === location.hash) { e.preventDefault(); toTop(); }
+      });
+      /* Footer ©: a quiet way to the owner console — deliberately not a link */
+      document.addEventListener("click", (e) => {
+        const s = e.target && e.target.closest && e.target.closest("[data-owner-secret]");
+        if (!s) return;
+        if (location.hash !== "#/portal/owner") location.hash = "#/portal/owner"; else toTop();
       });
       addEventListener("hashchange", render);
       render();

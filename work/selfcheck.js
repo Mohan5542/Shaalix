@@ -171,6 +171,15 @@ if (!/Pending requests \(1\)/.test(renderAs("owner/console", "/portal/owner")) |
 await DB.ownerSetStatus(c.id, "approved");
 if (!DB.ownerState().approved.some((r) => r.id === c.id)) fails.push("Owner approval did not move the college to approved");
 await DB.ownerLogout();
+// Secret owner entry: there is NO visible owner link on the login page (or in
+// the static markup); the only way in is the footer's ©, hooked invisibly.
+const loginHtml2 = renderAs("portal/login-secret", "/portal");
+if (/Open the owner console|Platform owner\?/.test(loginHtml2)) fails.push("Login page still shows a visible owner link");
+if (/Open the owner console/.test(markup)) fails.push("Static markup still contains the visible owner console link");
+const secretSpan = markup.match(/<span([^>]*)data-owner-secret([^>]*)>©<\/span>/);
+if (!secretSpan) fails.push("Footer © secret hook (a span with data-owner-secret) is missing from the footer");
+else if (/\b(title|href)\s*=/.test(secretSpan[1] + secretSpan[2])) fails.push("Footer © secret hook must not carry a title or href");
+if (!code.includes('closest("[data-owner-secret]")') || !code.includes('location.hash = "#/portal/owner"')) fails.push("The secret © click handler is not wired to the owner route");
 await DB.registerStudent({ code: c.code, name: "New S", roll: "1", branch: "CSE", admType: "Lateral Entry", curYear: "2", sec: "Sec A", email: "s@test.in", phone: "9876543211", password: "abcdefgh", confirm: "abcdefgh" });
 if (DB.me().student.status !== "pending") fails.push("New student should be pending");
 if (DB.me().student.cls !== "B.Tech CSE 2nd Year") fails.push("Class should be derived from course, branch and year: " + DB.me().student.cls);
