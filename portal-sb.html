@@ -2665,7 +2665,7 @@
            registerCollege / registerStudent are not wrapped: they persist
            through their own inserts and finish by loading a fresh snapshot. */
         /* Every write is saved right away */
-        ["addFaculty", "removeFaculty", "addStudent", "updateStudent", "updateMyContact", "setStudentStatus", "removeStudent", "updateCollege", "setStudentPhoto", "setMyPhoto", "setStudentIdCard", "removeStudentIdCard", "addDocument", "removeDocument", "verifyDocument", "issueCertificate", "issueCertRequest", "requestCertificate", "upsertFee", "recordPayment", "removeFee", "markAttendance", "upsertMarks", "postNotice", "removeNotice", "payMyFee", "applyImport", "resetDemo"].forEach((k) => {
+        ["addFaculty", "removeFaculty", "addStudent", "updateStudent", "updateMyContact", "setStudentStatus", "removeStudent", "updateCollege", "setStudentPhoto", "setMyPhoto", "setStudentIdCard", "removeStudentIdCard", "addDocument", "removeDocument", "verifyDocument", "issueCertificate", "issueCertRequest", "requestCertificate", "upsertFee", "recordPayment", "removeFee", "markAttendance", "upsertMarks", "postNotice", "removeNotice", "payMyFee", "applyImport"].forEach((k) => {
           const fn = api[k]; api[k] = (...args) => { const r = fn(...args); save(); return r; };
         });
         return api;
@@ -2916,7 +2916,7 @@
             <div class="x-faq"><details open><summary>Try the demo</summary><div class="x-creds">
               <p class="fineprint">Every demo account uses the password <b>Demo@1234</b>. Pick one to fill the form.</p>
               <div class="x-tw"><table><thead><tr><th scope="col">Account</th><th scope="col">Email</th><th scope="col">College</th><th scope="col"><span class="x-sr">Action</span></th></tr></thead><tbody>
-              ${[["admin", "College Admin", "admin@srividya.demo", "Sri Vidya Institute of Technology · SHX-1001"], ["admin", "College Admin", "admin@greenvalley.demo", "Green Valley College of Engineering · SHX-1002"], ["student", "Student, regular", "ravi@srividya.demo", "B.Tech CSE · Year 3 · fees Year 1–4"], ["student", "Student, lateral entry", "lakshmi@srividya.demo", "B.Tech ECE · Year 3 · joined in Year 2, fees Year 2–4"], ["student", "Student, pending", "anil@srividya.demo", "Sri Vidya · waiting for approval"]].map(([r, l, e, c]) => `<tr><th scope="row">${l}</th><td>${e}</td><td class="muted">${c}</td><td><button type="button" class="x-sbtn" data-act="fill" data-role="${r}" data-id="${e}" aria-label="Use ${e}">Use</button></td></tr>`).join("")}
+              ${[["admin", "College Admin", "srividya-admin@brandique.in", "Sri Vidya Institute of Technology · SHX-1001"], ["admin", "College Admin", "greenvalley-admin@brandique.in", "Green Valley College of Engineering · SHX-1002"], ["student", "Student, regular", "ravi@brandique.in", "B.Tech CSE · Year 3 · fees Year 1–4"], ["student", "Student, lateral entry", "lakshmi@brandique.in", "B.Tech ECE · Year 3 · joined in Year 2, fees Year 2–4"], ["student", "Student, pending", "anil@brandique.in", "Sri Vidya · waiting for approval"]].map(([r, l, e, c]) => `<tr><th scope="row">${l}</th><td>${e}</td><td class="muted">${c}</td><td><button type="button" class="x-sbtn" data-act="fill" data-role="${r}" data-id="${e}" aria-label="Use ${e}">Use</button></td></tr>`).join("")}
               </tbody></table></div>
             </div></details></div>
             <div class="cards"><div><h3>What the demo shows</h3><ul><li>Admins approve students, manage full student profiles, collect year-wise B.Tech fees, mark attendance and enter marks.</li><li>Admins keep faculty records — education, position and salary — in the Faculty tab. Faculty do not sign in.</li><li>Students see only their own fees, attendance, marks and notices.</li><li>Each college sees only its own data.</li></ul></div></div>
@@ -3213,8 +3213,7 @@
       ROUTES["/portal/admin"] = () => {
         const me = DB.me(); if (!me || me.role !== "admin") return "/portal";
         const c = me.college;
-        const resetBtn = UI.confirm === "reset" ? `<button type="button" class="x-sbtn x-sbtn--warn" data-act="resetDemo" data-id="reset" data-focus-after>Yes, reset all demo data</button><button type="button" class="x-sbtn" data-act="cancelDel">Keep my data</button>` : `<button type="button" class="x-sbtn" data-act="askDel" data-id="reset">Reset demo data</button>`;
-        dyn(portalCrumbs("Admin dashboard") + `<div class="x-panel">${logoImg(c)}${phead("College admin · " + esc(me.name), esc(c.name), `College code <b>${esc(c.code)}</b> · ${esc(c.type)} · ${esc(c.city)}, ${esc(c.state)}`, `<div class="x-acts">${resetBtn}${logoutBtn}</div>`)}${demoNote}${UI.note ? `<p class="x-ok" role="status">${esc(UI.note)}</p>` : ""}</div>` +
+        dyn(portalCrumbs("Admin dashboard") + `<div class="x-panel">${logoImg(c)}${phead("College admin · " + esc(me.name), esc(c.name), `College code <b>${esc(c.code)}</b> · ${esc(c.type)} · ${esc(c.city)}, ${esc(c.state)}`, `<div class="x-acts">${logoutBtn}</div>`)}${demoNote}${UI.note ? `<p class="x-ok" role="status">${esc(UI.note)}</p>` : ""}</div>` +
           tabs(ADMIN_TABS, UI.tab, "tab", "Dashboard sections") + `<div class="x-panel" role="tabpanel" id="pa-panel" aria-labelledby="tab-tab-${UI.tab}">${PANES[UI.tab]()}</div>` + adminRcptModal());
       };
 
@@ -3238,7 +3237,7 @@
         const me = DB.me(); if (!me || me.role !== "student") return "/portal";
         const s = me.student, c = me.college;
         const top = portalCrumbs("Student dashboard") + `<div class="x-panel">${logoImg(c)}${phead("Student · " + esc(c.name), esc(s.name), `Roll ${esc(s.roll)} · ${esc(courseLine(s))} · ${esc(s.sec)}`, logoutBtn)}${demoNote}</div>`;
-        if (s.status !== "approved") return void dyn(top + `<div class="x-panel x-wait"><h2>${s.status === "rejected" ? "Your registration was not approved" : "Waiting for your college to approve"}</h2>${s.status === "rejected" ? `<p>${esc(c.name)} did not approve this account. Check your details with the college office.</p>` : `<p>${esc(c.name)} has your registration. Once the college office approves it, your fees, attendance, marks and notices appear here.</p><p><span class="chip chip--solid">Pending approval</span></p><p class="fineprint">Demo tip: sign in as admin@srividya.demo in another session to approve, or log out and back in after approval.</p>`}</div>`);
+        if (s.status !== "approved") return void dyn(top + `<div class="x-panel x-wait"><h2>${s.status === "rejected" ? "Your registration was not approved" : "Waiting for your college to approve"}</h2>${s.status === "rejected" ? `<p>${esc(c.name)} did not approve this account. Check your details with the college office.</p>` : `<p>${esc(c.name)} has your registration. Once the college office approves it, your fees, attendance, marks and notices appear here.</p><p><span class="chip chip--solid">Pending approval</span></p><p class="fineprint">Demo tip: sign in as srividya-admin@brandique.in in another session to approve, or log out and back in after approval.</p>`}</div>`);
         const fees = DB.myFees(), att = DB.myAttendance(), marks = DB.myMarks(), notices = DB.getNotices(), pays = DB.myPayments();
         const lat = s.admType === "Lateral Entry", start = lat ? 2 : 1, tsum = (l, k) => l.reduce((a, f) => a + f[k], 0);
         const PH = { Past: "Completed", Current: "Current year", Upcoming: "Upcoming" };
@@ -3665,7 +3664,6 @@
         pay(id) { Object.assign(UI, { pay: id, feeEdit: null, msg: "" }); paint(); },
         feeDel(id) { DB.removeFee(id); UI.confirm = null; UI.msg = "Fee item removed."; paint(); },
         noticeDel(id) { DB.removeNotice(id); UI.confirm = null; UI.msg = "Notice removed."; paint(); },
-        resetDemo() { const tab = UI.tab, still = DB.resetDemo(); UI = UI0(); if (!still) return go("/portal"); UI.tab = tab; UI.note = "Demo data reset. Every change saved in this browser was cleared."; paint('[data-act="askDel"][data-id="reset"]'); },
         pmOpen(id) { const f = DB.myFees().find((x) => x.id === id); if (!f || !(f.balance > 0)) return; UI.msg = ""; UI.pm = { fee: id, mode: "full", amount: f.balance, step: "choose" }; paint(); },
         pmClose() { const id = UI.pm && UI.pm.fee; UI.pm = null; paint(`#v-dyn [data-act="pmOpen"][data-id="${id}"]`); },
         pmBack() { if (UI.pm) { UI.pm.step = "choose"; paint(); } },
