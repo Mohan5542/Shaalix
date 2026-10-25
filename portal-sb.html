@@ -1700,6 +1700,8 @@
         const tx = (s) => String(s ?? "").trim();
         const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/, PHONE = /^(\+?91|0)?[6-9]\d{9}$/;
         const TYPES = ["School", "Junior College", "Degree", "Engineering"];
+        /* Platform owner (Shaalix team): the only email that may hold the 'owner' profile — see 07-college-approval.sql */
+        const OWNER_EMAIL = "mohan@shaalix.com";
         const ATT = { P: "Present", A: "Absent", L: "Leave" };
         /* B.Tech: a regular student studies Year 1-4; a lateral entry student joins in Year 2 (Year 2-4) */
         const ADM = ["Regular", "Lateral Entry"];
@@ -1880,7 +1882,7 @@
             if (!EMAIL.test(tx(d.email))) fail("Enter a valid email.", "email");
             checkPhone(d.phone); checkPass(d);
             const auth = await sbSignUp(d.email, d.password);
-            const c = { id: uid(), name: tx(d.name), code: newCode(), type: d.type, city: tx(d.city), state: tx(d.state), phone: tx(d.phone), created: todayISO(), feeTuition: 85000, feeAffil: 6000, logo: "", upi_id: null };
+            const c = { id: uid(), name: tx(d.name), code: newCode(), type: d.type, city: tx(d.city), state: tx(d.state), phone: tx(d.phone), created: todayISO(), feeTuition: 85000, feeAffil: 6000, logo: "", upi_id: null, status: "pending" };
             let ins = await sb.from("colleges").insert(await collegeToRow(c));
             if (ins.error && /duplicate key|unique/i.test(ins.error.message || "")) { c.code = newCode(); ins = await sb.from("colleges").insert(await collegeToRow(c)); }
             if (ins.error) { console.error("[shaalix] college insert failed", ins.error); fail("Your college could not be created. Please try again.", "name"); }
@@ -1901,7 +1903,7 @@
                 try { const { data } = await sb.auth.getSession(); hasSession = !!(data && data.session); } catch (_) { /* no session to fall back with */ }
               }
               if (!hasSession) return null;
-              const { data } = await sb.from("colleges").select("id,name,code,city").eq(field, value);
+              const { data } = await sb.from("colleges").select("id,name,code,city,status").eq(field, value);
               return data && data[0];
             };
             if (code) {
@@ -1913,6 +1915,9 @@
             } else if (d.college_id) {
               college = await directCollege("id", d.college_id);
             }
+            /* The lookup RPC returns approved colleges only; the direct-select fallback can see
+               pending/rejected rows, so hold it to the same rule (07-college-approval.sql). */
+            if (college && college.status && college.status !== "approved") college = null;
             if (!college) fail(code ? "No college has this code. Check it with your college office." : "Pick your college or enter its code.", code ? "code" : "college_id");
             if (d.college_id && code && d.college_id !== college.id) fail("The code does not match the college you picked.", "code");
             req(d, ["name", "roll", "sec", "email", "phone"]);
@@ -1944,11 +1949,54 @@
             if (error || !data || !data.user) fail("Wrong email or password.", "password");
             const prof = await fetchProfile(data.user.id);
             if (!prof) { await sb.auth.signOut(); fail("Wrong email or password.", "password"); }
-            if (prof.role !== role) { await sb.auth.signOut(); fail(`This is a ${{ admin: "College Admin", student: "Student", faculty: "Faculty" }[prof.role] || "different"} account. Switch the tab above.`, "password"); }
+            if (prof.role !== role) { await sb.auth.signOut(); fail(`This is a ${{ admin: "College Admin", student: "Student", faculty: "Faculty", owner: "Platform Owner" }[prof.role] || "different"} account. Switch the tab above.`, "password"); }
             const self = await loadAll(prof);
             return startSession(self);
           },
           logout() { session = null; T = blank(); collegeDir = []; saveSession(); if (sb) syncChain = syncChain.then(() => sb.auth.signOut()).catch(() => {}); },
+          /* ----- Platform owner (07-college-approval.sql) -----
+             The owner is NOT a college session: no loadAll, no T, no sync.
+             The console reads and writes colleges/profiles with direct
+             queries, and RLS (is_owner policies) is what authorises them. */
+          ownerEmail: () => OWNER_EMAIL,
+          ownerState: () => clone(ownerView),
+          ownerLoad: () => loadOwner(),
+          async ownerRegister(d) {
+            req(d, ["name", "password", "confirm"]);
+            checkPass(d);
+            const auth = await sbSignUp(OWNER_EMAIL, d.password);
+            const prof = { id: auth.id, role: "owner", college_id: null, student_id: null, email: OWNER_EMAIL, display_name: tx(d.name) };
+            const pins = await sb.from("profiles").insert(prof);
+            if (pins.error) { console.error("[shaalix] owner profile insert failed", pins.error); fail("The owner account could not be created. An owner account may already exist.", "email"); }
+            session = null; T = blank(); collegeDir = [];
+            await loadOwner();
+            return clone(ownerView);
+          },
+          async ownerLogin(email, password) {
+            if (!tx(email)) fail("Required.", "email");
+            if (!password) fail("Required.", "password");
+            if (!sb) fail("The portal cannot reach its server right now. Check your connection and try again.", "email");
+            await syncChain; // flush the previous session's writes before switching accounts
+            const { data, error } = await sb.auth.signInWithPassword({ email: lc(email), password: String(password) });
+            if (error || !data || !data.user) fail("Wrong email or password.", "password");
+            const prof = await fetchProfile(data.user.id);
+            if (!prof || prof.role !== "owner") { await sb.auth.signOut(); fail("This is not the platform owner account.", "email"); }
+            session = null; T = blank(); collegeDir = [];
+            await loadOwner();
+            return clone(ownerView);
+          },
+          async ownerSetStatus(collegeId, status) {
+            if (!["approved", "rejected"].includes(status)) fail("Unknown status.");
+            if (!sb) fail("The portal cannot reach its server right now. Check your connection and try again.");
+            const { error } = await sb.from("colleges").update({ status }).eq("id", collegeId);
+            if (error) { console.error("[shaalix] owner decision failed", error); fail("The decision could not be saved. Please try again."); }
+            await loadOwner();
+            return clone(ownerView);
+          },
+          async ownerLogout() {
+            ownerView.user = null; ownerView.pending = []; ownerView.approved = []; ownerView.msg = "";
+            if (sb) { await syncChain; await sb.auth.signOut(); }
+          },
           me() {
             if (!session) return null;
             const u = T.users.find((x) => x.id === session.user_id);
@@ -2459,6 +2507,8 @@
         const SB_URL = "https://rgwbowqkihysehwopmrg.supabase.co", SB_KEY = "sb_publishable_QzWS92YeGSL2Vap2xhYMfg_4j0Egplb";
         const sb = (typeof window !== "undefined" && window.__SB_CLIENT__) || (typeof window !== "undefined" && window.supabase ? window.supabase.createClient(SB_URL, SB_KEY) : null);
         let collegeDir = [], syncErr = null, syncChain = Promise.resolve();
+        /* Platform-owner console state (07): filled by loadOwner() with direct queries, never through T */
+        let ownerView = { ready: false, registered: null, user: null, pending: [], approved: [], rejected: 0, msg: "" };
         let lastSynced = { user: null, rows: null }; // rows last written to (or read from) the backend, per user
         const filePathByKey = new Map(); // "<recordId>:<field>" -> storage path, for files loaded as URLs
         const emptyRows = () => ({ colleges: new Map(), students: new Map(), fees: new Map(), payments: new Map(), marks: new Map(), attendance: new Map(), notices: new Map(), faculty: new Map(), documents: new Map(), certificates: new Map() });
@@ -2519,8 +2569,8 @@
         /* ----- Row mapping: Postgres rows <-> the exact shapes the UI uses ----- */
         const DETAIL_FROM_UI = { father: "father", mother: "mother", dob: "dob", gender: "gender", blood: "blood", religion: "religion", category: "category", caste: "caste", address: "address", aadhaar: "aadhaar", apaar: "apaar", casteCert: "caste_cert", income: "income", incomeCert: "income_cert", incomeValid: "income_valid", schEligible: "sch_eligible", schScheme: "sch_scheme", schStatus: "sch_status", prevQual: "prev_qual", prevPct: "prev_pct" };
         const PROFILE_COLS = ["course", "branch", "admType", "admYear", "curYear"]; // profile keys that are real columns, not details
-        async function collegeToRow(c) { return { id: c.id, name: c.name, code: c.code, type: c.type, city: c.city, state: c.state, phone: c.phone, logo_path: await fileToPath("logos", `${c.id}:logo`, c.logo, c.id, `${c.id}-logo`), fee_tuition: c.feeTuition, fee_affil: c.feeAffil, upi_id: c.upi_id ?? null }; }
-        async function collegeFromRow(r) { return { id: r.id, name: r.name, code: r.code, type: r.type, city: r.city, state: r.state, phone: r.phone, created: (r.created_at || "").slice(0, 10), feeTuition: r.fee_tuition, feeAffil: r.fee_affil, upi_id: r.upi_id || null, logo: r.logo_path ? await urlForFile("logos", `${r.id}:logo`, r.logo_path) : "" }; }
+        async function collegeToRow(c) { return { id: c.id, name: c.name, code: c.code, type: c.type, city: c.city, state: c.state, phone: c.phone, logo_path: await fileToPath("logos", `${c.id}:logo`, c.logo, c.id, `${c.id}-logo`), fee_tuition: c.feeTuition, fee_affil: c.feeAffil, upi_id: c.upi_id ?? null, status: c.status || "approved" }; }
+        async function collegeFromRow(r) { return { id: r.id, name: r.name, code: r.code, type: r.type, city: r.city, state: r.state, phone: r.phone, created: (r.created_at || "").slice(0, 10), feeTuition: r.fee_tuition, feeAffil: r.fee_affil, upi_id: r.upi_id || null, status: r.status || "approved", logo: r.logo_path ? await urlForFile("logos", `${r.id}:logo`, r.logo_path) : "" }; }
         async function studentToRow(s) {
           const details = {}; PROFILE_KEYS.forEach((k) => { if (!PROFILE_COLS.includes(k)) details[DETAIL_FROM_UI[k] || k] = s[k] === undefined ? PROFILE_DEFAULTS[k] : s[k]; });
           return { id: s.id, college_id: s.college_id, name: s.name, roll: s.roll, email: s.email, phone: s.phone, course: s.course, branch: s.branch, year: s.curYear, section: s.sec, adm_type: s.admType, adm_year: s.admYear, status: s.status, photo_path: await fileToPath("photos", `${s.id}:photo`, s.photo, s.college_id, `${s.id}-photo`), id_card: s.idCard ? { name: s.idCard.name, size: s.idCard.size, mime: s.idCard.mime, storage_path: await fileToPath("documents", `${s.id}:idCard`, s.idCard.data, s.college_id, `${s.id}-idcard`), at: s.idCard.at } : null, details };
@@ -2640,7 +2690,34 @@
           }
           fail("Sign-up failed.", "email");
         }
-        async function refreshCollegeDir() { if (!sb) return; try { const { data } = await sb.from("colleges").select("id,name,code,city"); if (data && data.length) collegeDir = data.map((c) => ({ id: c.id, name: c.name, code: c.code, city: c.city })); } catch (_) { /* directory is best-effort */ } }
+        async function refreshCollegeDir() { if (!sb) return; try { const { data } = await sb.from("colleges").select("id,name,code,city,status"); if (data && data.length) collegeDir = data.filter((c) => (c.status || "approved") === "approved").map((c) => ({ id: c.id, name: c.name, code: c.code, city: c.city })); } catch (_) { /* directory is best-effort */ } }
+        /* Owner console data: direct queries only (the owner has no college,
+           so loadAll/T never apply). Fills ownerView for the /portal/owner route. */
+        async function loadOwner() {
+          if (!sb) { ownerView.ready = true; return ownerView; }
+          try { const r = await sb.rpc("owner_registered"); if (!r.error) ownerView.registered = r.data === true; } catch (_) { /* RPC not installed yet: creation stays hidden, sign-in still works */ }
+          ownerView.user = null; ownerView.pending = []; ownerView.approved = []; ownerView.rejected = 0;
+          try {
+            const { data } = await sb.auth.getSession();
+            const sess = data && data.session;
+            if (sess && sess.user) {
+              const prof = await fetchProfile(sess.user.id);
+              if (prof && prof.role === "owner") {
+                ownerView.user = { id: prof.id, email: prof.email, name: prof.display_name || "" };
+                const [cres, pres] = await Promise.all([sb.from("colleges").select("*"), sb.from("profiles").select("*")]);
+                const byCollege = {};
+                (pres.data || []).forEach((p) => { if (p.role === "admin" && p.college_id && !byCollege[p.college_id]) byCollege[p.college_id] = p; });
+                const rows = (cres.data || []).map((r) => ({ id: r.id, name: r.name, code: r.code, type: r.type, city: r.city, state: r.state, phone: r.phone, status: r.status || "approved", created: (r.created_at || "").slice(0, 10), admin: byCollege[r.id] || null }));
+                rows.sort((a, b) => (a.created || "").localeCompare(b.created || "") || a.name.localeCompare(b.name));
+                ownerView.pending = rows.filter((r) => r.status === "pending");
+                ownerView.approved = rows.filter((r) => r.status === "approved");
+                ownerView.rejected = rows.filter((r) => r.status === "rejected").length;
+              }
+            }
+          } catch (e) { console.error("[shaalix] owner load failed", e); }
+          ownerView.ready = true;
+          return ownerView;
+        }
 
         /* Boot: empty state, then restore a Supabase session if one exists.
            When the restore lands, a hashchange repaint swaps the login screen
@@ -2677,6 +2754,7 @@
       PAGES["/portal/register-student"] = { t: "Student registration", d: "Join your college on the Shaalix demo portal." };
       PAGES["/portal/admin"] = { t: "College admin dashboard", d: "Students, fees, attendance, marks and notices." };
       PAGES["/portal/student"] = { t: "Student dashboard", d: "Your fees, attendance, marks and notices." };
+      PAGES["/portal/owner"] = { t: "Platform owner console", d: "Approve new colleges before they open on Shaalix." };
       const EXAMS = ["Unit Test 1", "Mid-1", "Unit Test 2", "Mid-2", "Final"];
       const BRANCHES = ["CSE", "ECE", "EEE", "MECH", "CIVIL", "IT", "CSM", "CSD"];
       const YEAR_OPTS = [1, 2, 3, 4].map((y) => [y, `Year ${y}`]);
@@ -2726,7 +2804,7 @@
       const fmtM = (ym) => parseISO(ym + "-01").toLocaleDateString("en-IN", { month: "long", year: "numeric" });
       const pctTxt = (p) => (p === null || p === undefined ? "—" : p + "%");
       const lastMonths = (n) => { const out = []; const d = parseISO(todayISO()); for (let i = 0; i < n; i++) { const t = new Date(d.getFullYear(), d.getMonth() - i, 1); out.push(`${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}`); } return out; };
-      const UI0 = () => ({ loginRole: "admin", tab: "overview", stab: "overview", flash: null, msg: "", sQ: "", sCls: "", sStatus: "", edit: null, confirm: null, feeStu: "", feeSt: "", feeEdit: null, pay: null, attDate: todayISO(), attCls: "", attMonth: todayISO().slice(0, 7), mExam: "Unit Test 1", mCls: "", mSub: "", mMax: "", mAtt: "Regular", memoStu: "", payStu: "", pm: null, rcpt: null, noticeAtt: null, noticeTitle: "", noticeText: "", imp: null, impMode: "merge", impErr: "", impBusy: false, impResult: null, note: "", feeYear: "", feeQ: "", view: null, showAad: false, contactEdit: false, pmsg: "" });
+      const UI0 = () => ({ loginRole: "admin", tab: "overview", stab: "overview", flash: null, msg: "", sQ: "", sCls: "", sStatus: "", edit: null, confirm: null, feeStu: "", feeSt: "", feeEdit: null, pay: null, attDate: todayISO(), attCls: "", attMonth: todayISO().slice(0, 7), mExam: "Unit Test 1", mCls: "", mSub: "", mMax: "", mAtt: "Regular", memoStu: "", payStu: "", pm: null, rcpt: null, noticeAtt: null, noticeTitle: "", noticeText: "", imp: null, impMode: "merge", impErr: "", impBusy: false, impResult: null, note: "", feeYear: "", feeQ: "", view: null, showAad: false, contactEdit: false, pmsg: "", oConfirm: null, oMsg: "" });
       let UI = UI0();
       const demoNote = `<p class="x-note" role="note">Live mode: data is saved securely to the cloud. Sign in from any device to see the same records.</p>`;
       const pf = (label, nm, attrs = "", full = false, req = true) => `<label class="x-f${full ? " x-f--full" : ""}">${label}<input name="${nm}" ${attrs}${req ? " required" : ""} /><small class="x-err"></small></label>`;
@@ -2911,6 +2989,7 @@
               ${formErr}
               <div class="x-acts"><button class="x-btn" type="submit">Sign in as ${isA ? "College Admin" : "Student"}</button></div>
               <p class="fineprint">New here? <a class="link" href="#/portal/register-college">Register your college</a> or <a class="link" href="#/portal/register-student">register as a student</a>.</p>
+              <p class="fineprint">Platform owner? <a class="link" href="#/portal/owner">Open the owner console</a></p>
             </form>
           </div><div>
             <div class="x-faq"><details open><summary>Try the demo</summary><div class="x-creds">
@@ -2924,10 +3003,10 @@
       };
 
       /* 2. Register college */
-      ROUTES["/portal/register-college"] = () => dyn(portalCrumbs("Register college") + titleHero("Shaalix Portal · Demo", "Register your college", "Create an admin account. Your college code is generated when you register.") + demoNote +
+      ROUTES["/portal/register-college"] = () => dyn(portalCrumbs("Register college") + titleHero("Shaalix Portal · Demo", "Register your college", "Create an admin account. Registrations are reviewed by the Shaalix team — your college opens once it is approved.") + demoNote +
         `<form class="x-form" data-portal="regCollege" novalidate aria-label="Register your college">
           ${pf("College name", "name", `autocomplete="organization"`, true)}
-          <p class="fineprint">College code: generated after you register, like SHX-1234.</p>
+          <p class="fineprint">College code: generated when you register, like SHX-1234. It becomes active once your registration is approved.</p>
           ${psel("Type", "type", [["", "Select"], ...DB.collegeTypes()], "", "required")}
           ${pf("City", "city", `autocomplete="address-level2"`)}
           ${pf("State", "state", `autocomplete="address-level1"`)}
@@ -2960,6 +3039,51 @@
           ${formErr}
           <div class="x-acts"><button class="x-btn" type="submit">Register</button><a class="x-sbtn" href="#/portal">I already have an account</a></div>
         </form>`);
+
+      /* 3b. Platform owner console: college registrations wait here for a decision (07) */
+      let ownerLoading = false, ownerSig = "";
+      const ensureOwner = () => {
+        if (ownerLoading) return; ownerLoading = true;
+        DB.ownerLoad().catch(() => {}).then(() => {
+          ownerLoading = false;
+          /* Repaint only when something actually changed (new request, a
+             decision, the session) — otherwise this would loop forever. */
+          const v = DB.ownerState(), sig = JSON.stringify([v.registered, v.user && v.user.email, v.pending.map((r) => r.id), v.approved.map((r) => r.id), v.rejected]);
+          if (sig !== ownerSig) { ownerSig = sig; if (shown === "/portal/owner") paint(); }
+        });
+      };
+      ROUTES["/portal/owner"] = () => {
+        ensureOwner();
+        const v = DB.ownerState(), head = portalCrumbs("Owner console") + titleHero("Shaalix Portal · Demo", "Platform owner", "New colleges open on Shaalix only after you approve them here.") + demoNote;
+        if (!v.ready) return void dyn(head + `<p class="x-note" role="status">Loading the owner console…</p>`);
+        if (v.user) {
+          const prow = (r) => `<tr><th scope="row">${esc(r.name)}<small>${esc(r.code)} · ${esc(r.type || "")}</small></th><td>${esc(r.city)}, ${esc(r.state)}</td><td>${esc(r.admin ? r.admin.display_name || "" : "—")}<small>${esc(r.admin ? r.admin.email || "" : "")}</small></td><td>${esc(r.phone || "—")}</td><td>${r.created ? fmtD(r.created) : "—"}</td><td><div class="x-acts">${UI.oConfirm === "a:" + r.id ? `<button type="button" class="x-sbtn x-sbtn--warn" data-act="ownerApprove" data-id="${r.id}">Confirm approve</button><button type="button" class="x-sbtn" data-act="ownerConfirmCancel">Cancel</button>` : UI.oConfirm === "r:" + r.id ? `<button type="button" class="x-sbtn x-sbtn--warn" data-act="ownerReject" data-id="${r.id}">Confirm reject</button><button type="button" class="x-sbtn" data-act="ownerConfirmCancel">Cancel</button>` : `<button type="button" class="x-sbtn" data-act="ownerApprove" data-id="${r.id}">Approve</button><button type="button" class="x-sbtn" data-act="ownerReject" data-id="${r.id}">Reject</button>`}</div></td></tr>`;
+          return void dyn(head + `<div class="x-panel"><div class="x-phead"><div><p class="x-kicker">Platform owner</p><h2>${esc(v.user.name || "Owner")}</h2><p>Signed in as ${esc(v.user.email)}</p></div><div class="x-acts"><button type="button" class="x-sbtn" data-act="ownerLogout">Log out</button></div></div>${UI.oMsg ? `<p class="x-ok" role="status">${esc(UI.oMsg)}</p>` : ""}</div>
+          <div class="x-panel"><h2>Pending requests (${v.pending.length})</h2>${v.pending.length ? `<div class="x-tw"><table><thead><tr><th scope="col">College</th><th scope="col">City</th><th scope="col">Admin</th><th scope="col">Phone</th><th scope="col">Submitted</th><th scope="col"><span class="x-sr">Decision</span></th></tr></thead><tbody>${v.pending.map(prow).join("")}</tbody></table></div>` : `<p>No colleges are waiting for approval.</p>`}</div>
+          <div class="x-panel"><h2>Approved colleges (${v.approved.length})</h2>${v.approved.length ? `<div class="x-tw"><table><thead><tr><th scope="col">College</th><th scope="col">Code</th><th scope="col">City</th></tr></thead><tbody>${v.approved.map((r) => `<tr><th scope="row">${esc(r.name)}</th><td>${esc(r.code)}</td><td>${esc(r.city)}, ${esc(r.state)}</td></tr>`).join("")}</tbody></table></div>` : `<p>No approved colleges yet.</p>`}${v.rejected ? `<p class="fineprint">${v.rejected} ${v.rejected === 1 ? "registration" : "registrations"} rejected.</p>` : ""}</div>`);
+        }
+        return void dyn(head + `<div class="x-auth"><div>
+          <form class="x-form" data-portal="ownerLogin" novalidate aria-labelledby="po-h">
+            <h2 id="po-h">Owner sign in</h2>
+            ${pf("Email", "email", `type="email" autocomplete="username"`, true)}
+            ${pf("Password", "password", `type="password" autocomplete="current-password"`, true)}
+            ${formErr}
+            <div class="x-acts"><button class="x-btn" type="submit">Sign in as owner</button></div>
+            <p class="fineprint">For the Shaalix team only. Colleges and students sign in on the <a class="link" href="#/portal">portal login</a>.</p>
+          </form>
+        </div><div>
+          ${v.registered === false ? `<form class="x-form" data-portal="ownerRegister" novalidate aria-labelledby="po-c">
+            <h2 id="po-c">Create the owner account</h2>
+            <p class="fineprint">No owner account exists yet. It can be created once, and only for <b>${esc(DB.ownerEmail())}</b>.</p>
+            ${pf("Your name", "name", `autocomplete="name"`, true)}
+            ${pf("Email", "email", `type="email" value="${esc(DB.ownerEmail())}" readonly`, true)}
+            ${pf("Password", "password", `type="password" autocomplete="new-password" minlength="8"`)}
+            ${pf("Confirm password", "confirm", `type="password" autocomplete="new-password"`)}
+            ${formErr}
+            <div class="x-acts"><button class="x-btn" type="submit">Create owner account</button></div>
+          </form>` : `<div class="cards"><div><h3>Owner console</h3><p>${v.registered ? "The owner account already exists. " : ""}Sign in to review college registrations and approve the ones that should open.</p></div></div>`}
+        </div></div>`);
+      };
 
       /* Year-wise fees view for the student Fees page:
          totals strip, all-years summary, then one clearly headed block per year. */
@@ -3213,6 +3337,14 @@
       ROUTES["/portal/admin"] = () => {
         const me = DB.me(); if (!me || me.role !== "admin") return "/portal";
         const c = me.college;
+        /* College approval gate (07): until the platform owner approves the
+           registration, the admin sees the waiting screen, not the dashboard. */
+        if (c.status === "pending" || c.status === "rejected") {
+          const top = portalCrumbs("Admin dashboard") + `<div class="x-panel">${logoImg(c)}${phead("College admin · " + esc(me.name), esc(c.name), `College code <b>${esc(c.code)}</b> · ${esc(c.type)} · ${esc(c.city)}, ${esc(c.state)}`, `<div class="x-acts">${logoutBtn}</div>`)}${demoNote}</div>`;
+          return void dyn(top + (c.status === "pending"
+            ? `<div class="x-panel x-wait"><h2>Registration submitted</h2><p><b>${esc(c.name)}</b> is waiting for approval from the Shaalix team. Your college code is <b>${esc(c.code)}</b> — it becomes active once your registration is approved.</p><p>Once approved, sign in again to open your dashboard, share the code with your students and start adding records.</p><p><span class="chip chip--solid">Pending approval</span></p></div>`
+            : `<div class="x-panel x-wait"><h2>Registration not approved</h2><p>${esc(c.name)} was not approved by the Shaalix team. Please contact the Shaalix team if you think this is a mistake.</p><p><span class="chip chip--solid">Rejected</span></p></div>`));
+        }
         dyn(portalCrumbs("Admin dashboard") + `<div class="x-panel">${logoImg(c)}${phead("College admin · " + esc(me.name), esc(c.name), `College code <b>${esc(c.code)}</b> · ${esc(c.type)} · ${esc(c.city)}, ${esc(c.state)}`, `<div class="x-acts">${logoutBtn}</div>`)}${demoNote}${UI.note ? `<p class="x-ok" role="status">${esc(UI.note)}</p>` : ""}</div>` +
           tabs(ADMIN_TABS, UI.tab, "tab", "Dashboard sections") + `<div class="x-panel" role="tabpanel" id="pa-panel" aria-labelledby="tab-tab-${UI.tab}">${PANES[UI.tab]()}</div>` + adminRcptModal());
       };
@@ -3598,6 +3730,8 @@
         async login(f, d) { const s = await DB.login(UI.loginRole, d.email, d.password); const role = UI.loginRole; UI = UI0(); UI.loginRole = role; go("/portal/" + s.role); },
         async regCollege(f, d) { const c = await DB.registerCollege(d); UI = UI0(); UI.flash = c.code; go("/portal/admin"); },
         async regStudent(f, d) { await DB.registerStudent(d); UI = UI0(); UI.loginRole = "student"; go("/portal/student"); },
+        async ownerLogin(f, d) { await DB.ownerLogin(d.email, d.password); UI = UI0(); go("/portal/owner"); },
+        async ownerRegister(f, d) { await DB.ownerRegister(d); UI = UI0(); UI.oMsg = "Owner account created. College registrations will wait here for your decision."; go("/portal/owner"); },
         student(f, d) {
           if (UI.edit === "new") { const s = DB.addStudent(d); UI.msg = `${s.name} added and approved. Password: ${d.password || "Welcome@123"}.`; }
           else { const s = DB.updateStudent(UI.edit, d); UI.msg = `${s.name}'s profile saved.`; UI.view = s.id; UI.showAad = false; }
@@ -3639,6 +3773,10 @@
       });
       const ACTS = {
         logout() { DB.logout(); UI = UI0(); go("/portal"); },
+        ownerLogout() { return DB.ownerLogout().then(() => { UI = UI0(); go("/portal"); }); },
+        ownerApprove(id) { if (UI.oConfirm !== "a:" + id) { UI.oConfirm = "a:" + id; UI.oMsg = ""; paint(); return; } UI.oConfirm = null; return DB.ownerSetStatus(id, "approved").then(() => { UI.oMsg = "College approved. Its admin can now sign in and use the portal."; paint(); }); },
+        ownerReject(id) { if (UI.oConfirm !== "r:" + id) { UI.oConfirm = "r:" + id; UI.oMsg = ""; paint(); return; } UI.oConfirm = null; return DB.ownerSetStatus(id, "rejected").then(() => { UI.oMsg = "College registration rejected."; paint(); }); },
+        ownerConfirmCancel() { UI.oConfirm = null; paint(); },
         role(id) { UI.loginRole = id; paint(`[data-act="role"][data-id="${id}"]`); },
         fill(email, b) { UI.loginRole = b.dataset.role; paint(); const lf = document.querySelector('#v-dyn form[data-portal="login"]'); if (lf) { const em = lf.querySelector('[name="email"]'), pw = lf.querySelector('[name="password"]'); if (em) em.value = email; if (pw) pw.value = "Demo@1234"; const sb = lf.querySelector('button[type="submit"]'); if (sb) sb.focus(); } },
         tab(id) { Object.assign(UI, { tab: id, msg: "", edit: null, confirm: null, feeEdit: null, pay: null, rcpt: null, note: "", imp: null, impErr: "", impResult: null, view: null, showAad: false }); paint(`[data-act="tab"][data-id="${id}"]`); },
