@@ -6,7 +6,7 @@
 // Adaptations from the localStorage-era selfcheck (assertions unchanged
 // unless listed here):
 //  1. Auth is real now, hence async: DB.login / registerCollege /
-//     registerStudent are awaited; the stub stands in for Supabase Auth +
+//     claimStudent are awaited; the stub stands in for Supabase Auth +
 //     Postgres + Storage and emulates the RLS policies of 01-schema.sql
 //     with 02-registration-fix.sql applied.
 //  2. "Reset demo data" points reboot the page over a freshly reset stub
@@ -29,6 +29,27 @@
 //     fixture platform owner (mohan@shaalix.com / Owner@1234) sees the
 //     request in the owner console and approves it before the classic
 //     student-join flow resumes. Fixture colleges carry status "approved".
+//  7. Student claim (08-student-claim.sql): self-registration is gone.
+//     Where the old check registered a student by code, the college office
+//     now adds the record (DB.addStudent) and the student claims it
+//     (DB.findClaim / DB.claimStudent), then signs back in by roll
+//     (DB.loginByRoll). The stub emulates find_student_for_claim + the
+//     claim profile-insert rule, and the fixture carries one approved,
+//     unclaimed Green Valley record (Suresh Menon, 24GV1A0502).
+//  8. Admin student profile / add / edit render as popup cards (.x-smodal)
+//     over the blurred Students list (the list stays rendered underneath).
+//     The edit lifecycle discards via ACTS.stuBack (the popup's back arrow,
+//     Close and Cancel buttons) and returns to the profile popup; a save
+//     through FORMS.student lands on the profile popup with the new values.
+//  9. Claim-create fix (09-college-directory.sql): DB.claimStudent takes
+//     the stored findClaim result + passwords ONLY — the create form has
+//     no college fields (the live bug: the create step re-resolved the
+//     college from those missing fields and failed logged-out users with
+//     "Pick your college or enter its code."). The new-college section
+//     drives exactly that path — lookup by CODE only, create from the
+//     stored state — and asserts a no-stored-state refusal. The logged-out
+//     college directory now comes from the list_colleges_dir RPC, which
+//     the stub emulates (approved colleges only, name order).
 const fs = require("fs"), vm = require("vm"), path = require("path");
 const { createStub } = require("./sb-stub.js");
 const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, "demo-fixture.json"), "utf8"));
@@ -79,7 +100,7 @@ function bootWorld() {
 let ctx = bootWorld();
 let { ROUTES, PAGES } = vm.runInContext("({ ROUTES, PAGES })", ctx);
 let norm = vm.runInContext("norm", ctx), ALIASES = vm.runInContext("ALIASES", ctx);
-let P = vm.runInContext("({ DB, setUI: (o) => Object.assign(UI, o), PANES, ADMIN_TABS })", ctx);
+let P = vm.runInContext("({ DB, setUI: (o) => Object.assign(UI, o), getUI: () => UI, PANES, ADMIN_TABS, FORMS, ACTS })", ctx);
 let DB = P.DB;
 const resolve = (h) => { let p = norm(h); return ALIASES[p] !== undefined ? ALIASES[p] : p; };
 async function rebootWorld(resetBackend) {
@@ -87,7 +108,7 @@ async function rebootWorld(resetBackend) {
   ctx = bootWorld();
   ({ ROUTES, PAGES } = vm.runInContext("({ ROUTES, PAGES })", ctx));
   norm = vm.runInContext("norm", ctx); ALIASES = vm.runInContext("ALIASES", ctx);
-  P = vm.runInContext("({ DB, setUI: (o) => Object.assign(UI, o), PANES, ADMIN_TABS })", ctx);
+  P = vm.runInContext("({ DB, setUI: (o) => Object.assign(UI, o), getUI: () => UI, PANES, ADMIN_TABS, FORMS, ACTS })", ctx);
   DB = P.DB;
   await DB.ready();
 }
@@ -125,10 +146,35 @@ await DB.settle(); await DB.login("admin", "admin@srividya.demo", "Demo@1234");
 const sv = DB.getStudents();
 if (sv.length !== 7 || sv.filter((s) => s.status === "pending").length !== 1) fails.push(`Sri Vidya seed: ${sv.length} students`);
 for (const [tab] of P.ADMIN_TABS) { P.setUI({ tab }); renderAs("admin/" + tab, "/portal/admin"); }
-P.setUI({ tab: "students", edit: "new" }); renderAs("admin/students+form", "/portal/admin");
+P.setUI({ tab: "students", edit: "new" });
+const addHtml = renderAs("admin/students+form", "/portal/admin");
+if (!/>Save<\/button>/.test(addHtml)) fails.push("Add student form: submit button should read 'Save'");
+if (/data-act="stuNew"/.test(addHtml)) fails.push("Add student form open: the top 'Add student' button must not be rendered");
+if (!/class="x-smodal" data-modal data-stu-modal/.test(addHtml)) fails.push("Add student form should open as a popup card over the blurred list");
+if (!/<button type="submit" form="pa-stu-form" class="x-btn">Save<\/button>/.test(addHtml)) fails.push("Add student popup header should carry a top Save button wired to the form");
+if (!/data-act="stuBack">Close<\/button>/.test(addHtml)) fails.push("Add student popup header should carry a Close control");
+if (/aria-label="Back to /.test(addHtml)) fails.push("Add student popup should not have a back arrow");
+if (!/id="pa-list"/.test(addHtml)) fails.push("Students list should stay rendered under the add-student popup");
+if (!/<select name="admYear"/.test(addHtml)) fails.push("Add student form: Admission year should be a select");
+{ const yr = new Date().getFullYear(); for (const y of [yr + 1, yr, yr - 15]) if (!addHtml.includes(`<option value="${y}"`)) fails.push(`Admission year select: missing option ${y}`); }
+if (!addHtml.includes("Diploma in Computer Engineering") || !addHtml.includes("Diploma in Pharmacy")) fails.push("Branch datalist: diploma branches missing");
+{ // Settle the branch datalist question with a count: the pa-br datalist on
+  // the add-student form must offer the full B.Tech + Diploma list.
+  const dlM = addHtml.match(/<datalist id="pa-br">([\s\S]*?)<\/datalist>/);
+  const brOpts = dlM ? [...dlM[1].matchAll(/<option value="([^"]+)"/g)].map((m) => m[1]) : [];
+  if (brOpts.length <= 20) fails.push(`Branch datalist should offer >20 options, got ${brOpts.length}`);
+  if (brOpts.filter((o) => o.startsWith("Diploma in ")).length < 3) fails.push("Branch datalist should include at least 3 'Diploma in …' entries");
+  console.log(`Branch datalist (pa-br): ${brOpts.length} options, ${brOpts.filter((o) => o.startsWith("Diploma in ")).length} of them Diploma`);
+}
 P.setUI({ tab: "fees", edit: null, feeEdit: "new" }); renderAs("admin/fees+form", "/portal/admin");
 const fee0 = DB.getFees()[0]; P.setUI({ feeEdit: null, pay: fee0.id }); renderAs("admin/fees+pay", "/portal/admin");
 P.setUI({ pay: null, tab: "overview" });
+{ const ovHtml = renderAs("admin/overview-no-approvals", "/portal/admin");
+  if (/Pending approvals|data-act="goPending"|Review .*pending/.test(ovHtml)) fails.push("Admin overview still shows pending approvals or a review entry point");
+  P.setUI({ tab: "students", edit: null, view: null }); const stHtml = renderAs("admin/students-no-approvals", "/portal/admin");
+  if (/data-act="(approve|reject|goPending)"/.test(stHtml)) fails.push("Admin students list still renders Approve/Reject actions");
+  if (!/data-act="stuNew"/.test(stHtml)) fails.push("Admin students list: 'Add student' button missing while no form is open");
+  P.setUI({ tab: "overview" }); }
 // Isolation: another college's records are out of reach for this admin
 await DB.settle(); await DB.login("admin", "admin@greenvalley.demo", "Demo@1234");
 const gv = DB.getStudents(), gvFee = DB.getFees()[0];
@@ -160,7 +206,7 @@ const c = await DB.registerCollege({ name: "Test College", type: "Engineering", 
 if (!/^SHX-\d{4}$/.test(c.code)) fails.push("College code format: " + c.code);
 if (c.status !== "pending") fails.push("New college should start pending owner approval, got: " + c.status);
 if (!/Registration submitted/.test(renderAs("admin/new-college-waiting", "/portal/admin"))) fails.push("Pending college admin does not see the waiting screen");
-await expectErr("Student cannot join a pending college", () => DB.registerStudent({ code: c.code, name: "Early S", roll: "0", branch: "CSE", admType: "Regular", curYear: "1", sec: "Sec A", email: "early@test.in", phone: "9876543219", password: "abcdefgh", confirm: "abcdefgh" }), "code");
+await expectErr("Student cannot claim into a pending college", () => DB.findClaim({ code: c.code, roll: "0" }), "code");
 // Owner console: the request is listed with the admin's contact details
 await DB.settle(); await DB.ownerLogin("mohan@shaalix.com", "Owner@1234");
 const ostate = DB.ownerState();
@@ -180,13 +226,29 @@ const secretSpan = markup.match(/<span([^>]*)data-owner-secret([^>]*)>©<\/span>
 if (!secretSpan) fails.push("Footer © secret hook (a span with data-owner-secret) is missing from the footer");
 else if (/\b(title|href)\s*=/.test(secretSpan[1] + secretSpan[2])) fails.push("Footer © secret hook must not carry a title or href");
 if (!code.includes('closest("[data-owner-secret]")') || !code.includes('location.hash = "#/portal/owner"')) fails.push("The secret © click handler is not wired to the owner route");
-await DB.registerStudent({ code: c.code, name: "New S", roll: "1", branch: "CSE", admType: "Lateral Entry", curYear: "2", sec: "Sec A", email: "s@test.in", phone: "9876543211", password: "abcdefgh", confirm: "abcdefgh" });
-if (DB.me().student.status !== "pending") fails.push("New student should be pending");
-if (DB.me().student.cls !== "B.Tech CSE 2nd Year") fails.push("Class should be derived from course, branch and year: " + DB.me().student.cls);
+// The office adds the record first (approved, fees created); the student
+// then claims it (08) — no pending step — and signs back in by roll.
 await DB.settle(); await DB.login("admin", "t@test.in", "abcdefgh");
-const ns = DB.getStudents()[0]; DB.setStudentStatus(ns.id, "approved");
+const ns = DB.addStudent({ name: "New S", roll: "1", branch: "CSE", admType: "Lateral Entry", curYear: "2", sec: "Sec A", email: "s@test.in", phone: "9876543211" });
 const nsYears = DB.getFees(ns.id).map((f) => f.yearLabel + " " + f.type).join(",");
-if (nsYears !== "Year 2 Tuition,Year 2 Affiliation,Year 3 Tuition,Year 3 Affiliation,Year 4 Tuition,Year 4 Affiliation") fails.push("Approving a lateral student should create Year 2-4 fees: " + nsYears);
+if (nsYears !== "Year 2 Tuition,Year 2 Affiliation,Year 3 Tuition,Year 3 Affiliation,Year 4 Tuition,Year 4 Affiliation") fails.push("Office-added lateral student should get Year 2-4 fees: " + nsYears);
+await DB.settle(); // the office record must reach the backend before the claim lookup reads it
+DB.logout();
+const foundC = await DB.findClaim({ code: c.code, roll: "1" });
+if (foundC.student_id !== ns.id || foundC.name !== "New S") fails.push("Claim lookup did not find the office record");
+// Fix 09 (the live bug): the create step gets the stored lookup + passwords
+// only — no college_id/code/roll fields are re-supplied, exactly like the
+// real claimCreate form — and a create with no stored lookup is refused.
+await expectErr("Claim create without a stored lookup", () => DB.claimStudent(null, { password: "abcdefgh", confirm: "abcdefgh" }), "roll");
+await DB.claimStudent(foundC, { password: "abcdefgh", confirm: "abcdefgh" });
+if (DB.me().student.id !== ns.id || DB.me().student.status !== "approved") fails.push("Claimed student should land approved on the office record");
+if (DB.me().student.cls !== "B.Tech CSE 2nd Year") fails.push("Class should be derived from course, branch and year: " + DB.me().student.cls);
+await expectErr("Second claim of the same roll", () => DB.findClaim({ code: c.code, roll: "1" }), "roll");
+await expectErr("Claim: unknown roll", () => DB.findClaim({ code: c.code, roll: "ZZZ" }), "roll");
+DB.logout();
+const backC = await DB.loginByRoll({ code: c.code }, "1", "abcdefgh");
+if (backC.student_id !== ns.id) fails.push("Roll sign-in did not reopen the claimed record");
+await DB.settle(); await DB.login("admin", "t@test.in", "abcdefgh");
 await expectErr("Lateral student: no Year 1 fee", () => DB.upsertFee({ student_id: ns.id, year: "1", type: "Tuition", amount: 85000, due: "2026-11-15" }), "year");
 await expectErr("Duplicate fee line", () => DB.upsertFee({ student_id: ns.id, year: "2", type: "Affiliation", amount: 6000, due: "2026-11-15" }), "type");
 const ns2 = DB.addStudent({ name: "Reg S", roll: "2", branch: "ECE", admType: "Regular", curYear: "1", sec: "Sec A", email: "r2@test.in", phone: "9876543212" });
@@ -194,6 +256,16 @@ if (DB.getFees(ns2.id).length !== 8 || DB.getFees(ns2.id)[0].amount !== 85000 ||
 await expectErr("Regular -> Lateral with Year 1 fees", () => DB.updateStudent(ns2.id, { admType: "Lateral Entry", curYear: "2" }), "admType");
 DB.logout();
 for (const p of ["/portal", "/portal/register-college", "/portal/register-student"]) renderAs("signed-out " + p, p);
+const claimHtml = renderAs("signed-out claim page", "/portal/register-student");
+if (!/Claim your student account/.test(claimHtml) || !/Find my record/.test(claimHtml)) fails.push("Claim page does not render the record-lookup step");
+if (/Register as a student/.test(claimHtml) || /data-portal="regStudent"/.test(claimHtml)) fails.push("Claim page still shows the old self-registration form");
+P.setUI({ loginRole: "student", stuMode: "roll" });
+const loginRoll = renderAs("portal/login-roll-mode", "/portal");
+if (!/Your college/.test(loginRoll) || !/Roll \/ admission number/.test(loginRoll)) fails.push("Student sign-in does not default to roll mode");
+P.setUI({ loginRole: "student", stuMode: "email" });
+const loginEmail = renderAs("portal/login-email-mode", "/portal");
+if (!/name="email"/.test(loginEmail)) fails.push("Student sign-in email mode does not render the email field");
+P.setUI({ loginRole: "admin", stuMode: "roll" });
 
 // B.Tech year-wise fees: regular Year 1-4, lateral Year 2-4; past paid, current open, future upcoming
 const yearsOf = (fees) => [...new Set(fees.map((f) => f.year))].join(",");
@@ -242,12 +314,52 @@ await expectErr("Category not in list", () => DB.updateStudent(lkA.id, { categor
 await expectErr("Income not numeric", () => DB.updateStudent(lkA.id, { income: "two lakh" }), "income");
 await expectErr("Lateral in Year 1", () => DB.updateStudent(lkA.id, { curYear: "1" }), "curYear");
 await expectErr("Duplicate Aadhaar", () => DB.updateStudent(lkA.id, { aadhaar: DB.getStudents().find((x) => x.id !== lkA.id && x.aadhaar).aadhaar }), "aadhaar");
+{ // Edit lifecycle: typing in the form writes nothing; Cancel discards; only the submit ("Save changes") persists.
+  const beforeStu = DB.getStudents().find((x) => x.id === lkA.id);
+  P.setUI({ tab: "students", edit: lkA.id, view: null });
+  const openHtml = renderAs("admin/students+edit-cancel", "/portal/admin");
+  if (!openHtml.includes(`value="${beforeStu.father}"`)) fails.push("Edit lifecycle: form does not open with the stored father's name");
+  // Discard via the real ACTS handler (the popup's back arrow, Close and
+  // Cancel buttons all invoke stuBack): edits are dropped and the student's
+  // profile popup comes back instead of the bare list.
+  vm.runInContext("ACTS.stuBack()", ctx);
+  if (P.getUI().edit !== null) fails.push("Edit lifecycle: Back/Close did not close the form");
+  if (P.getUI().view !== lkA.id) fails.push("Edit lifecycle: Back/Close should return to the student's profile popup");
+  if (DB.getStudents().find((x) => x.id === lkA.id).father !== beforeStu.father) fails.push("Edit lifecycle: Back/Close changed stored data");
+  P.setUI({ tab: "students", edit: lkA.id, view: null });
+  const reopenHtml = renderAs("admin/students+edit-reopen", "/portal/admin");
+  if (!reopenHtml.includes(`value="${beforeStu.father}"`)) fails.push("Edit lifecycle: reopened form lost the stored father's name after Cancel");
+  // Submit via the real FORMS.student handler (the "Save changes" path):
+  await P.FORMS.student({ querySelectorAll: () => [] }, { ...beforeStu, father: "Saved By Submit" });
+  if (DB.getStudents().find((x) => x.id === lkA.id).father !== "Saved By Submit") fails.push("Edit lifecycle: Save changes did not persist the new father's name");
+  // After a save the admin lands on the profile popup (not the form, not the
+  // bare list) with the updated values, so the change can be checked.
+  if (P.getUI().edit !== null || P.getUI().view !== lkA.id) fails.push("Edit lifecycle: after Save changes the profile popup should be shown");
+  const savedHtml = renderAs("admin/students+edit-saved", "/portal/admin");
+  if (!/class="x-smodal" data-modal data-stu-modal/.test(savedHtml) || !savedHtml.includes("Saved By Submit")) fails.push("Edit lifecycle: saved profile popup does not show the updated values");
+  P.setUI({ tab: "students", edit: null, view: lkA.id });
+}
 const ed = DB.updateStudent(lkA.id, { aadhaar: "9999 8888 7777", category: "bc a", income: "1,75,000", schStatus: "Disbursed", father: "K. Appa Rao Garu" });
 if (ed.aadhaar !== "999988887777" || ed.category !== "BC-A" || ed.income !== 175000 || ed.schStatus !== "Disbursed" || ed.father !== "K. Appa Rao Garu" || ed.name !== lkA.name) fails.push("Admin profile edit did not save: " + JSON.stringify({ a: ed.aadhaar, c: ed.category, i: ed.income }));
 P.setUI({ tab: "students", view: lkA.id }); const pvHtml = renderAs("admin/students+profile", "/portal/admin");
+for (const t of ["<dt>Religion</dt>", "<dt>Caste</dt>", "<dt>Annual family income</dt>", "<dt>Valid till</dt>"]) if (pvHtml.includes(t)) fails.push(`Profile view: removed field still shown: ${t}`);
+for (const t of ["<dt>Category</dt>", "<dt>Caste certificate no.</dt>", "<dt>Income certificate no.</dt>"]) if (!pvHtml.includes(t)) fails.push(`Profile view: kept field missing: ${t}`);
 if (!pvHtml.includes("XXXX XXXX 7777") || pvHtml.includes("999988887777")) fails.push("Admin profile view must mask Aadhaar");
+if (!/class="x-smodal" data-modal data-stu-modal/.test(pvHtml)) fails.push("Admin student profile should open as a popup card over the blurred list");
+if (!/id="pa-list"/.test(pvHtml)) fails.push("Students list should stay rendered under the profile popup");
+if (!/data-prof-head/.test(pvHtml) || !/data-act="stuEdit"/.test(pvHtml) || !/data-act="viewClose"/.test(pvHtml)) fails.push("Profile popup header should keep the name focus target, Edit and Close controls");
 P.setUI({ view: null, edit: lkA.id }); const efHtml = renderAs("admin/students+edit", "/portal/admin");
-for (const n of ["father", "mother", "dob", "gender", "blood", "address", "aadhaar", "apaar", "religion", "category", "caste", "casteCert", "income", "incomeCert", "incomeValid", "schEligible", "schScheme", "schStatus", "roll", "branch", "admType", "admYear", "curYear", "prevQual", "prevPct"]) if (!efHtml.includes(`name="${n}"`)) fails.push(`Admin edit form: missing field ${n}`);
+for (const n of ["father", "mother", "dob", "gender", "blood", "address", "aadhaar", "apaar", "category", "casteCert", "incomeCert", "schEligible", "schScheme", "schStatus", "roll", "branch", "admType", "admYear", "curYear", "prevQual", "prevPct"]) if (!efHtml.includes(`name="${n}"`)) fails.push(`Admin edit form: missing field ${n}`);
+for (const n of ["religion", "caste", "income", "incomeValid"]) if (efHtml.includes(`name="${n}"`)) fails.push(`Admin edit form: removed field ${n} is still rendered`);
+if (!/>Save changes<\/button>/.test(efHtml)) fails.push("Edit student form: submit button should read 'Save changes'");
+if (/data-act="stuNew"/.test(efHtml)) fails.push("Edit student form open: the top 'Add student' button must not be rendered");
+if (!/<select name="admYear"/.test(efHtml)) fails.push("Edit student form: Admission year should be a select");
+if ((efHtml.match(/data-stage-doc=/g) || []).length !== 6) fails.push("Edit student form: expected 6 staged admission-document inputs");
+if (/data-upload="doc"/.test(efHtml)) fails.push("Edit student form: documents must be staged (data-stage-doc), not immediate uploads");
+if (!/class="x-smodal" data-modal data-stu-modal/.test(efHtml)) fails.push("Edit student form should open as a popup card over the blurred list");
+if (!/data-act="stuBack" aria-label="Back to /.test(efHtml) || !/&#8592;/.test(efHtml)) fails.push("Edit popup header should carry a back-arrow control returning to the profile");
+if (!/<button type="submit" form="pa-stu-form" class="x-btn">Save changes<\/button>/.test(efHtml)) fails.push("Edit popup header should carry a top Save button wired to the form");
+if (!/data-act="stuBack">Close<\/button>/.test(efHtml)) fails.push("Edit popup header should carry a Close control");
 P.setUI({ edit: null, tab: "overview" });
 
 // Student fee payment on a Year line: amount checks, partial then full, receipt, admin sees it
@@ -370,11 +482,18 @@ DB.verifyDocument(doc1.id, "Verified");
 if (!DB.getDocuments(raviA.id).some((d) => d.id === doc1.id && d.status === "Verified")) fails.push("verifyDocument not reflected for admin");
 P.setUI({ tab: "students", view: raviA.id }); const admProf = renderAs("admin/profile-docs-id", "/portal/admin");
 if (!/Admission documents/.test(admProf) || !/Verified/.test(admProf) || !/ID Card/.test(admProf)) fails.push("Admin profile: documents or ID card missing");
+if (/data-act="docVerify"|data-act="docReject"/.test(admProf)) fails.push("Admin profile: document Verify/Reject actions should be gone (office uploads are Verified)");
+if (!/data-act="docDel"/.test(admProf)) fails.push("Admin profile: document Delete should stay available");
 P.setUI({ view: null });
+const officeDoc = DB.replaceDocument({ student_id: raviA.id, kind: "Inter Memo", name: "inter-office.pdf", size: 2222, mime: "application/pdf", data: PNG1 });
+if (officeDoc.status !== "Verified") fails.push("Office-uploaded document should land Verified");
+DB.replaceDocument({ student_id: raviA.id, kind: "Inter Memo", name: "inter-office-v2.pdf", size: 3333, mime: "application/pdf", data: PNG1 });
+if (DB.getDocuments(raviA.id).filter((d) => d.kind === "Inter Memo").length !== 1 || !DB.getDocuments(raviA.id).some((d) => d.kind === "Inter Memo" && d.name === "inter-office-v2.pdf")) fails.push("Office replace should keep exactly one document of the kind (the newest)");
 await DB.settle(); await DB.login("student", "ravi@srividya.demo", "Demo@1234");
 if (!DB.myDocuments().some((d) => d.id === doc1.id && d.status === "Verified")) fails.push("Student does not see the Verified document");
 const profHtml2 = renderAs("student/profile-docs", "/portal/student");
 if (!/Admission documents/.test(profHtml2) || !/ID Card/.test(profHtml2) || !profHtml2.includes(DB.myProfile().photo)) fails.push("Student profile: documents, ID card or photo missing"); // adaptation 5: photo is a storage URL after re-login
+if (/data-upload="doc"|data-act="docDel"/.test(profHtml2)) fails.push("Student profile: documents must be view-only (no upload input, no delete)");
 // Receipt anytime: make a payment, then open its receipt from the Payments tab data
 const dueF = DB.myFees().find((f) => f.balance > 0);
 const payR = DB.payMyFee(dueF.id, { amount: 1000, payer: "Ravi", app: "PhonePe", ref: "999988887777" });
@@ -534,8 +653,13 @@ for (const [em, label] of demoAdmins) {
   await DB.settle(); await DB.login("admin", em, "Demo@1234");
   const cPays = DB.getPayments(), cFees = DB.getFees();
   if (!cPays.length || cPays.reduce((a, p) => a + p.amount, 0) !== cFees.reduce((a, f) => a + f.paid, 0)) fails.push(`Backfill reset (${label}): payments do not add up to the fees' paid totals`);
-  const admStudents = DB.getStudents().filter((s) => s.status === "approved");
+  // Provisioned demo students only: the fixture also carries ONE office
+  // record with no login yet (Suresh Menon, Green Valley — the claim-test
+  // record, 08). It joins these loops only after somebody claims it.
+  const provisioned = new Set(fixture.tables.profiles.filter((p) => p.student_id).map((p) => p.student_id));
+  const admStudents = DB.getStudents().filter((s) => s.status === "approved" && provisioned.has(s.id));
   if (!admStudents.length) fails.push(`Backfill reset (${label}): no approved students after reset`);
+  if (label === "Green Valley" && !DB.getStudents().some((s) => s.roll === "24GV1A0502" && s.status === "approved" && !provisioned.has(s.id))) fails.push("Backfill reset (Green Valley): the unclaimed claim-test office record is missing");
   for (const stu of admStudents) {
     const docs = DB.getDocuments(stu.id);
     if (!docs.some((d) => d.kind === "Aadhaar Card" && d.status === "Verified") || !docs.some((d) => d.kind === "SSC Memo" && d.status === "Pending")) fails.push(`Backfill reset (${label}): demo documents missing for ${stu.name} (${stu.roll})`);
@@ -552,7 +676,7 @@ for (const [em, label] of demoAdmins) {
   if (!/Admission documents/.test(myDocHtml) || !myDocHtml.includes("Verified") || !myDocHtml.includes("Pending")) fails.push(`Backfill reset (${label}): student render does not show both document statuses`);
 }
 // The demo-login student (Ravi Kumar Varma, 24SV1A0501) is NOT the lowest roll, but his
-// documents must still be there — and the office must get Verify / Reject on his profile.
+// documents must still be there — and the office gets Delete (not Verify / Reject) on his profile.
 await DB.settle(); await DB.login("admin", "admin@srividya.demo", "Demo@1234");
 const raviDemo = DB.getStudents().find((s) => s.roll === "24SV1A0501") || DB.getStudents().find((s) => /Ravi Kumar Varma/.test(s.name));
 if (!raviDemo) fails.push("Backfill reset: demo-login student Ravi Kumar Varma (24SV1A0501) not found after reset");
@@ -560,7 +684,8 @@ else {
   const rDocs = DB.getDocuments(raviDemo.id);
   if (!rDocs.some((d) => d.kind === "Aadhaar Card" && d.status === "Verified") || !rDocs.some((d) => d.kind === "SSC Memo" && d.status === "Pending")) fails.push("Backfill reset: Ravi's demo documents are missing after reset");
   P.setUI({ tab: "students", view: raviDemo.id }); const raviProf = renderAs("admin/ravi-backfill-docs", "/portal/admin");
-  if (!raviProf.includes('data-act="docVerify"') || !raviProf.includes('data-act="docReject"')) fails.push("Backfill reset: admin profile for Ravi lacks Verify / Reject controls for his pending document");
+  if (raviProf.includes('data-act="docVerify"') || raviProf.includes('data-act="docReject"')) fails.push("Backfill reset: admin profile must not offer document Verify / Reject (office uploads are Verified)");
+  if (!raviProf.includes('data-act="docDel"')) fails.push("Backfill reset: admin profile for Ravi lacks the document Delete control");
   P.setUI({ view: null, tab: "overview" });
   await DB.settle(); await DB.login("student", raviDemo.email, "Demo@1234");
   const raviMyDocs = DB.myDocuments();
