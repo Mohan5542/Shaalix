@@ -1,8 +1,8 @@
 {
-  "version": "2.0.0",
+  "version": "2.1.0",
   "bundle": "bundle.html",
-  "sha256": "43817e916f670985e086896fec7febdab2070cc42a5c8412d79c29c32e6d3885",
-  "size": 320845,
+  "sha256": "289aefda8fdd7bc89dd8eb2e5e7223f82269915dba17596f236b2bb97e336e80",
+  "size": 354637,
   "publishedAt": "2026-11-26",
-  "notes": "Kotha student app vachindi! Ippudu app phone kosam special ga design chesina kotha look tho vastundi — login, fees, marks, attendance, notices anni inka easy ga chudochu. Update click cheyandi."
+  "notes": "Ippudu app lone fees pay cheyochu! Fees screen lo Pay Now button vachindi — college UPI ID ki QR code tho pay chesi, UTR number enter chesthe mee payment history lo kanipistundi."
 }
