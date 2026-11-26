@@ -1,8 +1,8 @@
 {
-  "version": "2.1.1",
+  "version": "2.2.0",
   "bundle": "bundle.html",
-  "sha256": "72ac831292851e9ce45da222bd342dd9ad2bf5ff243f378da3f2014c86e11ba1",
-  "size": 354636,
+  "sha256": "2b0ea636e62909397687f76802941b7acb345d1407f0578e76509a5c6a876d72",
+  "size": 361765,
   "publishedAt": "2026-11-26",
-  "notes": "Update delivery is fixed - if the earlier update showed 'could not be verified', this one will install normally. This update also adds fee payment by UPI: tap Pay now in Fees, pay to your college's UPI ID or QR code, then enter the UTR number so the payment appears in your payment history."
+  "notes": "New: the app now refreshes itself. Fee, marks and notice updates from your college appear automatically on the screen you are on — no need to close and reopen the app."
 }

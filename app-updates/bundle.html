@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Shaalix</title>
     <!--
-      Shaalix STUDENT APP — bundle 2.1.1.
+      Shaalix STUDENT APP — bundle 2.2.0.
       A purpose-built mobile app for students only (not the website):
       opens at the student sign-in, claim/register for first-time students,
       then the student's own account (overview, fees, payments, attendance,
@@ -255,7 +255,7 @@
         </form>
         <p class="auth__alt">New student, no account yet?<br /><button type="button" id="go-claim">Claim your account</button></p>
       </div>
-      <p class="auth__foot">Shaalix for students · Your college manages records on the Shaalix website.<br />App version 2.1.1</p>
+      <p class="auth__foot">Shaalix for students · Your college manages records on the Shaalix website.<br />App version 2.2.0</p>
     </section>
 
     <!-- ======================= AUTH: CLAIM ======================= -->
@@ -327,7 +327,7 @@
           <button class="btn" id="cl-done" type="button">Go to sign in</button>
         </div>
       </div>
-      <p class="auth__foot">Shaalix for students · App version 2.1.1</p>
+      <p class="auth__foot">Shaalix for students · App version 2.2.0</p>
     </section>
 
     <!-- ======================= APP SHELL ======================= -->
@@ -395,7 +395,7 @@
         <p><span class="chip chip--solid" id="wait-chip">Pending approval</span></p>
         <button class="btn btn--ghost" id="wait-logout" type="button">Log out</button>
       </div>
-      <p class="auth__foot">Shaalix for students · App version 2.1.1</p>
+      <p class="auth__foot">Shaalix for students · App version 2.2.0</p>
     </section>
 
     <div id="sheet-root"></div>
@@ -431,7 +431,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 //# sourceMappingURL=/sm/26b4b0d0b1e283d6b3ec9857ac597d7a60c76ac17be1ef4c965f03086de426bb.map
 </script>
     <script>
-      window.__BUNDLE_VERSION__ = "2.1.1";
+      window.__BUNDLE_VERSION__ = "2.2.0";
     </script>
     <script>
 /* ================= Shaalix student app — application logic ================= */
@@ -500,7 +500,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     fees: [], payments: [], marks: [], attendance: [], notices: [],
     documents: [], certificates: [], tab: "home", feesSeg: "fees",
     photoUrl: "", logoUrl: "", idCardUrl: "", docUrls: {}, attUrls: {},
-    loaded: false, showAad: false
+    loaded: false, showAad: false, sub: null, dataSig: null
   };
 
   /* ---------- view switching ---------- */
@@ -511,7 +511,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   }
   var TABS = ["home", "fees", "marks", "notices", "profile"];
   function showTab(tab) {
-    S.tab = tab;
+    S.tab = tab; S.sub = null;
     TABS.forEach(function (t) { $("screen-" + t).classList.toggle("hidden", t !== tab); });
     $("screen-sub").classList.add("hidden");
     var btns = document.querySelectorAll("#tabbar button");
@@ -661,13 +661,50 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     return (r && r.data && r.data.publicUrl) || "";
   }
 
-  async function loadStudentData() {
+  /* Fetch every row the app shows, without touching the screen.
+     strict=true (background refresh) treats ANY failed query as a
+     failure, so a half-loaded payload is never painted over the
+     current screen; the initial load keeps the tolerant behaviour
+     the app has always had. */
+  async function fetchStudentRaw(strict) {
     var sid = S.profile.student_id, cid = S.profile.college_id;
     var cols = await sb.from("colleges").select("*").eq("id", cid).single();
-    S.college = cols.error ? null : cols.data;
+    if (strict && cols.error) throw cols.error;
     var stu = await sb.from("students").select("*").eq("id", sid).single();
     if (stu.error || !stu.data) throw new Error("Your student record could not be loaded. Please try again.");
-    var d = stu.data;
+    var q = await Promise.all([
+      sb.from("fees").select("*").eq("student_id", sid).order("year", { ascending: true }),
+      sb.from("payments").select("*").eq("student_id", sid).order("paid_at", { ascending: false }),
+      sb.from("marks").select("*").eq("student_id", sid),
+      sb.from("attendance").select("*").eq("student_id", sid).order("day", { ascending: false }),
+      sb.from("notices").select("*").eq("college_id", cid).order("notice_date", { ascending: false }),
+      sb.from("documents").select("*").eq("student_id", sid),
+      sb.from("certificates").select("*").eq("student_id", sid)
+    ]);
+    if (strict) { for (var i = 0; i < q.length; i++) { if (q[i].error) throw q[i].error; } }
+    function rows(r) { return r.data || []; }
+    function byId(a, b) { return String(a.id) < String(b.id) ? -1 : String(a.id) > String(b.id) ? 1 : 0; }
+    return {
+      college: cols.error ? null : cols.data,
+      studentRow: stu.data,
+      fees: rows(q[0]), payments: rows(q[1]),
+      /* The three queries without ORDER BY are sorted by id so the
+         payload signature below is stable for unchanged data. */
+      marks: rows(q[2]).slice().sort(byId),
+      attendance: rows(q[3]), notices: rows(q[4]),
+      documents: rows(q[5]).slice().sort(byId),
+      certificates: rows(q[6]).slice().sort(byId)
+    };
+  }
+  /* A fingerprint of everything on screen. The background refresh
+     compares the fresh payload against this and re-renders only
+     when something actually changed. */
+  function rawSignature(raw) {
+    return JSON.stringify([raw.college, raw.studentRow, raw.fees, raw.payments, raw.marks, raw.attendance, raw.notices, raw.documents, raw.certificates]);
+  }
+  async function applyStudentRaw(raw) {
+    S.college = raw.college;
+    var d = raw.studentRow;
     S.student = {
       id: d.id, collegeId: d.college_id, name: d.name, roll: d.roll, email: d.email, phone: d.phone,
       course: d.course, branch: d.branch, curYear: d.year, section: d.section,
@@ -683,26 +720,106 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
         return m;
       })(d.details))
     };
-    var q = await Promise.all([
-      sb.from("fees").select("*").eq("student_id", sid).order("year", { ascending: true }),
-      sb.from("payments").select("*").eq("student_id", sid).order("paid_at", { ascending: false }),
-      sb.from("marks").select("*").eq("student_id", sid),
-      sb.from("attendance").select("*").eq("student_id", sid).order("day", { ascending: false }),
-      sb.from("notices").select("*").eq("college_id", cid).order("notice_date", { ascending: false }),
-      sb.from("documents").select("*").eq("student_id", sid),
-      sb.from("certificates").select("*").eq("student_id", sid)
-    ]);
-    S.fees = q[0].data || []; S.payments = q[1].data || []; S.marks = q[2].data || [];
-    S.attendance = q[3].data || []; S.notices = q[4].data || [];
-    S.documents = q[5].data || []; S.certificates = q[6].data || [];
-    S.photoUrl = S.student.photoPath ? await signedUrl("photos", S.student.photoPath) : "";
+    S.fees = raw.fees; S.payments = raw.payments; S.marks = raw.marks;
+    S.attendance = raw.attendance; S.notices = raw.notices;
+    S.documents = raw.documents; S.certificates = raw.certificates;
+    /* Signed URLs are re-issued on every fetch; keep the working one
+       if a refresh of the URL itself fails, so a photo never blanks
+       out because of a transient storage error. */
+    var photoUrl = S.student.photoPath ? await signedUrl("photos", S.student.photoPath) : "";
+    if (photoUrl || !S.student.photoPath) S.photoUrl = photoUrl;
     S.logoUrl = S.college && S.college.logo_path ? publicUrl("logos", S.college.logo_path) : "";
-    S.idCardUrl = S.student.idCard && S.student.idCard.storage_path ? await signedUrl("documents", S.student.idCard.storage_path) : "";
+    var idUrl = S.student.idCard && S.student.idCard.storage_path ? await signedUrl("documents", S.student.idCard.storage_path) : "";
+    if (idUrl || !(S.student.idCard && S.student.idCard.storage_path)) S.idCardUrl = idUrl;
     S.loaded = true;
-    if (S.student.status !== "approved") { renderWait(); showView("view-wait"); return; }
+  }
+
+  async function loadStudentData() {
+    var raw = await fetchStudentRaw(false);
+    await applyStudentRaw(raw);
+    S.dataSig = rawSignature(raw);
+    if (S.student.status !== "approved") { renderWait(); showView("view-wait"); startAutoRefresh(); return; }
     renderAll();
     showView("view-app");
     showTab("home");
+    startAutoRefresh();
+  }
+
+  /* =====================================================================
+     SILENT AUTO-REFRESH — while the app is open, the screen the student
+     is on keeps itself up to date with the college's latest data (fees
+     paid at the office, new marks, new notices…):
+       · triggers: return to the foreground (visibilitychange, plus
+         Capacitor appStateChange when the bridge exposes it) and a
+         45-second poll while the app is visible; polling pauses
+         while the app is in the background;
+       · the fresh payload is compared with the one on screen — if
+         nothing changed, nothing is re-rendered (no flicker);
+       · if something changed, the CURRENT screen is re-rendered in
+         place — same tab / sub-screen, scroll position kept, no
+         loader, no navigation; the student is never bounced to Home
+         or back to the sign-in screen;
+       · a refresh never paints over the student's own work: it is
+         deferred (and retried on the next trigger) while a sheet —
+         the fee Pay sheet / UTR form, a receipt, a notice, the
+         contact editor — is open, while a form field is focused,
+         while a typed certificate note is still unsent, and just
+         after the student hands off to their UPI app;
+       · a failed fetch (offline, expired token) changes nothing on
+         screen and never logs the student out — the next trigger
+         simply tries again. Genuine account-state changes still
+         apply: a student whose approval is withdrawn lands on the
+         waiting screen, and one approved while waiting enters the
+         app, exactly as with the manual refresh button.
+     ===================================================================== */
+  var REFRESH_MS = 45000;
+  var refreshTimer = null, refreshBusy = false, upiHandoffAt = 0;
+  function startAutoRefresh() {
+    if (refreshTimer) return;
+    refreshTimer = setInterval(function () {
+      if (document.visibilityState === "visible") silentRefresh();
+    }, REFRESH_MS);
+  }
+  function stopAutoRefresh() {
+    if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+  }
+  function refreshGuarded() {
+    var sr = $("sheet-root");
+    if (sr && sr.innerHTML.trim() !== "") return true;
+    if (upiHandoffAt && Date.now() - upiHandoffAt < 120000) return true;
+    var ae = document.activeElement;
+    if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) {
+      var va = $("view-app");
+      if (va && va.contains(ae)) return true;
+    }
+    var cn = $("cert-note");
+    if (cn && tx(cn.value)) return true;
+    return false;
+  }
+  function rerenderCurrent() {
+    var y = window.scrollY || 0;
+    renderAll();
+    if (S.sub) goSub(S.sub);
+    window.scrollTo(0, y);
+    if (window.requestAnimationFrame) requestAnimationFrame(function () { window.scrollTo(0, y); });
+  }
+  async function silentRefresh() {
+    if (refreshBusy || !sb || !S.profile || !S.loaded) return;
+    if (document.visibilityState === "hidden") return;
+    refreshBusy = true;
+    try {
+      var raw = await fetchStudentRaw(true);
+      var sig = rawSignature(raw);
+      if (sig === S.dataSig) return;      /* nothing changed — leave the screen exactly as it is */
+      if (refreshGuarded()) return;       /* changed, but the student is mid-task; S.dataSig is
+                                             untouched, so the next trigger retries the update */
+      await applyStudentRaw(raw);
+      S.dataSig = sig;
+      if (S.student.status !== "approved") { renderWait(); showView("view-wait"); return; }
+      if (!$("view-app").classList.contains("hidden")) { rerenderCurrent(); return; }
+      if (!$("view-wait").classList.contains("hidden")) { renderAll(); showView("view-app"); showTab("home"); }
+    } catch (e) { /* offline / transient — keep the current screen, try again next trigger */ }
+    finally { refreshBusy = false; }
   }
 
   /* ---------- fee / attendance / marks computations (portal rules) ---------- */
@@ -1344,6 +1461,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
   /* ---------- sub-screen router ---------- */
   function goSub(name) {
+    S.sub = name;
     if (name === "attendance") renderAttendance();
     else if (name === "payments") renderPayments();
     else if (name === "documents") renderDocuments();
@@ -1354,7 +1472,8 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   /* ---------- logout / session ---------- */
   async function doLogout() {
     try { await sb.auth.signOut(); } catch (e) { /* ignore */ }
-    S.user = null; S.profile = null; S.student = null; S.loaded = false;
+    stopAutoRefresh();
+    S.user = null; S.profile = null; S.student = null; S.loaded = false; S.dataSig = null; S.sub = null;
     $("li-pw").value = "";
     showView("view-login");
   }
@@ -1426,6 +1545,25 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       if (!S.profile) return;
       toast("Refreshing…");
       try { await loadStudentData(); toast("Up to date."); } catch (e) { toast("Refresh failed. Check your connection."); }
+    });
+    /* Silent auto-refresh triggers: returning to the foreground checks
+       for fresh data at once (the 45-second poll is started by
+       loadStudentData and paused while the app is backgrounded), and
+       a tap on a UPI pay link marks the handoff to the UPI app so a
+       refresh never lands while the student is paying. */
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "visible") { silentRefresh(); startAutoRefresh(); }
+      else stopAutoRefresh();
+    });
+    try {
+      var CapApp = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App;
+      if (CapApp && CapApp.addListener) CapApp.addListener("appStateChange", function (st) {
+        if (st && st.isActive) { silentRefresh(); startAutoRefresh(); } else stopAutoRefresh();
+      });
+    } catch (e) { /* no App plugin in this shell — visibilitychange still applies */ }
+    document.addEventListener("click", function (ev) {
+      var a = ev.target && ev.target.closest ? ev.target.closest('a[href^="upi://"]') : null;
+      if (a) upiHandoffAt = Date.now();
     });
     $("wait-logout").addEventListener("click", doLogout);
     document.addEventListener("click", function (ev) {
