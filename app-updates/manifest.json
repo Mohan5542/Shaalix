@@ -1,8 +1,8 @@
 {
-  "version": "2.2.2",
+  "version": "2.2.3",
   "bundle": "bundle.html",
-  "sha256": "2b0f39d6f1e3e4b4dbc4fef336a5d4c70023dadb8484d69c249a69c603da482f",
-  "size": 454209,
+  "sha256": "a234cd978ab6257e60d297bca7708a89180d58911b52f7340962adf7710cc445",
+  "size": 470152,
   "publishedAt": "2026-11-26",
-  "notes": "The app now carries the official Shaalix logo."
+  "notes": "The Shaalix name in the top bar now uses the official logo, and the app now keeps one single look on every phone."
 }
