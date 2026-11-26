@@ -1,0 +1,8 @@
+{
+  "version": "1.1.0",
+  "bundle": "bundle.html",
+  "sha256": "8b58beff283d3b1e81e2b52db7213d60adc8bcfe134b1be056dfc3a1bfd7e1e7",
+  "size": 818244,
+  "publishedAt": "2026-11-26",
+  "notes": "Seed bundle: website-identical portal UI (current live build), student routes only, OTA client included."
+}
