@@ -2066,11 +2066,15 @@
             const bal = (l) => l.reduce((a, f) => a + Math.max(0, f.amount - f.paid), 0);
             return { students: ok.length, pending: all.filter((x) => x.status === "pending").length, billed: fees.reduce((a, f) => a + f.amount, 0), collected: fees.reduce((a, f) => a + f.paid, 0), due: bal(fees.filter(dueNow)), upcoming: bal(fees.filter((f) => !dueNow(f))), todayPct: t.pct, todayMarked: t.days };
           },
-          /* ----- College settings: logo + fee structure (admin) ----- */
+          /* ----- College settings: logo + fee structure + UPI (admin) ----- */
           updateCollege(d) {
             const s = need("admin"), c = collegeOf(s.college_id); if (!c) fail("College not found.");
             if (d.logo !== undefined) { if (d.logo && (typeof d.logo !== "string" || !d.logo.startsWith("data:image"))) fail("The logo must be an image.", "logo"); c.logo = d.logo || ""; }
             ["feeTuition", "feeAffil"].forEach((k) => { if (d[k] !== undefined) { const v = Number(d[k]); if (!(v > 0)) fail("Enter a fee amount above zero.", k); c[k] = Math.round(v); } });
+            /* UPI ID (VPA) the student app's Pay Now flow reads (colleges.upi_id).
+               Blank turns online UPI payments off for this college. The payee
+               name students see is the college name — there is no separate one. */
+            if (d.upiId !== undefined) { const v = tx(d.upiId).toLowerCase(); if (v && !/^[a-z0-9._-]{2,}@[a-z]{2,}[a-z0-9._-]*$/.test(v)) fail("Enter a valid UPI ID, like yourcollege@okhdfcbank.", "upiId"); c.upi_id = v || null; }
             return clone(c);
           },
           getClasses() { const s = needStaff(); return [...new Set(studentsIn(s.college_id).map(classOf))].sort(); },
@@ -3375,7 +3379,7 @@
         },
         college() {
           const me = DB.me(), c = me.college;
-          return `<h2>College</h2><p>Your college logo appears on fee receipts, marks memos, ID cards and certificates. The fee structure below is what new students get when their account is approved.</p>${okMsg()}
+          return `<h2>College</h2><p>Your college logo appears on fee receipts, marks memos, ID cards and certificates. The fee structure below is what new students get when their account is approved. Your UPI ID below is the account students pay their fees to in the Shaalix student app.</p>${okMsg()}
             <div class="x-stack"><div>${c.logo ? `${logoImg(c)}<p><button type="button" class="x-sbtn" data-act="logoRemove">Remove logo</button></p>` : `<p class="fineprint">No logo set yet.</p>`}
             <p><label class="x-btn x-file">${c.logo ? "Replace logo" : "Upload logo"}<input type="file" class="x-sr" accept="image/*" data-upload="logo" aria-label="Upload college logo" /></label></p></div>
             <form class="x-form" data-portal="collegeInfo" novalidate aria-label="College information and fee structure"><h3 class="x-f--full">College information</h3>
@@ -3385,7 +3389,11 @@
               ${pf("Tuition fee per year (₹)", "feeTuition", `type="number" min="1" step="1" inputmode="numeric" value="${c.feeTuition}"`)}
               ${pf("Affiliation fee per year (₹)", "feeAffil", `type="number" min="1" step="1" inputmode="numeric" value="${c.feeAffil}"`)}
               <p class="fineprint">Changing the fee structure affects only students approved after the change; existing fee lines stay as they are.</p>
-              ${formErr}<div class="x-acts"><button class="x-btn" type="submit">Save fee structure</button></div></form></div>`;
+              <h3 class="x-f--full">UPI payments (student app)</h3>
+              <p class="x-f">Payee name shown to students<b>${esc(c.name)}</b></p>
+              ${pf("UPI ID (VPA)", "upiId", `type="text" autocomplete="off" spellcheck="false" autocapitalize="none" placeholder="yourcollege@okhdfcbank" value="${esc(c.upi_id || "")}"`, false, false)}
+              <p class="fineprint">When a student taps Pay Now in the Shaalix app, they see this UPI ID with a QR code and pay straight into this account; the payee name shown is your college name, above. Leave the UPI ID blank to keep online UPI payments off — students then see that UPI payment is not enabled yet.</p>
+              ${formErr}<div class="x-acts"><button class="x-btn" type="submit">Save college settings</button></div></form></div>`;
         },
         certs() {
           const sts = approved(), byId = Object.fromEntries(sts.map((x) => [x.id, x])), all = DB.getCertificates();
@@ -3945,7 +3953,7 @@
           const n = DB.upsertMarks(d.exam, d.subject, d.max, entries, UI.mAtt); UI.mSub = d.subject.trim(); UI.mMax = d.max; UI.msg = `Saved ${n} ${UI.mAtt.toLowerCase()} marks for ${d.subject.trim()}, ${d.exam}.`; paint('#v-dyn [data-portal="marks"] [type="submit"]');
         },
         notice(f, d) { const n = DB.postNotice({ title: d.title, text: d.text, attachment: UI.noticeAtt }); UI.noticeAtt = null; UI.noticeTitle = ""; UI.noticeText = ""; UI.msg = `“${n.title}” posted to students.`; paint('#v-dyn [name="title"]'); },
-        collegeInfo(f, d) { const c = DB.updateCollege({ feeTuition: d.feeTuition, feeAffil: d.feeAffil }); UI.msg = `Fee structure saved · Tuition ${inr(c.feeTuition)} · Affiliation ${inr(c.feeAffil)}.`; paint(); },
+        collegeInfo(f, d) { const c = DB.updateCollege({ feeTuition: d.feeTuition, feeAffil: d.feeAffil, upiId: d.upiId }); UI.msg = `College settings saved · Tuition ${inr(c.feeTuition)} · Affiliation ${inr(c.feeAffil)} · ${c.upi_id ? `UPI payments on · ${c.upi_id}` : "UPI payments off"}.`; paint(); },
         issueCert(f, d) { const ct = DB.issueCertificate(d); UI.msg = `${ct.type} issued · ${ct.serial}.`; paint(); },
         certReq(f, d) { const ct = DB.requestCertificate(d); UI.pmsg = `${ct.type} requested. The college office will issue it.`; paint(); },
         myContact(f, d) { DB.updateMyContact(d); UI.contactEdit = false; UI.pmsg = "Contact details saved."; paint('#v-dyn [data-act="contactEdit"]'); },
