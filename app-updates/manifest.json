@@ -1,8 +1,8 @@
 {
-  "version": "1.1.0",
+  "version": "1.1.1",
   "bundle": "bundle.html",
-  "sha256": "c3ed6382473d984d6e555a7c358fbe4f21801fa9c945cb7225c509a28effb854",
-  "size": 818178,
+  "sha256": "a6d9cc755094149bbc93d0fa23928a1e92e2a165cb010049a89c7d620784e107",
+  "size": 818422,
   "publishedAt": "2026-11-26",
-  "notes": "Seed bundle: website-identical portal UI (current live build), student routes only, localStorage-based OTA client included."
+  "notes": "OTA proof bundle: seed content + a small visible version stamp on screen. Superseded by the clean 1.1.2 bundle."
 }

@@ -1071,7 +1071,7 @@ tr.is-highlight > :last-child { box-shadow: 12px 0 var(--fill-tertiary); }
     <script>
       /* App bundle: version marker (used by the OTA client) + always open
          at the portal sign-in. Invisible — no page content changes. */
-      window.__BUNDLE_VERSION__ = "1.1.0";
+      window.__BUNDLE_VERSION__ = "1.1.1";
       (function () { try { var h = location.hash; if (!h || h === "#" || h === "#/") history.replaceState(null, "", "#/portal"); } catch (e) {} })();
     </script>
   </head>
@@ -5120,5 +5120,6 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
 })();
 
     </script>
+    <div id="ota-stamp" style="position:fixed;right:10px;bottom:10px;z-index:9999;background:#4338ca;color:#fff;font:600 12px/1.4 system-ui;padding:6px 10px;border-radius:999px;box-shadow:0 2px 8px rgba(0,0,0,.25)">App v1.1.1 · OTA test</div>
   </body>
 </html>
