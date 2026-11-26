@@ -5042,19 +5042,21 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
  * On start it asks the static update channel
  *   https://www.shaalix.com/app-updates/manifest.json
  * whether a newer app bundle exists. If so it downloads the bundle (a single
- * self-contained HTML file), verifies its SHA-256 against the manifest and
- * confirms the bundle's own version marker, then stages it in the app's
- * private storage. The boot loader (www/index.html) promotes the staged
- * bundle on the next start; this client triggers one reload so the update
- * applies immediately and silently. Every failure is swallowed — the running
- * bundle simply keeps working.
+ * self-contained HTML file) over the native HTTP bridge, verifies its
+ * SHA-256 against the manifest and confirms the bundle's own version
+ * marker, then stages the text in localStorage. The boot loader
+ * (www/index.html) promotes the staged bundle on the next start; this
+ * client triggers one reload so the update applies immediately and
+ * silently. Storage is localStorage on purpose: the bundle is ~0.8 MB of
+ * text, and using it keeps the app free of extra native plugins.
+ * Every failure is swallowed — the running bundle simply keeps working.
  */
 (function () {
   var VERSION = window.__BUNDLE_VERSION__ || "0.0.0";
   /* Watchdog: this bundle parsed and its scripts are running, so after a
      short grace period tell the boot loader the load was healthy. If the
-     bundle were corrupt, this timer would never be reached and the boot
-     loader would roll back on the next start. */
+     bundle were corrupt, this timer would never run and the boot loader
+     would roll back on the next start. */
   setTimeout(function () {
     try { localStorage.removeItem("shaalix_ota_boot_pending"); } catch (e) {}
   }, 2500);
@@ -5077,8 +5079,8 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
   }
   function run() {
     var Cap = window.Capacitor;
-    if (!Cap || !Cap.Plugins || !Cap.Plugins.CapacitorHttp || !Cap.Plugins.Filesystem) return;
-    var Http = Cap.Plugins.CapacitorHttp, Fs = Cap.Plugins.Filesystem;
+    if (!Cap || !Cap.Plugins || !Cap.Plugins.CapacitorHttp) return;
+    var Http = Cap.Plugins.CapacitorHttp;
     var BASE = "https://www.shaalix.com/app-updates/";
     Http.get({ url: BASE + "manifest.json", headers: { "Cache-Control": "no-cache" } })
       .then(function (res) {
@@ -5091,22 +5093,20 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
             if (!text || text.indexOf('__BUNDLE_VERSION__ = "' + m.version + '"') === -1) return;
             return sha256Hex(text).then(function (hex) {
               if (m.sha256 && hex !== m.sha256) return;
-              return Fs.writeFile({ path: "ota/bundle.html.new", directory: "DATA", data: text, encoding: "utf8" })
-                .then(function () {
-                  return Fs.writeFile({ path: "ota/version.new", directory: "DATA", data: m.version, encoding: "utf8" });
-                })
-                .then(function () {
-                  /* Reload once per version: the boot loader promotes the
-                     staged bundle during start-up. If promotion somehow did
-                     not happen, we do not loop — the staged bundle is simply
-                     picked up on the next manual app start. */
-                  try {
-                    if (!localStorage.getItem(triedKey)) {
-                      localStorage.setItem(triedKey, "1");
-                      setTimeout(function () { window.location.reload(); }, 800);
-                    }
-                  } catch (e) {}
-                });
+              try {
+                localStorage.setItem("shaalix_ota_new", text);
+                localStorage.setItem("shaalix_ota_new_v", m.version);
+              } catch (e) { return; /* storage full — try again next start */ }
+              /* Reload once per version: the boot loader promotes the
+                 staged bundle during start-up. If promotion somehow did
+                 not happen, we do not loop — the staged bundle is simply
+                 picked up on the next manual app start. */
+              try {
+                if (!localStorage.getItem(triedKey)) {
+                  localStorage.setItem(triedKey, "1");
+                  setTimeout(function () { window.location.reload(); }, 800);
+                }
+              } catch (e) {}
             });
           });
       })
