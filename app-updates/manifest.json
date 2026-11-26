@@ -1,8 +1,8 @@
 {
-  "version": "2.2.4",
+  "version": "2.2.5",
   "bundle": "bundle.html",
-  "sha256": "4cb94140de81f4f97f194bffd2331b5df4246b076b80cf93aed6eaea1a0512dd",
-  "size": 470152,
+  "sha256": "24b4f01aea0f917ad1ebb456c8053e30037255f9857a29b60f8b93780d412bfb",
+  "size": 470167,
   "publishedAt": "2026-11-26",
-  "notes": "The Shaalix name in the top bar is now shown at a smaller size."
+  "notes": "A little more space between the Shaalix and college names at the top."
 }
