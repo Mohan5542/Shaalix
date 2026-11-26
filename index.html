@@ -124,6 +124,10 @@
       .x-f textarea{min-height:96px;resize:vertical}
       .x-f :focus-visible{outline:2px solid var(--x-indigo);outline-offset:1px}
       .x-f [aria-invalid=true]{border-color:var(--fill-system-red)}
+      .x-pwwrap{position:relative;display:block}
+      .x-f .x-pwwrap input:not([type=checkbox]){padding-right:46px}
+      .x-pweye{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:34px;height:34px;display:grid;place-items:center;background:transparent;border:0;border-radius:50%;color:var(--text-secondary);cursor:pointer;padding:0}
+      .x-pweye:hover{background:var(--fill-tertiary)}
       .x-err{font:var(--type-caption);color:var(--fill-system-red)}.x-err:empty{display:none}
       .x-f legend{padding:0;margin-bottom:6px}
       .x-checks{display:flex;flex-wrap:wrap;gap:8px}
@@ -2941,7 +2945,33 @@
       const UI0 = () => ({ loginRole: "admin", tab: "overview", stab: "overview", flash: null, msg: "", sQ: "", sCls: "", sStatus: "", edit: null, confirm: null, feeStu: "", feeSt: "", feeEdit: null, pay: null, attDate: todayISO(), attCls: "", attMonth: todayISO().slice(0, 7), mExam: "Unit Test 1", mCls: "", mSub: "", mMax: "", mAtt: "Regular", memoStu: "", payStu: "", pm: null, rcpt: null, noticeAtt: null, noticeTitle: "", noticeText: "", imp: null, impMode: "merge", impErr: "", impBusy: false, impResult: null, note: "", feeYear: "", feeQ: "", view: null, showAad: false, contactEdit: false, pmsg: "", oConfirm: null, oMsg: "", claim: null, claimNote: "" });
       let UI = UI0();
       const demoNote = `<p class="x-note" role="note">Live mode: data is saved securely to the cloud. Sign in from any device to see the same records.</p>`;
-      const pf = (label, nm, attrs = "", full = false, req = true) => `<label class="x-f${full ? " x-f--full" : ""}">${label}<input name="${nm}" ${attrs}${req ? " required" : ""} /><small class="x-err"></small></label>`;
+      const PW_EYE = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>`;
+      const PW_EYE_OFF = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.6 10.6 0 0 1 12 19c-6.5 0-10-7-10-7a17.6 17.6 0 0 1 4.06-4.94M9.9 4.24A9.5 9.5 0 0 1 12 5c6.5 0 10 7 10 7a17.7 17.7 0 0 1-2.16 3.19M14.12 14.12A3 3 0 1 1 9.88 9.88"/><line x1="2" y1="2" x2="22" y2="22"/></svg>`;
+      const pf = (label, nm, attrs = "", full = false, req = true) => {
+        const inp = `<input name="${nm}" ${attrs}${req ? " required" : ""} />`;
+        const field = /type="password"/.test(attrs)
+          ? `<span class="x-pwwrap">${inp}<button type="button" class="x-pweye" aria-label="Show password" aria-pressed="false">${PW_EYE}</button></span>`
+          : inp;
+        return `<label class="x-f${full ? " x-f--full" : ""}">${label}${field}<small class="x-err"></small></label>`;
+      };
+      /* Password eye toggle: one delegated listener (survives the
+         portal's innerHTML re-renders). Flips the input in the same
+         .x-pwwrap between password (dots) and text (readable) and swaps
+         the eye / eye-off icon + aria-label. type="button", so it never
+         submits the form. */
+      document.addEventListener("click", (e) => {
+        const b = e.target && e.target.closest ? e.target.closest(".x-pweye") : null;
+        if (!b) return;
+        const wrap = b.closest(".x-pwwrap"), inp = wrap ? wrap.querySelector("input") : null;
+        if (!inp) return;
+        e.preventDefault();
+        const show = inp.type === "password";
+        inp.type = show ? "text" : "password";
+        b.innerHTML = show ? PW_EYE_OFF : PW_EYE;
+        b.setAttribute("aria-label", show ? "Hide password" : "Show password");
+        b.setAttribute("aria-pressed", show ? "true" : "false");
+        inp.focus();
+      });
       const psel = (label, nm, opts, val = "", attrs = "", full = false) => `<label class="x-f${full ? " x-f--full" : ""}">${label}<select name="${nm}" ${attrs}>${opts.map((o) => { const [v, l] = Array.isArray(o) ? o : [o, o]; return `<option value="${esc(v)}"${String(v) === String(val) ? " selected" : ""}>${esc(l)}</option>`; }).join("")}</select><small class="x-err"></small></label>`;
       const formErr = `<p class="x-err" data-err="_form" role="alert"></p>`;
       const okMsg = () => `<p class="x-ok" role="status">${esc(UI.msg)}</p>`;
