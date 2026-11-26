@@ -1,8 +1,8 @@
 {
-  "version": "2.2.6",
+  "version": "2.2.7",
   "bundle": "bundle.html",
-  "sha256": "1eade911b132f29d8f1c8ac1b3362aa2ee50970aec12a3cd281327a112ca428b",
-  "size": 471298,
+  "sha256": "be9a409bb3085461a5e80e33f060198177c33ee15263411383b7523d8d9d5f89",
+  "size": 473135,
   "publishedAt": "2026-11-26",
-  "notes": "The bottom menu bar has a fresh new style with smoother animations."
+  "notes": "Brand-new premium bottom menu bar. And Back now steps back inside the app instead of closing it — this part works after the one-time new app install."
 }
