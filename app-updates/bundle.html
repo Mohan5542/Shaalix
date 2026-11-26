@@ -7,7 +7,7 @@
     <meta name="supported-color-schemes" content="light" />
     <title>Shaalix</title>
     <!--
-      Shaalix STUDENT APP — bundle 2.2.9.
+      Shaalix STUDENT APP — bundle 2.2.10.
       A purpose-built mobile app for students only (not the website):
       opens at the student sign-in, claim/register for first-time students,
       then the student's own account (overview, fees, payments, attendance,
@@ -32,7 +32,7 @@
         --green:#00a665; --green-bg:#e6f7f0; --red:#da2f35; --red-bg:#fdecec;
         --amber:#b45309; --amber-bg:#fdf3e3;
         --r-s:12px; --r-m:16px; --r-l:22px; --pill:100px;
-        --nav-h:70px; --shadow:0 1px 2px rgba(22,31,57,.05),0 8px 24px rgba(22,31,57,.06);
+        --nav-h:calc(min(100vw - 28px,532px)*.2333 + 10px); --shadow:0 1px 2px rgba(22,31,57,.05),0 8px 24px rgba(22,31,57,.06);
         --safe-b:env(safe-area-inset-bottom,0px);
       }
       *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -111,24 +111,23 @@
       .iconbtn:active{background:rgba(255,255,255,.14)}
       .avatar{width:38px;height:38px;border-radius:50%;object-fit:cover;background:var(--tint-2);color:var(--indigo-deep);font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;flex:none;border:2px solid rgba(255,255,255,.35)}
       .main{flex:1;padding:16px 16px calc(var(--nav-h) + var(--safe-b) + 22px);max-width:560px;width:100%;margin:0 auto}
-      .tabbar{position:fixed;left:12px;right:12px;bottom:calc(var(--safe-b) + 12px);z-index:30;display:flex;padding:6px;border-radius:30px;background:linear-gradient(155deg,#292462 0%,var(--navy) 54%,var(--navy-deep) 100%);border:1px solid rgba(255,255,255,.13);box-shadow:0 26px 52px rgba(13,16,40,.45),0 10px 24px rgba(13,16,40,.30),0 16px 36px rgba(67,56,202,.15),inset 0 1px 0 rgba(255,255,255,.11),inset 0 -1px 0 rgba(0,0,0,.22)}
-      .tabbar__clip{position:absolute;inset:0;border-radius:30px;overflow:hidden;pointer-events:none}
-      .tabbar__slide{position:absolute;top:0;left:6px;width:calc((100% - 12px)/5);height:0;transform:translateX(0);transition:transform .55s cubic-bezier(.25,1.15,.35,1);will-change:transform;pointer-events:none}
-      .tabbar__clip .tabbar__slide{left:7px;width:calc((100% - 14px)/5)}
-      .tabbar__slide--fab{z-index:3}
-      .tabbar__wave{position:absolute;top:0;left:50%;transform:translateX(-50%);width:132px;height:34px;display:block}
-      .tabbar__fab{position:absolute;top:-28px;left:50%;transform:translateX(-50%);width:54px;height:54px;border-radius:50%;background:linear-gradient(145deg,#4f46e5 0%,var(--indigo) 48%,var(--indigo-deep) 100%);border:5px solid var(--bg);box-shadow:0 12px 26px rgba(67,56,202,.50),0 4px 10px rgba(30,27,75,.35),inset 0 1px 0 rgba(255,255,255,.35),inset 0 -2px 6px rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center;color:#fff}
-      .tabbar__fab svg{display:block;width:25px;height:25px}
-      .tabbar__fab.pop svg{animation:fabPop .5s cubic-bezier(.25,1.15,.35,1)}
-      @keyframes fabPop{0%{transform:scale(.55)}55%{transform:scale(1.14)}100%{transform:scale(1)}}
-      .tabbar button{flex:1;position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:58px;padding:9px 2px 8px;background:none;border:0;cursor:pointer;color:rgba(255,255,255,.58);font-size:11px;font-weight:600;letter-spacing:.02em;transition:color .3s ease;-webkit-tap-highlight-color:transparent}
-      .tabbar button.on{color:#fff;font-weight:700;text-shadow:0 1px 10px rgba(13,16,40,.45)}
-      .tabbar button svg{display:block;width:24px;height:24px;transition:transform .32s cubic-bezier(.25,1.15,.35,1)}
+      .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:30;--bw:min(calc(100vw - 28px),532px);--bh:calc(var(--bw)*.1708);--gd:calc(var(--bw)*.175);--rt:calc(var(--bw)*.0271);--od:calc(var(--gd) + var(--rt)*2);--rise:calc(var(--bw)*.0625)}
+      .tabstage{position:relative;width:var(--bw);height:calc(var(--rise) + var(--bh));margin:0 auto calc(var(--safe-b) + 10px);filter:drop-shadow(0 14px 30px rgba(30,27,75,.38))}
+      .tabband{position:absolute;left:0;right:0;bottom:0;height:var(--bh);background:linear-gradient(90deg,#4338ca 0%,#3a31a8 38%,#2b2576 72%,#1e1b4b 100%);transition:clip-path .55s cubic-bezier(.25,1.15,.35,1);will-change:clip-path}
+      .tabband.notrans{transition:none}
+      .tabbtns{position:absolute;left:0;right:0;bottom:0;height:var(--bh);display:flex}
+      .tabbar button{flex:1;position:relative;display:flex;align-items:center;justify-content:center;background:none;border:0;padding:0;cursor:pointer;color:#fff;-webkit-tap-highlight-color:transparent}
+      .tabbar button svg{display:block;width:23px;height:23px;opacity:.88;transition:transform .32s cubic-bezier(.25,1.15,.35,1),opacity .3s ease}
       .tabbar button:active svg{transform:scale(.88)}
       .tabbar button.on svg{visibility:hidden}
+      .tabslide{position:absolute;top:0;left:0;width:20%;height:100%;transform:translateX(0);transition:transform .55s cubic-bezier(.25,1.15,.35,1);will-change:transform;pointer-events:none;z-index:3}
+      .tabfab{position:absolute;left:50%;top:calc(var(--rise) + var(--bh)*.146 - var(--od)/2);transform:translateX(-50%);width:var(--od);height:var(--od);border-radius:50%;border:var(--rt) solid var(--bg);box-sizing:border-box;background-image:linear-gradient(90deg,#4338ca 0%,#3a31a8 38%,#2b2576 72%,#1e1b4b 100%);background-size:var(--bw) 100%;background-repeat:no-repeat;box-shadow:inset 0 1px 0 rgba(255,255,255,.35),inset 0 -2px 6px rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center;color:#fff;transition:background-position .55s cubic-bezier(.25,1.15,.35,1)}
+      .tabfab svg{display:block;width:25px;height:25px}
+      .tabfab.pop svg{animation:fabPop .5s cubic-bezier(.25,1.15,.35,1)}
+      @keyframes fabPop{0%{transform:scale(.55)}55%{transform:scale(1.14)}100%{transform:scale(1)}}
       @keyframes screenIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
       .main>div:not(.hidden){animation:screenIn .24s ease both}
-      @media (prefers-reduced-motion:reduce){.tabbar__slide{transition:none}.tabbar__fab.pop svg{animation:none}.tabbar button svg{transition:none}.main>div:not(.hidden){animation:none}}
+      @media (prefers-reduced-motion:reduce){.tabband{transition:none}.tabslide{transition:none}.tabfab{transition:none}.tabfab.pop svg{animation:none}.tabbar button svg{transition:none}.main>div:not(.hidden){animation:none}}
       .screen-title{font-size:21px;font-weight:800;margin:2px 0 2px}
       .screen-sub{font-size:13.5px;color:var(--text-2);margin:0 0 16px}
       .sec-title{font-size:15.5px;font-weight:700;margin:22px 0 10px}
@@ -275,7 +274,7 @@
         </form>
         <p class="auth__alt">New student, no account yet?<br /><button type="button" id="go-claim">Claim your account</button></p>
       </div>
-      <p class="auth__foot">Shaalix for students · Your college manages records on the Shaalix website.<br />App version 2.2.9</p>
+      <p class="auth__foot">Shaalix for students · Your college manages records on the Shaalix website.<br />App version 2.2.10</p>
     </section>
 
     <!-- ======================= AUTH: CLAIM ======================= -->
@@ -344,7 +343,7 @@
           <button class="btn" id="cl-done" type="button">Go to sign in</button>
         </div>
       </div>
-      <p class="auth__foot">Shaalix for students · App version 2.2.9</p>
+      <p class="auth__foot">Shaalix for students · App version 2.2.10</p>
     </section>
 
     <!-- ======================= APP SHELL ======================= -->
@@ -369,28 +368,27 @@
       </main>
 
       <nav class="tabbar" id="tabbar" aria-label="Main">
-        <span class="tabbar__clip" aria-hidden="true"><span class="tabbar__slide" id="tab-wave-slide"><svg class="tabbar__wave" viewBox="0 0 132 34" preserveAspectRatio="none" focusable="false"><path d="M0,0 H132 V4 C104,4 98,28 66,28 C34,28 28,4 0,4 Z" style="fill:var(--bg)"/><path d="M132,4 C104,4 98,28 66,28 C34,28 28,4 0,4" fill="none" stroke="rgba(255,255,255,.14)" stroke-width="1"/></svg></span></span>
-        <span class="tabbar__slide tabbar__slide--fab" id="tab-fab-slide" aria-hidden="true"><span class="tabbar__fab" id="tab-fab"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9.5 21v-6h5v6"/></svg></span></span>
-        <button type="button" data-tab="home" class="on">
+        <div class="tabstage" id="tab-stage">
+          <div class="tabband" id="tab-band" aria-hidden="true"></div>
+          <span class="tabslide" id="tab-fab-slide" aria-hidden="true"><span class="tabfab" id="tab-fab"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9.5 21v-6h5v6"/></svg></span></span>
+          <div class="tabbtns">
+        <button type="button" data-tab="home" class="on" aria-label="Home">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9.5 21v-6h5v6"/></svg>
-          Home
         </button>
-        <button type="button" data-tab="fees">
+        <button type="button" data-tab="fees" aria-label="Fees">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="19" height="13" rx="2.5"/><path d="M16 12.5h.01"/><path d="M2.5 10h19"/></svg>
-          Fees
         </button>
-        <button type="button" data-tab="marks">
+        <button type="button" data-tab="marks" aria-label="Marks">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-8"/><path d="M22 20H2"/></svg>
-          Marks
         </button>
-        <button type="button" data-tab="notices">
+        <button type="button" data-tab="notices" aria-label="Notices">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8"/><path d="M10.3 21a2 2 0 0 0 3.4 0"/></svg>
-          Notices
         </button>
-        <button type="button" data-tab="profile">
+        <button type="button" data-tab="profile" aria-label="Profile">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.2-3.6 4.2-5.4 8-5.4s6.8 1.8 8 5.4"/></svg>
-          Profile
         </button>
+          </div>
+        </div>
       </nav>
     </section>
 
@@ -406,7 +404,7 @@
         <p><span class="chip chip--solid" id="wait-chip">Pending approval</span></p>
         <button class="btn btn--ghost" id="wait-logout" type="button">Log out</button>
       </div>
-      <p class="auth__foot">Shaalix for students · App version 2.2.9</p>
+      <p class="auth__foot">Shaalix for students · App version 2.2.10</p>
     </section>
 
     <div id="sheet-root"></div>
@@ -442,7 +440,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 //# sourceMappingURL=/sm/26b4b0d0b1e283d6b3ec9857ac597d7a60c76ac17be1ef4c965f03086de426bb.map
 </script>
     <script>
-      window.__BUNDLE_VERSION__ = "2.2.9";
+      window.__BUNDLE_VERSION__ = "2.2.10";
     </script>
     <script>
 /* ================= Shaalix student app — application logic ================= */
@@ -522,6 +520,56 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   }
   var TABS = ["home", "fees", "marks", "notices", "profile"];
   var lastFabTab = -1;
+  /* Wave band silhouette (2.2.10): the band's own top edge is the wave —
+     a flat edge that dips into a smooth scoop cradling the raised active
+     circle, drawn as a clip-path whose structure never changes, so the
+     CSS transition can glide the scoop with the circle. Proportions are
+     the reference image's, in band-width units: band height .1708, circle
+     disc .175, ring .0271 (scoop radius .1146), circle centre .146 of the
+     band height below the top edge, scoop shoulders from .1646. */
+  function bandPath(W, H, cx) {
+    var Ro = W * 0.1146, cy = H * 0.146, S = W * 0.1646;
+    var R = H * 0.68, r = Math.min(7, H * 0.12);
+    var ax = cx - 0.9659 * Ro, ay = cy + 0.2588 * Ro, bx = cx + 0.9659 * Ro;
+    var run = S - 0.9659 * Ro;
+    var k = Math.sqrt(run * run + ay * ay) * 0.55;
+    var f = function (n) { return Math.round(n * 10) / 10; };
+    return "M" + f(r) + ",0" +
+      " L" + f(cx - S) + ",0" +
+      " C" + f(cx - S + run * 0.45) + ",0 " + f(ax - 0.2588 * k) + "," + f(ay - 0.9659 * k) + " " + f(ax) + "," + f(ay) +
+      " A" + f(Ro) + "," + f(Ro) + " 0 0 0 " + f(cx) + "," + f(cy + Ro) +
+      " A" + f(Ro) + "," + f(Ro) + " 0 0 0 " + f(bx) + "," + f(ay) +
+      " C" + f(bx + 0.2588 * k) + "," + f(ay - 0.9659 * k) + " " + f(cx + S - run * 0.45) + ",0 " + f(cx + S) + ",0" +
+      " L" + f(W - r) + ",0" +
+      " Q" + f(W) + ",0 " + f(W) + "," + f(r) +
+      " L" + f(W) + "," + f(H - R) +
+      " A" + f(R) + "," + f(R) + " 0 0 1 " + f(W - R) + "," + f(H) +
+      " L" + f(R) + "," + f(H) +
+      " A" + f(R) + "," + f(R) + " 0 0 1 0," + f(H - R) +
+      " L0," + f(r) +
+      " Q0,0 " + f(r) + ",0 Z";
+  }
+  function layoutBand() {
+    var b = $("tab-band"); if (!b) return;
+    var W = b.clientWidth, H = b.clientHeight; if (W < 50 || H < 10) return;
+    var ti = TABS.indexOf(S.tab); if (ti < 0) ti = 0;
+    var cx = (ti + 0.5) * W / 5;
+    b.style.clipPath = "path(\"" + bandPath(W, H, cx) + "\")";
+    var fab = $("tab-fab");
+    if (fab) {
+      /* the gradient runs purely left-to-right, so only the x offset is
+         needed to keep the circle's fill continuous with the band's */
+      var gd = W * 0.175;
+      fab.style.backgroundPosition = (-(cx - gd / 2)).toFixed(1) + "px 0px";
+    }
+  }
+  var bandResizeT = null;
+  window.addEventListener("resize", function () {
+    var b = $("tab-band"); if (!b) return;
+    b.classList.add("notrans"); layoutBand();
+    clearTimeout(bandResizeT);
+    bandResizeT = setTimeout(function () { b.classList.remove("notrans"); }, 80);
+  });
   function showTab(tab) {
     S.tab = tab; S.sub = null;
     TABS.forEach(function (t) { $("screen-" + t).classList.toggle("hidden", t !== tab); });
@@ -531,9 +579,9 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     var ti = TABS.indexOf(tab);
     if (ti >= 0) {
       var tr = "translateX(" + ti * 100 + "%)";
-      var ws = $("tab-wave-slide"), fs = $("tab-fab-slide");
-      if (ws) ws.style.transform = tr;
+      var fs = $("tab-fab-slide");
       if (fs) fs.style.transform = tr;
+      layoutBand();
       if (ti !== lastFabTab) {
         lastFabTab = ti;
         var fab = $("tab-fab"), ab = document.querySelector('#tabbar button[data-tab="' + tab + '"] svg');

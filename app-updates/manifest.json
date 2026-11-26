@@ -1,8 +1,8 @@
 {
-  "version": "2.2.9",
+  "version": "2.2.10",
   "bundle": "bundle.html",
-  "sha256": "584256b5832f99afa005808cd5249efdba697fdb0cd82c2768978a92ff94d4cf",
-  "size": 475807,
+  "sha256": "ed2cc7d1d3f589eddff1c26704a1d75d1eee7b72aae320b9b397aea3bebf412a",
+  "size": 478045,
   "publishedAt": "2026-11-26",
-  "notes": "New menu style: the tab you are on rises in a circle above the bar, with smooth premium animations."
+  "notes": "Menu bar restyled to match the reference: a smooth indigo wave across the bottom, with the tab you are on raised in a circle above the bar. Same five tabs, icons only."
 }
