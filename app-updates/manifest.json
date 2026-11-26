@@ -1,8 +1,8 @@
 {
-  "version": "2.2.11",
+  "version": "2.2.12",
   "bundle": "bundle.html",
-  "sha256": "527976f098f4c0ebfe894cc747dd60228ce7a54b1383dae15fd3698d890cf36d",
-  "size": 479537,
+  "sha256": "ef34abdb583a05a13466fa111dae5aeff5fa95818a851bdb67b7004a20a7e014",
+  "size": 479544,
   "publishedAt": "2026-11-26",
-  "notes": "The menu bar now fills right down to the bottom of the screen — no gap underneath. Same wave style, with smoother, more flowing motion, a softer landing for the raised circle, and a richer premium finish."
+  "notes": "The menu bar now covers the full bottom of the screen, edge to edge — no empty space at the sides or corners."
 }

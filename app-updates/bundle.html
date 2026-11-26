@@ -7,7 +7,7 @@
     <meta name="supported-color-schemes" content="light" />
     <title>Shaalix</title>
     <!--
-      Shaalix STUDENT APP — bundle 2.2.11.
+      Shaalix STUDENT APP — bundle 2.2.12.
       A purpose-built mobile app for students only (not the website):
       opens at the student sign-in, claim/register for first-time students,
       then the student's own account (overview, fees, payments, attendance,
@@ -32,7 +32,7 @@
         --green:#00a665; --green-bg:#e6f7f0; --red:#da2f35; --red-bg:#fdecec;
         --amber:#b45309; --amber-bg:#fdf3e3;
         --r-s:12px; --r-m:16px; --r-l:22px; --pill:100px;
-        --nav-h:calc(min(100vw - 28px,532px)*.2333 + 10px); --shadow:0 1px 2px rgba(22,31,57,.05),0 8px 24px rgba(22,31,57,.06);
+        --nav-h:calc(min(100vw,532px)*.2333 + 10px); --shadow:0 1px 2px rgba(22,31,57,.05),0 8px 24px rgba(22,31,57,.06);
         --safe-b:env(safe-area-inset-bottom,0px);
       }
       *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -111,12 +111,12 @@
       .iconbtn:active{background:rgba(255,255,255,.14)}
       .avatar{width:38px;height:38px;border-radius:50%;object-fit:cover;background:var(--tint-2);color:var(--indigo-deep);font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;flex:none;border:2px solid rgba(255,255,255,.35)}
       .main{flex:1;padding:16px 16px calc(var(--nav-h) + var(--safe-b) + 22px);max-width:560px;width:100%;margin:0 auto}
-      .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:30;--bw:min(calc(100vw - 28px),532px);--bh:calc(var(--bw)*.1708);--gd:calc(var(--bw)*.175);--rt:calc(var(--bw)*.0271);--od:calc(var(--gd) + var(--rt)*2);--rise:calc(var(--bw)*.0625)}
+      .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:30;--bw:min(100vw,532px);--bh:calc(var(--bw)*.1708);--gd:calc(var(--bw)*.175);--rt:calc(var(--bw)*.0271);--od:calc(var(--gd) + var(--rt)*2);--rise:calc(var(--bw)*.0625)}
       .tabstage{position:relative;width:var(--bw);height:calc(var(--rise) + var(--bh));margin:0 auto calc(var(--safe-b) + 10px);filter:drop-shadow(0 14px 30px rgba(30,27,75,.38))}
       .tabband{position:absolute;left:0;right:0;bottom:0;height:var(--bh);background:linear-gradient(90deg,#4f46e5 0%,#4338ca 34%,#332b96 66%,#1e1b4b 100%);transition:clip-path .6s cubic-bezier(.33,1.18,.32,1);will-change:clip-path}
       .tabband::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(255,255,255,.16) 0%,rgba(255,255,255,.05) 42%,rgba(255,255,255,0) 62%);pointer-events:none}
       .tabband.notrans{transition:none}
-      .tabfill{position:absolute;left:0;right:0;top:var(--rise);height:calc(var(--bh) + var(--safe-b) + 10px);background:linear-gradient(90deg,#4f46e5 0%,#4338ca 34%,#332b96 66%,#1e1b4b 100%)}
+      .tabfill{position:absolute;left:0;right:0;top:var(--rise);height:calc(var(--bh) + var(--safe-b) + 11px);transform:translateY(-1px);background:linear-gradient(90deg,#4f46e5 0%,#4338ca 34%,#332b96 66%,#1e1b4b 100%)}
       .tabbtns{position:absolute;left:0;right:0;bottom:0;height:var(--bh);display:flex}
       .tabbar button{flex:1;position:relative;display:flex;align-items:center;justify-content:center;background:none;border:0;padding:0;cursor:pointer;color:#fff;-webkit-tap-highlight-color:transparent}
       .tabbar button svg{display:block;width:23px;height:23px;opacity:.88;transition:transform .32s cubic-bezier(.25,1.15,.35,1),opacity .3s ease}
@@ -276,7 +276,7 @@
         </form>
         <p class="auth__alt">New student, no account yet?<br /><button type="button" id="go-claim">Claim your account</button></p>
       </div>
-      <p class="auth__foot">Shaalix for students · Your college manages records on the Shaalix website.<br />App version 2.2.11</p>
+      <p class="auth__foot">Shaalix for students · Your college manages records on the Shaalix website.<br />App version 2.2.12</p>
     </section>
 
     <!-- ======================= AUTH: CLAIM ======================= -->
@@ -345,7 +345,7 @@
           <button class="btn" id="cl-done" type="button">Go to sign in</button>
         </div>
       </div>
-      <p class="auth__foot">Shaalix for students · App version 2.2.11</p>
+      <p class="auth__foot">Shaalix for students · App version 2.2.12</p>
     </section>
 
     <!-- ======================= APP SHELL ======================= -->
@@ -407,7 +407,7 @@
         <p><span class="chip chip--solid" id="wait-chip">Pending approval</span></p>
         <button class="btn btn--ghost" id="wait-logout" type="button">Log out</button>
       </div>
-      <p class="auth__foot">Shaalix for students · App version 2.2.11</p>
+      <p class="auth__foot">Shaalix for students · App version 2.2.12</p>
     </section>
 
     <div id="sheet-root"></div>
@@ -443,7 +443,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 //# sourceMappingURL=/sm/26b4b0d0b1e283d6b3ec9857ac597d7a60c76ac17be1ef4c965f03086de426bb.map
 </script>
     <script>
-      window.__BUNDLE_VERSION__ = "2.2.11";
+      window.__BUNDLE_VERSION__ = "2.2.12";
     </script>
     <script>
 /* ================= Shaalix student app — application logic ================= */
