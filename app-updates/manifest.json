@@ -1,8 +1,8 @@
 {
-  "version": "2.2.0",
+  "version": "2.2.1",
   "bundle": "bundle.html",
-  "sha256": "2b0ea636e62909397687f76802941b7acb345d1407f0578e76509a5c6a876d72",
-  "size": 361765,
+  "sha256": "93eb0c1e808d28e48fdd6405119b9a1752cd9c9bc263a811684f4bcf291395f1",
+  "size": 364389,
   "publishedAt": "2026-11-26",
-  "notes": "New: the app now refreshes itself. Fee, marks and notice updates from your college appear automatically on the screen you are on — no need to close and reopen the app."
+  "notes": "Password fields now have an eye button to show or hide the password. The app refreshes itself automatically, so the manual refresh button has been removed."
 }

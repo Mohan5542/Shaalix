@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Shaalix</title>
     <!--
-      Shaalix STUDENT APP — bundle 2.2.0.
+      Shaalix STUDENT APP — bundle 2.2.1.
       A purpose-built mobile app for students only (not the website):
       opens at the student sign-in, claim/register for first-time students,
       then the student's own account (overview, fees, payments, attendance,
@@ -53,6 +53,10 @@
       .field input,.field select,.field textarea{width:100%;min-height:50px;padding:12px 14px;border:1px solid var(--stroke);border-radius:var(--r-s);background:var(--surface);font-size:16px;outline:none;transition:border-color .15s, box-shadow .15s}
       .field textarea{min-height:76px;resize:vertical}
       .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--indigo);box-shadow:0 0 0 3px var(--tint-2)}
+      .pw-wrap{position:relative;display:block}
+      .pw-wrap input{padding-right:54px}
+      .pw-eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:40px;height:40px;display:grid;place-items:center;background:transparent;border:0;border-radius:50%;color:var(--text-2);cursor:pointer;padding:0}
+      .pw-eye:active{background:var(--tint-2)}
       .ferr{display:none;color:var(--red);font-size:13px;margin:6px 2px 0}
       .ferr.on{display:block}
       .form-err{display:none;background:var(--red-bg);color:var(--red);border-radius:var(--r-s);padding:11px 13px;font-size:14px;margin:0 0 14px}
@@ -248,14 +252,14 @@
           </div>
           <div class="field">
             <label for="li-pw">Password</label>
-            <input id="li-pw" name="password" type="password" autocomplete="current-password" placeholder="Your password" />
+            <span class="pw-wrap"><input id="li-pw" name="password" type="password" autocomplete="current-password" placeholder="Your password" /><button type="button" class="pw-eye" aria-label="Show password" aria-pressed="false"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button></span>
             <p class="ferr" id="li-pw-err"></p>
           </div>
           <button class="btn" id="li-btn" type="submit">Sign in</button>
         </form>
         <p class="auth__alt">New student, no account yet?<br /><button type="button" id="go-claim">Claim your account</button></p>
       </div>
-      <p class="auth__foot">Shaalix for students · Your college manages records on the Shaalix website.<br />App version 2.2.0</p>
+      <p class="auth__foot">Shaalix for students · Your college manages records on the Shaalix website.<br />App version 2.2.1</p>
     </section>
 
     <!-- ======================= AUTH: CLAIM ======================= -->
@@ -304,12 +308,12 @@
           <form id="form-claim-set" novalidate>
             <div class="field">
               <label for="cl-pw">Set a password</label>
-              <input id="cl-pw" name="password" type="password" autocomplete="new-password" placeholder="At least 8 characters" />
+              <span class="pw-wrap"><input id="cl-pw" name="password" type="password" autocomplete="new-password" placeholder="At least 8 characters" /><button type="button" class="pw-eye" aria-label="Show password" aria-pressed="false"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button></span>
               <p class="ferr" id="cl-pw-err"></p>
             </div>
             <div class="field">
               <label for="cl-pw2">Confirm password</label>
-              <input id="cl-pw2" name="confirm" type="password" autocomplete="new-password" placeholder="Type it again" />
+              <span class="pw-wrap"><input id="cl-pw2" name="confirm" type="password" autocomplete="new-password" placeholder="Type it again" /><button type="button" class="pw-eye" aria-label="Show password" aria-pressed="false"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button></span>
               <p class="ferr" id="cl-pw2-err"></p>
             </div>
             <button class="btn" id="cl-set-btn" type="submit">Create my account</button>
@@ -327,7 +331,7 @@
           <button class="btn" id="cl-done" type="button">Go to sign in</button>
         </div>
       </div>
-      <p class="auth__foot">Shaalix for students · App version 2.2.0</p>
+      <p class="auth__foot">Shaalix for students · App version 2.2.1</p>
     </section>
 
     <!-- ======================= APP SHELL ======================= -->
@@ -341,9 +345,6 @@
           <div class="appbar__sub" id="bar-college">Student</div>
         </div>
         <div class="appbar__sp"></div>
-        <button class="iconbtn" id="btn-refresh" aria-label="Refresh data">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg>
-        </button>
         <button id="bar-avatar" aria-label="My profile"></button>
       </header>
 
@@ -395,7 +396,7 @@
         <p><span class="chip chip--solid" id="wait-chip">Pending approval</span></p>
         <button class="btn btn--ghost" id="wait-logout" type="button">Log out</button>
       </div>
-      <p class="auth__foot">Shaalix for students · App version 2.2.0</p>
+      <p class="auth__foot">Shaalix for students · App version 2.2.1</p>
     </section>
 
     <div id="sheet-root"></div>
@@ -431,7 +432,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 //# sourceMappingURL=/sm/26b4b0d0b1e283d6b3ec9857ac597d7a60c76ac17be1ef4c965f03086de426bb.map
 </script>
     <script>
-      window.__BUNDLE_VERSION__ = "2.2.0";
+      window.__BUNDLE_VERSION__ = "2.2.1";
     </script>
     <script>
 /* ================= Shaalix student app — application logic ================= */
@@ -1541,10 +1542,24 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       b.addEventListener("click", function () { showTab(b.dataset.tab); });
     });
     $("bar-avatar").addEventListener("click", function () { showTab("profile"); });
-    $("btn-refresh").addEventListener("click", async function () {
-      if (!S.profile) return;
-      toast("Refreshing…");
-      try { await loadStudentData(); toast("Up to date."); } catch (e) { toast("Refresh failed. Check your connection."); }
+    /* Password show/hide eye (v2.2.1): one delegated listener for every
+       .pw-eye button — flips the input in the same .pw-wrap between
+       password (dots) and text (readable), swaps the eye / eye-off icon
+       and the aria-label. (The old manual refresh button was removed in
+       v2.2.1 — silent auto-refresh below is the only refresh path.) */
+    var PW_EYE = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>';
+    var PW_EYE_OFF = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.6 10.6 0 0 1 12 19c-6.5 0-10-7-10-7a17.6 17.6 0 0 1 4.06-4.94M9.9 4.24A9.5 9.5 0 0 1 12 5c6.5 0 10 7 10 7a17.7 17.7 0 0 1-2.16 3.19M14.12 14.12A3 3 0 1 1 9.88 9.88"/><line x1="2" y1="2" x2="22" y2="22"/></svg>';
+    document.addEventListener("click", function (ev) {
+      var b = ev.target && ev.target.closest ? ev.target.closest(".pw-eye") : null;
+      if (!b) return;
+      var wrap = b.closest(".pw-wrap"), inp = wrap ? wrap.querySelector("input") : null;
+      if (!inp) return;
+      var show = inp.type === "password";
+      inp.type = show ? "text" : "password";
+      b.innerHTML = show ? PW_EYE_OFF : PW_EYE;
+      b.setAttribute("aria-label", show ? "Hide password" : "Show password");
+      b.setAttribute("aria-pressed", show ? "true" : "false");
+      try { inp.focus(); } catch (e) {}
     });
     /* Silent auto-refresh triggers: returning to the foreground checks
        for fresh data at once (the 45-second poll is started by
