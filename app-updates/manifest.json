@@ -1,8 +1,8 @@
 {
-  "version": "2.2.1",
+  "version": "2.2.2",
   "bundle": "bundle.html",
-  "sha256": "93eb0c1e808d28e48fdd6405119b9a1752cd9c9bc263a811684f4bcf291395f1",
-  "size": 364389,
+  "sha256": "2b0f39d6f1e3e4b4dbc4fef336a5d4c70023dadb8484d69c249a69c603da482f",
+  "size": 454209,
   "publishedAt": "2026-11-26",
-  "notes": "Password fields now have an eye button to show or hide the password. The app refreshes itself automatically, so the manual refresh button has been removed."
+  "notes": "The app now carries the official Shaalix logo."
 }
