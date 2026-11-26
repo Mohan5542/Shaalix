@@ -1071,7 +1071,7 @@ tr.is-highlight > :last-child { box-shadow: 12px 0 var(--fill-tertiary); }
     <script>
       /* App bundle: version marker (used by the OTA client) + always open
          at the portal sign-in. Invisible — no page content changes. */
-      window.__BUNDLE_VERSION__ = "1.1.2";
+      window.__BUNDLE_VERSION__ = "1.1.3";
       (function () { try { var h = location.hash; if (!h || h === "#" || h === "#/") history.replaceState(null, "", "#/portal"); } catch (e) {} })();
     </script>
   </head>
@@ -5039,20 +5039,32 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
     <script>
 /* Shaalix app OTA client — injected into APP BUNDLES ONLY (never on the website).
  *
- * On start it asks the static update channel
- *   https://www.shaalix.com/app-updates/manifest.json
- * whether a newer app bundle exists. If so it downloads the bundle (a single
- * self-contained HTML file) over the native HTTP bridge, verifies its
- * SHA-256 against the manifest and confirms the bundle's own version
- * marker, then stages the text in localStorage. The boot loader
- * (www/index.html) promotes the staged bundle on the next start; this
- * client triggers one reload so the update applies immediately and
- * silently. Storage is localStorage on purpose: the bundle is ~0.8 MB of
- * text, and using it keeps the app free of extra native plugins.
- * Every failure is swallowed — the running bundle simply keeps working.
+ * Update flow (pop-up model, per the user's requirement — no silent
+ * updates, no reinstalls):
+ *   On start — and again whenever the app returns to the foreground — the
+ *   client asks the static update channel
+ *     https://www.shaalix.com/app-updates/manifest.json
+ *   whether a newer app bundle exists. If one does, NOTHING is downloaded
+ *   or applied yet: an in-app pop-up styled like the portal's own modals
+ *   announces the update (title "Update available", the manifest's
+ *   "notes" text as the what's-new, buttons "Update now" / "Later").
+ *   "Update now" downloads the bundle (a single self-contained HTML file)
+ *   over the native HTTP bridge, verifies its SHA-256 against the
+ *   manifest and confirms the bundle's own version marker, stages the
+ *   text in localStorage, and reloads — the boot loader (www/index.html)
+ *   promotes the staged bundle during that reload and keeps the previous
+ *   bundle as a rollback copy. "Later" dismisses the pop-up and applies
+ *   nothing; the pop-up is offered again on the next app start. If the
+ *   download or verification fails, the pop-up shows a plain error and
+ *   the current bundle keeps running untouched.
+ * Storage is localStorage on purpose: the bundle is ~0.8 MB of text, and
+ * using it keeps the app free of extra native plugins. Every failure path
+ * leaves the running bundle working.
  */
 (function () {
   var VERSION = window.__BUNDLE_VERSION__ || "0.0.0";
+  var BASE = "https://www.shaalix.com/app-updates/";
+
   /* Watchdog: this bundle parsed and its scripts are running, so after a
      short grace period tell the boot loader the load was healthy. If the
      bundle were corrupt, this timer would never run and the boot loader
@@ -5077,46 +5089,188 @@ Resources:`;for(let t of c){if(!t||typeof t!=`string`)throw Error(`@supabase/aut
       }).join("");
     });
   }
-  function run() {
+  function http() {
     var Cap = window.Capacitor;
-    if (!Cap || !Cap.Plugins || !Cap.Plugins.CapacitorHttp) return;
-    var Http = Cap.Plugins.CapacitorHttp;
-    var BASE = "https://www.shaalix.com/app-updates/";
+    return (Cap && Cap.Plugins && Cap.Plugins.CapacitorHttp) || null;
+  }
+
+  /* ---------------- pop-up (portal modal styling) ---------------- */
+  var CSS =
+    ".ota-upd{position:fixed;inset:0;z-index:2000;display:grid;place-items:center;padding:16px;background:rgb(22 31 57 / .6);overflow-y:auto;overscroll-behavior:contain}" +
+    ".ota-upd__box{position:relative;display:grid;grid-template-columns:minmax(0,1fr);gap:14px;width:min(420px,100%);max-height:calc(100dvh - 32px);overflow-y:auto;padding:clamp(18px,3vw,28px);background:var(--x-surface,#fff);color:var(--text-primary,#1d1d1f);border-radius:var(--r-l,24px);box-shadow:0 24px 80px rgb(0 0 0 / .35);font:var(--type-body,400 15px/1.3 system-ui,sans-serif)}" +
+    ".ota-upd__box>*{min-width:0}" +
+    ".ota-upd__kicker{margin:0;font:var(--type-label,500 14px/1.3 system-ui,sans-serif);color:var(--text-secondary,#636366)}" +
+    ".ota-upd__title{margin:0;font:var(--type-heading,500 20px/1.3 system-ui,sans-serif)}" +
+    ".ota-upd__ver{margin:0;color:var(--text-secondary,#636366);font:var(--type-small,400 14px/1.3 system-ui,sans-serif)}" +
+    ".ota-upd__notes{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}" +
+    ".ota-upd__err{margin:0;color:var(--fill-system-red,#da2f35);font:var(--type-small,400 14px/1.3 system-ui,sans-serif)}" +
+    ".ota-upd__acts{display:flex;flex-wrap:wrap;gap:8px;align-items:center}" +
+    ".ota-upd__go{display:inline-flex;align-items:center;justify-content:center;min-height:var(--tap,44px);padding:0 20px;border:0;border-radius:var(--r-pill,100px);background:var(--x-orange,#c2410c);color:#fff;font:var(--type-label,500 14px/1.3 system-ui,sans-serif);white-space:nowrap;cursor:pointer}" +
+    ".ota-upd__go[disabled]{opacity:.6;cursor:default}" +
+    ".ota-upd__later{display:inline-flex;align-items:center;justify-content:center;min-height:var(--tap,44px);padding:0 14px;border:1px solid var(--stroke-primary,#1d1d1f24);border-radius:var(--r-pill,100px);background:var(--x-surface,#fff);color:var(--text-primary,#1d1d1f);font:var(--type-small,400 14px/1.3 system-ui,sans-serif);white-space:nowrap;cursor:pointer}" +
+    ".ota-upd__later[disabled]{opacity:.6;cursor:default}" +
+    "@media (max-width:600px){.ota-upd{padding:8px;align-items:end}.ota-upd__box{max-height:calc(100dvh - 16px)}}" +
+    "html.ota-upd-open,html.ota-upd-open body{overflow:hidden}";
+
+  var popupEl = null;      /* the open pop-up element, if any */
+  var checking = false;    /* a manifest check is in flight */
+  var dismissedFor = null; /* version the user tapped "Later" on (this session) */
+
+  function ensureStyle() {
+    if (document.getElementById("ota-upd-style")) return;
+    var st = document.createElement("style");
+    st.id = "ota-upd-style";
+    st.textContent = CSS;
+    (document.head || document.documentElement).appendChild(st);
+  }
+  function closePopup() {
+    if (popupEl && popupEl.parentNode) popupEl.parentNode.removeChild(popupEl);
+    popupEl = null;
+    try { document.documentElement.classList.remove("ota-upd-open"); } catch (e) {}
+  }
+
+  function showPopup(manifest) {
+    if (popupEl) return; /* one pop-up at a time */
+    ensureStyle();
+    var overlay = document.createElement("div");
+    overlay.className = "ota-upd";
+    overlay.id = "ota-upd-popup";
+    var box = document.createElement("div");
+    box.className = "ota-upd__box";
+    box.setAttribute("role", "dialog");
+    box.setAttribute("aria-modal", "true");
+    box.setAttribute("aria-labelledby", "ota-upd-title");
+
+    var kicker = document.createElement("p");
+    kicker.className = "ota-upd__kicker";
+    kicker.textContent = "Shaalix app";
+    var title = document.createElement("h2");
+    title.className = "ota-upd__title";
+    title.id = "ota-upd-title";
+    title.textContent = "Update available";
+    var ver = document.createElement("p");
+    ver.className = "ota-upd__ver";
+    ver.textContent = "Version " + manifest.version + " is ready to install.";
+    box.appendChild(kicker);
+    box.appendChild(title);
+    box.appendChild(ver);
+    if (manifest.notes) {
+      var notes = document.createElement("p");
+      notes.className = "ota-upd__notes";
+      notes.textContent = String(manifest.notes);
+      box.appendChild(notes);
+    }
+    var err = document.createElement("p");
+    err.className = "ota-upd__err";
+    err.id = "ota-upd-err";
+    err.setAttribute("role", "alert");
+    err.style.display = "none";
+    box.appendChild(err);
+
+    var acts = document.createElement("div");
+    acts.className = "ota-upd__acts";
+    var go = document.createElement("button");
+    go.type = "button";
+    go.className = "ota-upd__go";
+    go.id = "ota-upd-go";
+    go.textContent = "Update now";
+    var later = document.createElement("button");
+    later.type = "button";
+    later.className = "ota-upd__later";
+    later.id = "ota-upd-later";
+    later.textContent = "Later";
+    acts.appendChild(go);
+    acts.appendChild(later);
+    box.appendChild(acts);
+
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    popupEl = overlay;
+    try { document.documentElement.classList.add("ota-upd-open"); } catch (e) {}
+
+    later.addEventListener("click", function () {
+      dismissedFor = manifest.version;
+      closePopup();
+    });
+    go.addEventListener("click", function () { applyUpdate(manifest, go, later, err); });
+  }
+
+  function applyUpdate(manifest, go, later, err) {
+    var Http = http();
+    if (!Http) return;
+    go.disabled = true;
+    later.disabled = true;
+    go.textContent = "Updating…";
+    err.style.display = "none";
+    function fail(msg) {
+      try { localStorage.removeItem("shaalix_ota_new"); localStorage.removeItem("shaalix_ota_new_v"); } catch (e) {}
+      err.textContent = msg;
+      err.style.display = "";
+      go.disabled = false;
+      later.disabled = false;
+      go.textContent = "Update now";
+    }
+    Http.get({ url: BASE + (manifest.bundle || "bundle.html"), headers: { "Cache-Control": "no-cache" } })
+      .then(function (bres) {
+        var text = typeof bres.data === "string" ? bres.data : "";
+        if (!text || text.indexOf('__BUNDLE_VERSION__ = "' + manifest.version + '"') === -1) {
+          fail("The update could not be verified. Nothing was changed — please try again.");
+          return;
+        }
+        return sha256Hex(text).then(function (hex) {
+          if (manifest.sha256 && hex !== manifest.sha256) {
+            fail("The update could not be verified. Nothing was changed — please try again.");
+            return;
+          }
+          try {
+            localStorage.setItem("shaalix_ota_new", text);
+            localStorage.setItem("shaalix_ota_new_v", manifest.version);
+          } catch (e) {
+            fail("There was not enough space to save the update. Nothing was changed.");
+            return;
+          }
+          /* Staged: reload once — the boot loader promotes the staged
+             bundle during start-up (previous bundle kept as rollback). */
+          go.textContent = "Updated — restarting…";
+          setTimeout(function () { window.location.reload(); }, 600);
+        });
+      })
+      .catch(function () {
+        fail("The update could not be downloaded. Please check your connection and try again.");
+      });
+  }
+
+  /* ---------------- update check ---------------- */
+  function check() {
+    if (checking || popupEl) return;
+    var Http = http();
+    if (!Http) return;
+    checking = true;
     Http.get({ url: BASE + "manifest.json", headers: { "Cache-Control": "no-cache" } })
       .then(function (res) {
+        checking = false;
         var m = typeof res.data === "string" ? JSON.parse(res.data) : res.data;
         if (!m || !m.version || cmp(m.version, VERSION) <= 0) return;
-        var triedKey = "shaalix_ota_tried_" + m.version;
-        return Http.get({ url: BASE + (m.bundle || "bundle.html"), headers: { "Cache-Control": "no-cache" } })
-          .then(function (bres) {
-            var text = typeof bres.data === "string" ? bres.data : "";
-            if (!text || text.indexOf('__BUNDLE_VERSION__ = "' + m.version + '"') === -1) return;
-            return sha256Hex(text).then(function (hex) {
-              if (m.sha256 && hex !== m.sha256) return;
-              try {
-                localStorage.setItem("shaalix_ota_new", text);
-                localStorage.setItem("shaalix_ota_new_v", m.version);
-              } catch (e) { return; /* storage full — try again next start */ }
-              /* Reload once per version: the boot loader promotes the
-                 staged bundle during start-up. If promotion somehow did
-                 not happen, we do not loop — the staged bundle is simply
-                 picked up on the next manual app start. */
-              try {
-                if (!localStorage.getItem(triedKey)) {
-                  localStorage.setItem(triedKey, "1");
-                  setTimeout(function () { window.location.reload(); }, 800);
-                }
-              } catch (e) {}
-            });
-          });
+        if (m.version === dismissedFor) return; /* "Later" — offer again next start */
+        showPopup(m);
       })
-      .catch(function () { /* offline / channel error — keep the current bundle */ });
+      .catch(function () { checking = false; /* offline / channel error — keep the current bundle */ });
   }
+
+  function schedule() { setTimeout(check, 600); }
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", function () { setTimeout(run, 1500); });
+    document.addEventListener("DOMContentLoaded", function () { setTimeout(check, 1500); });
   } else {
-    setTimeout(run, 1500);
+    setTimeout(check, 1500);
   }
+  /* Re-check when the app returns to the foreground. */
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible") schedule();
+  });
+  try {
+    var App = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App;
+    if (App && App.addListener) App.addListener("resume", schedule);
+  } catch (e) {}
 })();
 
     </script>
