@@ -1,8 +1,8 @@
 {
-  "version": "2.2.12",
+  "version": "2.2.13",
   "bundle": "bundle.html",
-  "sha256": "ef34abdb583a05a13466fa111dae5aeff5fa95818a851bdb67b7004a20a7e014",
-  "size": 479544,
+  "sha256": "69867cbf35f0f809c72aac6785a2e114772026a1bc1811f145de39cee7bf8373",
+  "size": 481145,
   "publishedAt": "2026-11-26",
-  "notes": "The menu bar now covers the full bottom of the screen, edge to edge — no empty space at the sides or corners."
+  "notes": "The menu circle is a little smaller now and never gets cut off at the edge of the screen. Every menu icon has its name under it, and the icons sit a bit closer together."
 }
