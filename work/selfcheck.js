@@ -407,7 +407,16 @@ else {
   await expectErr("Payer required", () => DB.payMyFee(due.id, { amount: 100, payer: "", ref: "123456789012" }), "payer");
   P.setUI({ pm: { fee: due.id, mode: "full", amount: due.balance, step: "choose" } }); renderAs("student/pay-choose", "/portal/student");
   P.setUI({ pm: { fee: due.id, mode: "partial", amount: 1000, step: "qr" } });
-  if (!/upi:\/\/pay\?pa=shaalix@upi&amp;pn=Sri%20Vidya%20Institute%20of%20Technology&amp;am=1000\.00&amp;cu=INR&amp;tn=Year%203%20-%20Tuition%20Fee/.test(renderAs("student/pay-qr", "/portal/student"))) fails.push("UPI link in the QR step is wrong");
+  const qrOff = renderAs("student/pay-qr-off", "/portal/student");
+  if (!qrOff.includes("Online UPI payment is not enabled by your college yet") || /upi:\/\/pay\?/.test(qrOff)) fails.push("QR step must show the not-enabled message and no UPI link while the college has no UPI ID set");
+  await DB.settle(); await DB.login("admin", "admin@srividya.demo", "Demo@1234");
+  DB.updateCollege({ upiId: "srividya@okhdfcbank" });
+  await DB.settle(); await DB.login("student", "ravi@srividya.demo", "Demo@1234");
+  P.setUI({ pm: { fee: due.id, mode: "partial", amount: 1000, step: "qr" } });
+  if (!/upi:\/\/pay\?pa=srividya@okhdfcbank&amp;pn=Sri%20Vidya%20Institute%20of%20Technology&amp;am=1000\.00&amp;cu=INR&amp;tn=Year%203%20-%20Tuition%20Fee/.test(renderAs("student/pay-qr", "/portal/student"))) fails.push("UPI link in the QR step is wrong");
+  await DB.settle(); await DB.login("admin", "admin@srividya.demo", "Demo@1234");
+  DB.updateCollege({ upiId: "" });
+  await DB.settle(); await DB.login("student", "ravi@srividya.demo", "Demo@1234");
   const r1 = DB.payMyFee(due.id, { amount: "20000", payer: "Ravi", app: "PhonePe", ref: "111122223333" });
   if (r1.fee.balance !== due.balance - 20000 || r1.fee.status !== "Partial") fails.push("Partial payment did not reduce the balance");
   if (r1.payment.fee_label !== "Year 3 · Tuition Fee (Full fee)") fails.push("Payment label should be year-wise: " + r1.payment.fee_label);

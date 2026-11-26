@@ -2898,12 +2898,10 @@
       const SCHEMES = ["Jagananna Vidya Deevena (RTF)", "Jagananna Vasathi Deevena (MTF)", "Post-Matric Scholarship (RTF/MTF)", "TS ePASS Post-Matric (RTF)", "TS ePASS Post-Matric (MTF)"];
       const SCH_STATUS = ["Not applied", "Applied", "Under verification", "Sanctioned", "Disbursed", "Rejected", "Not eligible"];
 
-      /* ================= UPI PAYMENT SETTINGS =================
-         COLLEGE: replace UPI_ID below with your college's own UPI ID (VPA),
-         for example "srividyacollege@sbi". "shaalix@upi" is only a placeholder:
-         money sent to it will NOT reach your college. The payee name shown in
-         the QR is the college name from the portal.                          */
-      const UPI_CONFIG = { UPI_ID: "shaalix@upi" };
+      /* UPI fee payments: the UPI ID is each college's own, taken from its
+         college record (upi_id, set by the college admin in College settings);
+         the payee name shown in the QR is the college name. A college with no
+         UPI ID set has online payment disabled (see the guard in payModal). */
       /* Libraries loaded only when needed: QR codes (student pay) and Excel (admin import/export) */
       const QR_URL = "https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js";
       const XLSX_URL = "https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js";
@@ -2914,7 +2912,7 @@
         sc.onerror = () => { delete libs[url]; sc.remove(); no(new Error(`Could not load ${new URL(url).hostname}. Check your internet connection and try again.`)); };
         document.head.appendChild(sc);
       })));
-      const upiUri = (amount, label, roll, payee) => "upi://pay?" + [["pa", UPI_CONFIG.UPI_ID], ["pn", payee], ["am", Number(amount).toFixed(2)], ["cu", "INR"], ["tn", `${label} ${roll}`.replace(/·/g, "-").replace(/[^\x20-\x7E]/g, "").replace(/\s+/g, " ").trim().slice(0, 60)]]
+      const upiUri = (amount, label, roll, payee, upiId) => "upi://pay?" + [["pa", upiId], ["pn", payee], ["am", Number(amount).toFixed(2)], ["cu", "INR"], ["tn", `${label} ${roll}`.replace(/·/g, "-").replace(/[^\x20-\x7E]/g, "").replace(/\s+/g, " ").trim().slice(0, 60)]]
         .map(([k, v]) => `${k}=${encodeURIComponent(v).replace(/%40/g, "@")}`).join("&");
       const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
       const inr = (n) => "₹" + (Math.round(n * 100) / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 });
@@ -3597,8 +3595,13 @@
         const pm = UI.pm, f = DB.myFees().find((x) => x.id === pm.fee);
         if (!f) return "";
         const label = pm.step === "done" ? pm.receipt.payment.fee_label : f.label;
+        const upiId = college.upi_id ? String(college.upi_id).trim() : "";
         let body = "";
-        if (pm.step === "choose") {
+        if (!upiId && pm.step !== "done") {
+          body = `<p>Online UPI payment is not enabled by your college yet.</p>
+            <p class="fineprint">Please pay this fee at the college office. They will record it, and it will appear in your payment history here.</p>
+            <div class="x-acts"><button type="button" class="x-btn" data-act="pmClose" data-autofocus>Close</button></div>`;
+        } else if (pm.step === "choose") {
           const full = pm.mode !== "partial";
           body = `<form class="x-form" data-portal="pmAmount" novalidate aria-label="Choose how much to pay">
             <div class="x-f--full x-pm__bal"><span>Balance due</span><b>${inr(f.balance)}</b><small>of ${inr(f.amount)} · due ${fmtD(f.due)}</small></div>
@@ -3609,9 +3612,9 @@
             <p class="fineprint" id="pm-amt-hint">${full ? "Full payment clears this fee." : `Enter any amount up to ${inr(f.balance)}.`}</p>
             ${formErr}<div class="x-acts"><button class="x-btn" type="submit">Pay</button><button type="button" class="x-sbtn" data-act="pmClose">Cancel</button></div></form>`;
         } else if (pm.step === "qr") {
-          const uri = upiUri(pm.amount, f.label, st.roll, college.name);
-          body = `<div class="x-qr"><div class="x-qr__img" id="pm-qr" role="img" aria-label="UPI QR code to pay ${inr(pm.amount)} to ${esc(college.name)}" data-uri="${esc(uri)}"><span class="fineprint">Loading QR code…</span></div>
-              <p class="x-qr__amt" data-pm-amount>${inr(pm.amount)}</p><p class="x-qr__to">to <b>${esc(college.name)}</b><br /><span class="muted">UPI ID ${esc(UPI_CONFIG.UPI_ID)}</span></p>
+          const uri = upiUri(pm.amount, f.label, st.roll, college.name, upiId);
+          body = `<div class="x-qr"><div class="x-qr__img" id="pm-qr" role="img" aria-label="UPI QR code to pay ${inr(pm.amount)} to ${esc(college.name)}" data-uri="${esc(uri)}" data-upi="${esc(upiId)}"><span class="fineprint">Loading QR code…</span></div>
+              <p class="x-qr__amt" data-pm-amount>${inr(pm.amount)}</p><p class="x-qr__to">to <b>${esc(college.name)}</b><br /><span class="muted">UPI ID ${esc(upiId)}</span></p>
               <p class="fineprint">Scan with any UPI app: Google Pay, PhonePe, Paytm or BHIM. On a phone, <a class="link" href="${esc(uri)}">open your UPI app</a>.</p></div>
             <form class="x-form" data-portal="pmConfirm" novalidate aria-label="Payment details"><h3 class="x-f--full">After paying, enter the payment details</h3>
               ${pf("Payer name", "payer", `autocomplete="name" value="${esc(pm.payer === undefined ? st.name : pm.payer)}" data-autofocus`)}
@@ -3623,7 +3626,7 @@
           const p = pm.receipt.payment, nf = pm.receipt.fee;
           body = `<div class="x-done" role="status"><span class="x-done__tick" aria-hidden="true">✓</span><h3>Payment Done</h3><p>${inr(p.amount)} paid towards ${esc(p.fee_label)}.</p></div>
             ${logoImg(college)}
-            <div class="breakdown" data-receipt><dl>${[["Receipt no.", p.id.toUpperCase()], ["Amount paid", inr(p.amount)], ["Fee", p.fee_label], ["Student", `${st.name} (${st.roll})`], ["Course", `${st.course} ${st.branch} · ${st.admType}`], ["Date & time", fmtDT(p.at)], ["Reference (UTR)", p.ref], ["Paid via", p.mode], ["Payer", p.payer], ["Paid to", `${college.name} · ${UPI_CONFIG.UPI_ID}`], ["New balance", nf.balance > 0 ? inr(nf.balance) : "₹0 · Paid in full"]].map(([k, v]) => `<div class="row"><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl></div>
+            <div class="breakdown" data-receipt><dl>${[["Receipt no.", p.id.toUpperCase()], ["Amount paid", inr(p.amount)], ["Fee", p.fee_label], ["Student", `${st.name} (${st.roll})`], ["Course", `${st.course} ${st.branch} · ${st.admType}`], ["Date & time", fmtDT(p.at)], ["Reference (UTR)", p.ref], ["Paid via", p.mode], ["Payer", p.payer], ["Paid to", upiId ? `${college.name} · ${upiId}` : college.name], ["New balance", nf.balance > 0 ? inr(nf.balance) : "₹0 · Paid in full"]].map(([k, v]) => `<div class="row"><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl></div>
             <div class="x-acts"><button type="button" class="x-sbtn" data-act="pmPrint">Print / Save PDF</button><button type="button" class="x-sbtn" data-act="rcptDownload" data-id="${p.id}">Download receipt</button><button type="button" class="x-btn" data-act="pmClose" data-autofocus>Done</button></div>`;
         }
         return `<div class="x-modal" data-modal><div class="x-modal__box" role="dialog" aria-modal="true" aria-labelledby="pm-h">
@@ -3638,7 +3641,7 @@
           if (qr.stringToBytesFuncs && qr.stringToBytesFuncs["UTF-8"]) qr.stringToBytes = qr.stringToBytesFuncs["UTF-8"];
           const q = qr(0, "M"); q.addData(box.dataset.uri); q.make();
           box.innerHTML = q.createSvgTag({ cellSize: 4, margin: 4, scalable: true }); box.dataset.ready = "1";
-        }).catch(() => { if (box.isConnected) box.innerHTML = `<span class="fineprint">The QR code could not load. In your UPI app, pay to UPI ID ${esc(UPI_CONFIG.UPI_ID)}.</span>`; });
+        }).catch(() => { if (box.isConnected) box.innerHTML = `<span class="fineprint">The QR code could not load. In your UPI app, pay to UPI ID ${esc(box.dataset.upi || "")}.</span>`; });
       }
 
       /* ---------- Excel (.xlsx) export, template and import, with SheetJS ---------- */
