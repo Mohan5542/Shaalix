@@ -1,8 +1,8 @@
 {
-  "version": "1.1.3",
+  "version": "2.0.0",
   "bundle": "bundle.html",
-  "sha256": "b0dc325b34e5f007037aa8b04583b74fb2473a1e1493c2cf864afd66f6e9d2b7",
-  "size": 825428,
+  "sha256": "43817e916f670985e086896fec7febdab2070cc42a5c8412d79c29c32e6d3885",
+  "size": 320845,
   "publishedAt": "2026-11-26",
-  "notes": "Update system marindi — ippudu kotha updates pop-up tho kanipisthayi, meeru Update click chesthe apply avuthayi."
+  "notes": "Kotha student app vachindi! Ippudu app phone kosam special ga design chesina kotha look tho vastundi — login, fees, marks, attendance, notices anni inka easy ga chudochu. Update click cheyandi."
 }
