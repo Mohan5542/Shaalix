@@ -1,8 +1,8 @@
 {
-  "version": "2.1.0",
+  "version": "2.1.1",
   "bundle": "bundle.html",
-  "sha256": "289aefda8fdd7bc89dd8eb2e5e7223f82269915dba17596f236b2bb97e336e80",
-  "size": 354637,
+  "sha256": "72ac831292851e9ce45da222bd342dd9ad2bf5ff243f378da3f2014c86e11ba1",
+  "size": 354636,
   "publishedAt": "2026-11-26",
-  "notes": "Ippudu app lone fees pay cheyochu! Fees screen lo Pay Now button vachindi — college UPI ID ki QR code tho pay chesi, UTR number enter chesthe mee payment history lo kanipistundi."
+  "notes": "Update delivery is fixed - if the earlier update showed 'could not be verified', this one will install normally. This update also adds fee payment by UPI: tap Pay now in Fees, pay to your college's UPI ID or QR code, then enter the UTR number so the payment appears in your payment history."
 }
