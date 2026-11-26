@@ -1,8 +1,8 @@
 {
-  "version": "2.2.5",
+  "version": "2.2.6",
   "bundle": "bundle.html",
-  "sha256": "24b4f01aea0f917ad1ebb456c8053e30037255f9857a29b60f8b93780d412bfb",
-  "size": 470167,
+  "sha256": "1eade911b132f29d8f1c8ac1b3362aa2ee50970aec12a3cd281327a112ca428b",
+  "size": 471298,
   "publishedAt": "2026-11-26",
-  "notes": "A little more space between the Shaalix and college names at the top."
+  "notes": "The bottom menu bar has a fresh new style with smoother animations."
 }
