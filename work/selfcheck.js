@@ -510,6 +510,19 @@ if (colUp.logo !== PNG1 || colUp.feeTuition !== 90000 || colUp.feeAffil !== 6000
 P.setUI({ tab: "college" }); const colHtml = renderAs("admin/college", "/portal/admin");
 if (!colHtml.includes(PNG1) || !/College information/.test(colHtml) || !/feeTuition/.test(colHtml)) fails.push("College pane: logo or fee form missing");
 DB.updateCollege({ feeTuition: 85000 });
+// Payments tab carries the same UPI setup as the College tab (collegeUpi
+// form): visible section at the top of the pane, prefilled input, and saving
+// it must touch ONLY the UPI ID — the fee structure survives untouched.
+P.setUI({ tab: "payments" }); const payUpiHtml = renderAs("admin/payments-upi", "/portal/admin");
+if (!payUpiHtml.includes('data-portal="collegeUpi"') || !/UPI payments \(student app\)/.test(payUpiHtml) || !/name="upiId"/.test(payUpiHtml) || !/Payee name shown to students/.test(payUpiHtml)) fails.push("Payments pane: UPI payments (student app) form missing");
+DB.updateCollege({ upiId: "SriVidya@OKHDFCBank " });
+const colUpi = DB.me().college;
+if (colUpi.upi_id !== "srividya@okhdfcbank" || colUpi.feeTuition !== 85000 || colUpi.feeAffil !== 6000) fails.push("updateCollege({ upiId }) must save only the UPI ID (validated + lowercased) and preserve the fee structure");
+P.setUI({ tab: "payments" }); const payUpiHtml2 = renderAs("admin/payments-upi-set", "/portal/admin");
+if (!payUpiHtml2.includes('value="srividya@okhdfcbank"')) fails.push("Payments pane: UPI ID input should be prefilled with the saved UPI ID");
+DB.updateCollege({ upiId: "" });
+if (DB.me().college.upi_id !== null) fails.push("updateCollege({ upiId: '' }) should turn UPI payments off again");
+P.setUI({ tab: "overview" });
 const raviA = DB.getStudents().find((x) => x.email === "ravi@srividya.demo");
 DB.setStudentPhoto(raviA.id, PNG1);
 if (DB.getStudents().find((x) => x.id === raviA.id).photo !== PNG1) fails.push("Admin setStudentPhoto not saved");

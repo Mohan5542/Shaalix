@@ -3371,7 +3371,13 @@
         payments() {
           const sts = DB.getStudents(), byId = Object.fromEntries(sts.map((x) => [x.id, x]));
           const rows = DB.getPayments(UI.payStu), total = rows.reduce((a, p) => a + p.amount, 0);
-          return `<h2>Payments</h2><p>Student UPI payments show here as soon as the student confirms with a UTR number. Match each UTR with your bank statement; payments recorded in the Fees tab show as College office.</p>
+          const c = DB.me().college;
+          return `<h2>Payments</h2><p>Student UPI payments show here as soon as the student confirms with a UTR number. Match each UTR with your bank statement; payments recorded in the Fees tab show as College office.</p>${okMsg()}
+            <form class="x-form" data-portal="collegeUpi" novalidate aria-label="UPI payments for the student app"><h3 class="x-f--full">UPI payments (student app)</h3>
+              <p class="x-f">Payee name shown to students<b>${esc(c.name)}</b></p>
+              ${pf("UPI ID (VPA)", "upiId", `type="text" autocomplete="off" spellcheck="false" autocapitalize="none" placeholder="yourcollege@okhdfcbank" value="${esc(c.upi_id || "")}"`, false, false)}
+              <p class="fineprint">When a student taps Pay Now in the Shaalix app, they see this UPI ID with a QR code and pay straight into this account; the payee name shown is your college name, above. Leave the UPI ID blank to keep online UPI payments off — students then see that UPI payment is not enabled yet.</p>
+              ${formErr}<div class="x-acts"><button class="x-btn" type="submit">Save UPI settings</button></div></form>
             <div class="x-bar">${psel("Student", "", [["", "All students"], ...sts.map((x) => [x.id, `${x.roll} · ${x.name}`])], UI.payStu, `data-ui="payStu"`)}</div>` +
             (rows.length ? `<div class="x-tw"><table><caption>${rows.length} ${rows.length === 1 ? "payment" : "payments"} · ${inr(total)}</caption><thead><tr><th scope="col">Date &amp; time</th><th scope="col">Student</th><th scope="col">Fee</th><th scope="col">Amount</th><th scope="col">Paid via</th><th scope="col">Reference / UTR</th><th scope="col">Recorded by</th><th scope="col">Receipt</th></tr></thead><tbody>${rows.map((p) => { const st = byId[p.student_id]; return `<tr><td>${fmtDT(p.at)}</td><th scope="row">${esc(st ? st.name : "")}<small>${esc(st ? st.roll : "")}</small></th><td>${esc(p.fee_label)}</td><td class="num">${inr(p.amount)}</td><td>${esc(p.mode)}${p.payer ? `<small>${esc(p.payer)}</small>` : ""}</td><td>${esc(p.ref || "—")}</td><td>${esc(p.by)}</td><td><button type="button" class="x-sbtn" data-act="rcptOpen" data-id="${p.id}">Receipt</button></td></tr>`; }).join("")}</tbody></table></div>` : `<p>No payments yet.</p>`);
         },
@@ -3957,6 +3963,9 @@
         },
         notice(f, d) { const n = DB.postNotice({ title: d.title, text: d.text, attachment: UI.noticeAtt }); UI.noticeAtt = null; UI.noticeTitle = ""; UI.noticeText = ""; UI.msg = `“${n.title}” posted to students.`; paint('#v-dyn [name="title"]'); },
         collegeInfo(f, d) { const c = DB.updateCollege({ feeTuition: d.feeTuition, feeAffil: d.feeAffil, upiId: d.upiId }); UI.msg = `College settings saved · Tuition ${inr(c.feeTuition)} · Affiliation ${inr(c.feeAffil)} · ${c.upi_id ? `UPI payments on · ${c.upi_id}` : "UPI payments off"}.`; paint(); },
+        /* Payments-tab UPI form: sends ONLY the UPI ID, so updateCollege's
+           per-field guards leave the fee structure exactly as it was. */
+        collegeUpi(f, d) { const c = DB.updateCollege({ upiId: d.upiId }); UI.msg = `UPI settings saved · ${c.upi_id ? `UPI payments on · ${c.upi_id}` : "UPI payments off"}.`; paint(); },
         issueCert(f, d) { const ct = DB.issueCertificate(d); UI.msg = `${ct.type} issued · ${ct.serial}.`; paint(); },
         certReq(f, d) { const ct = DB.requestCertificate(d); UI.pmsg = `${ct.type} requested. The college office will issue it.`; paint(); },
         myContact(f, d) { DB.updateMyContact(d); UI.contactEdit = false; UI.pmsg = "Contact details saved."; paint('#v-dyn [data-act="contactEdit"]'); },
