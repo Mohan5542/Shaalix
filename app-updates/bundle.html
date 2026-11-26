@@ -7,7 +7,7 @@
     <meta name="supported-color-schemes" content="light" />
     <title>Shaalix</title>
     <!--
-      Shaalix STUDENT APP — bundle 2.2.7.
+      Shaalix STUDENT APP — bundle 2.2.8.
       A purpose-built mobile app for students only (not the website):
       opens at the student sign-in, claim/register for first-time students,
       then the student's own account (overview, fees, payments, attendance,
@@ -111,14 +111,14 @@
       .iconbtn:active{background:rgba(255,255,255,.14)}
       .avatar{width:38px;height:38px;border-radius:50%;object-fit:cover;background:var(--tint-2);color:var(--indigo-deep);font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;flex:none;border:2px solid rgba(255,255,255,.35)}
       .main{flex:1;padding:16px 16px calc(var(--nav-h) + var(--safe-b) + 22px);max-width:560px;width:100%;margin:0 auto}
-      .tabbar{position:fixed;left:12px;right:12px;bottom:calc(var(--safe-b) + 12px);z-index:30;display:flex;padding:6px;border-radius:28px;background:linear-gradient(135deg,var(--navy-deep),var(--navy) 72%);border:1px solid rgba(255,255,255,.09);box-shadow:0 22px 44px rgba(22,31,57,.38),0 6px 16px rgba(22,31,57,.26),inset 0 1px 0 rgba(255,255,255,.07)}
-      .tabbar__pill{position:absolute;top:6px;bottom:6px;left:6px;width:calc((100% - 12px)/5);transform:translateX(0);transition:transform .38s cubic-bezier(.32,.72,.24,1);pointer-events:none}
-      .tabbar__pill::before{content:"";position:absolute;inset:0;background:linear-gradient(135deg,var(--indigo),var(--indigo-deep));border-radius:21px;box-shadow:0 8px 18px rgba(67,56,202,.45),inset 0 1px 0 rgba(255,255,255,.22)}
-      .tabbar button{flex:1;position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:56px;padding:8px 2px 7px;background:none;border:0;cursor:pointer;color:rgba(255,255,255,.52);font-size:11px;font-weight:600;letter-spacing:.01em;transition:color .25s ease}
-      .tabbar button.on{color:#fff;font-weight:700}
-      .tabbar button svg{display:block;width:23px;height:23px;transition:transform .28s cubic-bezier(.32,.72,.24,1)}
-      .tabbar button:active svg{transform:scale(.9)}
-      .tabbar button.on svg{transform:translateY(-1px) scale(1.08)}
+      .tabbar{position:fixed;left:12px;right:12px;bottom:calc(var(--safe-b) + 12px);z-index:30;display:flex;padding:6px;border-radius:30px;background:linear-gradient(155deg,#292462 0%,var(--navy) 54%,var(--navy-deep) 100%);border:1px solid rgba(255,255,255,.13);box-shadow:0 26px 52px rgba(13,16,40,.45),0 10px 24px rgba(13,16,40,.30),0 16px 36px rgba(67,56,202,.15),inset 0 1px 0 rgba(255,255,255,.11),inset 0 -1px 0 rgba(0,0,0,.22)}
+      .tabbar__pill{position:absolute;top:6px;bottom:6px;left:6px;width:calc((100% - 12px)/5);transform:translateX(0);transition:transform .5s cubic-bezier(.25,1.15,.35,1);will-change:transform;pointer-events:none}
+      .tabbar__pill::before{content:"";position:absolute;inset:0;background:linear-gradient(145deg,#4f46e5 0%,var(--indigo) 48%,var(--indigo-deep) 100%);border-radius:24px;box-shadow:0 10px 24px rgba(67,56,202,.55),0 3px 8px rgba(30,27,75,.35),inset 0 1px 0 rgba(255,255,255,.30),inset 0 -1px 0 rgba(0,0,0,.14)}
+      .tabbar button{flex:1;position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:58px;padding:9px 2px 8px;background:none;border:0;cursor:pointer;color:rgba(255,255,255,.58);font-size:11px;font-weight:600;letter-spacing:.02em;transition:color .3s ease;-webkit-tap-highlight-color:transparent}
+      .tabbar button.on{color:#fff;font-weight:700;text-shadow:0 1px 10px rgba(13,16,40,.45)}
+      .tabbar button svg{display:block;width:24px;height:24px;transition:transform .32s cubic-bezier(.25,1.15,.35,1)}
+      .tabbar button:active svg{transform:scale(.88)}
+      .tabbar button.on svg{transform:translateY(-1.5px) scale(1.1);fill:rgba(255,255,255,.18);filter:drop-shadow(0 3px 7px rgba(13,16,40,.45))}
       @keyframes screenIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
       .main>div:not(.hidden){animation:screenIn .24s ease both}
       @media (prefers-reduced-motion:reduce){.tabbar__pill{transition:none}.tabbar button svg{transition:none}.main>div:not(.hidden){animation:none}}
@@ -268,7 +268,7 @@
         </form>
         <p class="auth__alt">New student, no account yet?<br /><button type="button" id="go-claim">Claim your account</button></p>
       </div>
-      <p class="auth__foot">Shaalix for students · Your college manages records on the Shaalix website.<br />App version 2.2.7</p>
+      <p class="auth__foot">Shaalix for students · Your college manages records on the Shaalix website.<br />App version 2.2.8</p>
     </section>
 
     <!-- ======================= AUTH: CLAIM ======================= -->
@@ -337,7 +337,7 @@
           <button class="btn" id="cl-done" type="button">Go to sign in</button>
         </div>
       </div>
-      <p class="auth__foot">Shaalix for students · App version 2.2.7</p>
+      <p class="auth__foot">Shaalix for students · App version 2.2.8</p>
     </section>
 
     <!-- ======================= APP SHELL ======================= -->
@@ -398,7 +398,7 @@
         <p><span class="chip chip--solid" id="wait-chip">Pending approval</span></p>
         <button class="btn btn--ghost" id="wait-logout" type="button">Log out</button>
       </div>
-      <p class="auth__foot">Shaalix for students · App version 2.2.7</p>
+      <p class="auth__foot">Shaalix for students · App version 2.2.8</p>
     </section>
 
     <div id="sheet-root"></div>
@@ -434,7 +434,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 //# sourceMappingURL=/sm/26b4b0d0b1e283d6b3ec9857ac597d7a60c76ac17be1ef4c965f03086de426bb.map
 </script>
     <script>
-      window.__BUNDLE_VERSION__ = "2.2.7";
+      window.__BUNDLE_VERSION__ = "2.2.8";
     </script>
     <script>
 /* ================= Shaalix student app — application logic ================= */
@@ -1714,8 +1714,10 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
   /* ---------------- pop-up (portal modal styling) ---------------- */
   var CSS =
-    ".ota-upd{position:fixed;inset:0;z-index:2000;display:grid;place-items:center;padding:16px;background:rgb(22 31 57 / .6);overflow-y:auto;overscroll-behavior:contain}" +
-    ".ota-upd__box{position:relative;display:grid;grid-template-columns:minmax(0,1fr);gap:14px;width:min(420px,100%);max-height:calc(100dvh - 32px);overflow-y:auto;padding:clamp(18px,3vw,28px);background:var(--x-surface,#fff);color:var(--text-primary,#1d1d1f);border-radius:var(--r-l,24px);box-shadow:0 24px 80px rgb(0 0 0 / .35);font:var(--type-body,400 15px/1.3 system-ui,sans-serif)}" +
+    ".ota-upd{position:fixed;inset:0;z-index:2000;display:grid;place-items:center;padding:16px;background:rgb(22 31 57 / .62);overflow-y:auto;overscroll-behavior:contain;animation:otaFadeIn .25s ease both;backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}" +
+    ".ota-upd__box{position:relative;display:grid;grid-template-columns:minmax(0,1fr);gap:14px;width:min(420px,100%);max-height:calc(100dvh - 32px);overflow-y:auto;padding:clamp(18px,3vw,28px);background:var(--x-surface,#fff);color:var(--text-primary,#1d1d1f);border-radius:26px;box-shadow:0 30px 90px rgb(13 16 40 / .45),0 4px 18px rgb(13 16 40 / .22),0 0 0 1px rgb(22 31 57 / .06);font:var(--type-body,400 15px/1.3 system-ui,sans-serif);animation:otaPopIn .38s cubic-bezier(.25,1.15,.35,1) both}" +
+    "@keyframes otaPopIn{from{opacity:0;transform:translateY(12px) scale(.95)}to{opacity:1;transform:translateY(0) scale(1)}}" +
+    "@keyframes otaFadeIn{from{opacity:0}to{opacity:1}}" +
     ".ota-upd__box>*{min-width:0}" +
     ".ota-upd__kicker{margin:0;font:var(--type-label,500 14px/1.3 system-ui,sans-serif);color:var(--text-secondary,#636366)}" +
     ".ota-upd__title{margin:0;font:var(--type-heading,500 20px/1.3 system-ui,sans-serif)}" +
@@ -1723,11 +1725,12 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     ".ota-upd__notes{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}" +
     ".ota-upd__err{margin:0;color:var(--fill-system-red,#da2f35);font:var(--type-small,400 14px/1.3 system-ui,sans-serif)}" +
     ".ota-upd__acts{display:flex;flex-wrap:wrap;gap:8px;align-items:center}" +
-    ".ota-upd__go{display:inline-flex;align-items:center;justify-content:center;min-height:var(--tap,44px);padding:0 20px;border:0;border-radius:var(--r-pill,100px);background:var(--x-orange,#c2410c);color:#fff;font:var(--type-label,500 14px/1.3 system-ui,sans-serif);white-space:nowrap;cursor:pointer}" +
+    ".ota-upd__go{display:inline-flex;align-items:center;justify-content:center;min-height:var(--tap,44px);padding:0 20px;border:0;border-radius:var(--r-pill,100px);background:var(--x-orange,#c2410c);color:#fff;font:var(--type-label,500 14px/1.3 system-ui,sans-serif);white-space:nowrap;cursor:pointer;box-shadow:0 8px 20px rgb(194 65 12 / .32)}" +
     ".ota-upd__go[disabled]{opacity:.6;cursor:default}" +
     ".ota-upd__later{display:inline-flex;align-items:center;justify-content:center;min-height:var(--tap,44px);padding:0 14px;border:1px solid var(--stroke-primary,#1d1d1f24);border-radius:var(--r-pill,100px);background:var(--x-surface,#fff);color:var(--text-primary,#1d1d1f);font:var(--type-small,400 14px/1.3 system-ui,sans-serif);white-space:nowrap;cursor:pointer}" +
     ".ota-upd__later[disabled]{opacity:.6;cursor:default}" +
-    "@media (max-width:600px){.ota-upd{padding:8px;align-items:end}.ota-upd__box{max-height:calc(100dvh - 16px)}}" +
+    "@media (max-width:600px){.ota-upd{padding:12px}.ota-upd__box{max-height:calc(100dvh - 24px)}}" +
+    "@media (prefers-reduced-motion:reduce){.ota-upd,.ota-upd__box{animation:none}}" +
     "html.ota-upd-open,html.ota-upd-open body{overflow:hidden}";
 
   var popupEl = null;      /* the open pop-up element, if any */

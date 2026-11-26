@@ -1,8 +1,8 @@
 {
-  "version": "2.2.7",
+  "version": "2.2.8",
   "bundle": "bundle.html",
-  "sha256": "be9a409bb3085461a5e80e33f060198177c33ee15263411383b7523d8d9d5f89",
-  "size": 473135,
+  "sha256": "d4e4be66ba01a4556895becf737d21ce3569c8901761984d24d42a7096e3e3b6",
+  "size": 473988,
   "publishedAt": "2026-11-26",
-  "notes": "Brand-new premium bottom menu bar. And Back now steps back inside the app instead of closing it — this part works after the one-time new app install."
+  "notes": "Bottom menu gets a more premium finish, and pop-ups now appear in the centre with a new style."
 }
