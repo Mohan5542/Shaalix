@@ -7,7 +7,7 @@
     <meta name="supported-color-schemes" content="light" />
     <title>Shaalix</title>
     <!--
-      Shaalix STUDENT APP — bundle 2.2.8.
+      Shaalix STUDENT APP — bundle 2.2.9.
       A purpose-built mobile app for students only (not the website):
       opens at the student sign-in, claim/register for first-time students,
       then the student's own account (overview, fees, payments, attendance,
@@ -112,16 +112,23 @@
       .avatar{width:38px;height:38px;border-radius:50%;object-fit:cover;background:var(--tint-2);color:var(--indigo-deep);font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;flex:none;border:2px solid rgba(255,255,255,.35)}
       .main{flex:1;padding:16px 16px calc(var(--nav-h) + var(--safe-b) + 22px);max-width:560px;width:100%;margin:0 auto}
       .tabbar{position:fixed;left:12px;right:12px;bottom:calc(var(--safe-b) + 12px);z-index:30;display:flex;padding:6px;border-radius:30px;background:linear-gradient(155deg,#292462 0%,var(--navy) 54%,var(--navy-deep) 100%);border:1px solid rgba(255,255,255,.13);box-shadow:0 26px 52px rgba(13,16,40,.45),0 10px 24px rgba(13,16,40,.30),0 16px 36px rgba(67,56,202,.15),inset 0 1px 0 rgba(255,255,255,.11),inset 0 -1px 0 rgba(0,0,0,.22)}
-      .tabbar__pill{position:absolute;top:6px;bottom:6px;left:6px;width:calc((100% - 12px)/5);transform:translateX(0);transition:transform .5s cubic-bezier(.25,1.15,.35,1);will-change:transform;pointer-events:none}
-      .tabbar__pill::before{content:"";position:absolute;inset:0;background:linear-gradient(145deg,#4f46e5 0%,var(--indigo) 48%,var(--indigo-deep) 100%);border-radius:24px;box-shadow:0 10px 24px rgba(67,56,202,.55),0 3px 8px rgba(30,27,75,.35),inset 0 1px 0 rgba(255,255,255,.30),inset 0 -1px 0 rgba(0,0,0,.14)}
+      .tabbar__clip{position:absolute;inset:0;border-radius:30px;overflow:hidden;pointer-events:none}
+      .tabbar__slide{position:absolute;top:0;left:6px;width:calc((100% - 12px)/5);height:0;transform:translateX(0);transition:transform .55s cubic-bezier(.25,1.15,.35,1);will-change:transform;pointer-events:none}
+      .tabbar__clip .tabbar__slide{left:7px;width:calc((100% - 14px)/5)}
+      .tabbar__slide--fab{z-index:3}
+      .tabbar__wave{position:absolute;top:0;left:50%;transform:translateX(-50%);width:132px;height:34px;display:block}
+      .tabbar__fab{position:absolute;top:-28px;left:50%;transform:translateX(-50%);width:54px;height:54px;border-radius:50%;background:linear-gradient(145deg,#4f46e5 0%,var(--indigo) 48%,var(--indigo-deep) 100%);border:5px solid var(--bg);box-shadow:0 12px 26px rgba(67,56,202,.50),0 4px 10px rgba(30,27,75,.35),inset 0 1px 0 rgba(255,255,255,.35),inset 0 -2px 6px rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center;color:#fff}
+      .tabbar__fab svg{display:block;width:25px;height:25px}
+      .tabbar__fab.pop svg{animation:fabPop .5s cubic-bezier(.25,1.15,.35,1)}
+      @keyframes fabPop{0%{transform:scale(.55)}55%{transform:scale(1.14)}100%{transform:scale(1)}}
       .tabbar button{flex:1;position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:58px;padding:9px 2px 8px;background:none;border:0;cursor:pointer;color:rgba(255,255,255,.58);font-size:11px;font-weight:600;letter-spacing:.02em;transition:color .3s ease;-webkit-tap-highlight-color:transparent}
       .tabbar button.on{color:#fff;font-weight:700;text-shadow:0 1px 10px rgba(13,16,40,.45)}
       .tabbar button svg{display:block;width:24px;height:24px;transition:transform .32s cubic-bezier(.25,1.15,.35,1)}
       .tabbar button:active svg{transform:scale(.88)}
-      .tabbar button.on svg{transform:translateY(-1.5px) scale(1.1);fill:rgba(255,255,255,.18);filter:drop-shadow(0 3px 7px rgba(13,16,40,.45))}
+      .tabbar button.on svg{visibility:hidden}
       @keyframes screenIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
       .main>div:not(.hidden){animation:screenIn .24s ease both}
-      @media (prefers-reduced-motion:reduce){.tabbar__pill{transition:none}.tabbar button svg{transition:none}.main>div:not(.hidden){animation:none}}
+      @media (prefers-reduced-motion:reduce){.tabbar__slide{transition:none}.tabbar__fab.pop svg{animation:none}.tabbar button svg{transition:none}.main>div:not(.hidden){animation:none}}
       .screen-title{font-size:21px;font-weight:800;margin:2px 0 2px}
       .screen-sub{font-size:13.5px;color:var(--text-2);margin:0 0 16px}
       .sec-title{font-size:15.5px;font-weight:700;margin:22px 0 10px}
@@ -268,7 +275,7 @@
         </form>
         <p class="auth__alt">New student, no account yet?<br /><button type="button" id="go-claim">Claim your account</button></p>
       </div>
-      <p class="auth__foot">Shaalix for students · Your college manages records on the Shaalix website.<br />App version 2.2.8</p>
+      <p class="auth__foot">Shaalix for students · Your college manages records on the Shaalix website.<br />App version 2.2.9</p>
     </section>
 
     <!-- ======================= AUTH: CLAIM ======================= -->
@@ -337,7 +344,7 @@
           <button class="btn" id="cl-done" type="button">Go to sign in</button>
         </div>
       </div>
-      <p class="auth__foot">Shaalix for students · App version 2.2.8</p>
+      <p class="auth__foot">Shaalix for students · App version 2.2.9</p>
     </section>
 
     <!-- ======================= APP SHELL ======================= -->
@@ -362,7 +369,8 @@
       </main>
 
       <nav class="tabbar" id="tabbar" aria-label="Main">
-        <span class="tabbar__pill" id="tab-pill" aria-hidden="true"></span>
+        <span class="tabbar__clip" aria-hidden="true"><span class="tabbar__slide" id="tab-wave-slide"><svg class="tabbar__wave" viewBox="0 0 132 34" preserveAspectRatio="none" focusable="false"><path d="M0,0 H132 V4 C104,4 98,28 66,28 C34,28 28,4 0,4 Z" style="fill:var(--bg)"/><path d="M132,4 C104,4 98,28 66,28 C34,28 28,4 0,4" fill="none" stroke="rgba(255,255,255,.14)" stroke-width="1"/></svg></span></span>
+        <span class="tabbar__slide tabbar__slide--fab" id="tab-fab-slide" aria-hidden="true"><span class="tabbar__fab" id="tab-fab"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9.5 21v-6h5v6"/></svg></span></span>
         <button type="button" data-tab="home" class="on">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9.5 21v-6h5v6"/></svg>
           Home
@@ -398,7 +406,7 @@
         <p><span class="chip chip--solid" id="wait-chip">Pending approval</span></p>
         <button class="btn btn--ghost" id="wait-logout" type="button">Log out</button>
       </div>
-      <p class="auth__foot">Shaalix for students · App version 2.2.8</p>
+      <p class="auth__foot">Shaalix for students · App version 2.2.9</p>
     </section>
 
     <div id="sheet-root"></div>
@@ -434,7 +442,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 //# sourceMappingURL=/sm/26b4b0d0b1e283d6b3ec9857ac597d7a60c76ac17be1ef4c965f03086de426bb.map
 </script>
     <script>
-      window.__BUNDLE_VERSION__ = "2.2.8";
+      window.__BUNDLE_VERSION__ = "2.2.9";
     </script>
     <script>
 /* ================= Shaalix student app — application logic ================= */
@@ -513,14 +521,28 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     window.scrollTo(0, 0);
   }
   var TABS = ["home", "fees", "marks", "notices", "profile"];
+  var lastFabTab = -1;
   function showTab(tab) {
     S.tab = tab; S.sub = null;
     TABS.forEach(function (t) { $("screen-" + t).classList.toggle("hidden", t !== tab); });
     $("screen-sub").classList.add("hidden");
     var btns = document.querySelectorAll("#tabbar button");
     btns.forEach(function (b) { b.classList.toggle("on", b.dataset.tab === tab); });
-    var pill = $("tab-pill");
-    if (pill) { var pi = TABS.indexOf(tab); if (pi >= 0) pill.style.transform = "translateX(" + pi * 100 + "%)"; }
+    var ti = TABS.indexOf(tab);
+    if (ti >= 0) {
+      var tr = "translateX(" + ti * 100 + "%)";
+      var ws = $("tab-wave-slide"), fs = $("tab-fab-slide");
+      if (ws) ws.style.transform = tr;
+      if (fs) fs.style.transform = tr;
+      if (ti !== lastFabTab) {
+        lastFabTab = ti;
+        var fab = $("tab-fab"), ab = document.querySelector('#tabbar button[data-tab="' + tab + '"] svg');
+        if (fab && ab) {
+          fab.innerHTML = ab.outerHTML;
+          fab.classList.remove("pop"); void fab.offsetWidth; fab.classList.add("pop");
+        }
+      }
+    }
     window.scrollTo(0, 0);
   }
   function showSub(html) {

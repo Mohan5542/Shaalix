@@ -1,8 +1,8 @@
 {
-  "version": "2.2.8",
+  "version": "2.2.9",
   "bundle": "bundle.html",
-  "sha256": "d4e4be66ba01a4556895becf737d21ce3569c8901761984d24d42a7096e3e3b6",
-  "size": 473988,
+  "sha256": "584256b5832f99afa005808cd5249efdba697fdb0cd82c2768978a92ff94d4cf",
+  "size": 475807,
   "publishedAt": "2026-11-26",
-  "notes": "Bottom menu gets a more premium finish, and pop-ups now appear in the centre with a new style."
+  "notes": "New menu style: the tab you are on rises in a circle above the bar, with smooth premium animations."
 }
