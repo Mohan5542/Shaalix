@@ -1,8 +1,8 @@
 {
-  "version": "1.1.1",
+  "version": "1.1.2",
   "bundle": "bundle.html",
-  "sha256": "a6d9cc755094149bbc93d0fa23928a1e92e2a165cb010049a89c7d620784e107",
-  "size": 818422,
+  "sha256": "3ff98c9568cd0aa7c0b6311d0ff0cdd069f35569286fb30bf43098d9fe40ee5d",
+  "size": 818178,
   "publishedAt": "2026-11-26",
-  "notes": "OTA proof bundle: seed content + a small visible version stamp on screen. Superseded by the clean 1.1.2 bundle."
+  "notes": "Clean production bundle: website-identical portal UI (current live build), student routes only, no test stamp. Supersedes the 1.1.1 OTA proof bundle."
 }
