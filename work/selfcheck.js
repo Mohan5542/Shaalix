@@ -313,15 +313,19 @@ if (!rv.filter((f) => f.year === 3).some((f) => f.balance > 0)) fails.push("Curr
 if (!rv.filter((f) => f.year === 4).every((f) => f.paid === 0 && f.phase === "Upcoming")) fails.push("Future years should be upcoming");
 if (rv.some((f) => "term" in f)) fails.push("Fees still carry a term field");
 const rvHtml = renderAs("student/fees", "/portal/student");
-for (const y of [1, 2, 3, 4]) if (!rvHtml.includes(`data-year="Year ${y}"`)) fails.push(`Regular student: missing Year ${y} table`);
-if (!/data-course-total/.test(rvHtml) || !/Upcoming/.test(rvHtml)) fails.push("Student fees: course total or Upcoming missing");
-if (!new RegExp(`data-act="pmOpen" data-id="${rv.find((f) => f.year === 4).id}"`).test(rvHtml)) fails.push("Upcoming year should still be payable");
+for (const y of [1, 2, 3, 4]) if (!rvHtml.includes(`data-act="feeYr" data-id="${y}"`)) fails.push(`Regular student: missing Year ${y} tab`);
+for (const y of [1, 2, 3, 4]) { P.setUI({ feeTab: String(y) }); const yh = renderAs("student/fees-y" + y, "/portal/student"); if (!yh.includes(`data-fee-breakup="Year ${y}"`)) fails.push(`Regular student: missing Year ${y} breakup`); }
+if (!/data-course-total/.test(rvHtml)) fails.push("Student fees: course total missing");
+P.setUI({ feeTab: "4" }); const rv4 = renderAs("student/fees-y4", "/portal/student");
+if (!/Upcoming/.test(rv4)) fails.push("Student fees: Upcoming missing");
+if (!new RegExp(`data-act="pmOpen" data-id="${rv.find((f) => f.year === 4).id}"`).test(rv4)) fails.push("Upcoming year should still be payable");
+P.setUI({ feeTab: "" });
 await DB.settle(); await DB.login("student", "lakshmi@srividya.demo", "Demo@1234");
 const lk = DB.myFees(), lkMe = DB.me().student;
 if (lkMe.admType !== "Lateral Entry" || lkMe.curYear !== 3) fails.push("Lakshmi should be a lateral entry Year 3 student");
 if (yearsOf(lk) !== "2,3,4" || lk.length !== 6) fails.push("Lateral student should have Year 2-4 only: " + yearsOf(lk));
 const lkHtml = renderAs("student/lateral", "/portal/student");
-if (lkHtml.includes('data-year="Year 1"') || !/Not applicable · lateral entry joins directly in Year 2/.test(lkHtml)) fails.push("Lateral student: Year 1 should show as not applicable");
+if (lkHtml.includes('data-act="feeYr" data-id="1"') || !/Not applicable · lateral entry joins directly in Year 2/.test(lkHtml)) fails.push("Lateral student: Year 1 should show as not applicable");
 // Profile: masked Aadhaar with a reveal toggle, contact edit only
 if (!lkMe.aadhaar || !/^\d{12}$/.test(lkMe.aadhaar)) fails.push("Seeded Aadhaar should be 12 digits");
 if (!lkHtml.includes("XXXX XXXX " + lkMe.aadhaar.slice(-4)) || lkHtml.includes(lkMe.aadhaar) || lkHtml.includes(lkMe.aadhaar.replace(/(\d{4})(?=\d)/g, "$1 "))) fails.push("Aadhaar must render masked");

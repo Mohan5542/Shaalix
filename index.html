@@ -243,6 +243,24 @@
       .x-off{display:none!important}
 .x-yrrow th{background:var(--fill-tertiary,#f3f4f6);text-align:left;font-weight:600}
 .x-yrhead{margin:26px 0 8px;font-size:1.05rem;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}.x-yrhead small{font-weight:400;opacity:.75}
+.x-ytabs{display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 16px}
+.x-ytabs button{padding:9px 20px;border-radius:999px;border:1.5px solid #c7d2fe;background:#fff;font-weight:600;color:#4338ca;cursor:pointer}
+.x-ytabs button.on{background:#4338ca;border-color:#4338ca;color:#fff;box-shadow:0 4px 12px rgba(67,56,202,.28)}
+.x-duecard{background:#fff;border:1px solid rgba(29,29,31,.1);border-top:4px solid #c2410c;border-radius:16px;padding:20px 22px 18px;margin:0 0 18px;box-shadow:0 1px 2px rgba(22,31,57,.05),0 8px 24px rgba(22,31,57,.06)}
+.x-duecard h3{margin:0;font-size:1.15rem;color:#1e1b4b}
+.x-duecard .x-dc-sub{color:#8e8e93;font-size:.85rem;margin-top:2px}
+.x-duecard .x-dc-lab{color:#636366;font-size:.9rem;margin-top:14px}
+.x-duecard .x-dc-amt{font-size:2rem;font-weight:800;color:#1e1b4b;line-height:1.15}
+.x-duecard .x-dc-amt.clear{color:#00a665}
+.x-duecard .x-dc-meta{color:#636366;font-size:.9rem;margin-top:5px}
+.x-duecard .x-dc-acts{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
+.x-duecard .x-dc-who{border-bottom:1px dashed rgba(29,29,31,.14);padding-bottom:12px;margin-bottom:4px}
+.x-duecard .x-dc-who b{font-size:1.05rem;color:#1e1b4b}
+.x-duecard .x-dc-who span{color:#636366;font-size:.9rem}
+.x-entry{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:#fff;border:1px solid rgba(29,29,31,.1);border-radius:16px;padding:15px 18px;margin:0 0 10px;cursor:pointer;box-shadow:0 1px 2px rgba(22,31,57,.05)}
+.x-entry .x-en-t{font-weight:600;font-size:1rem}
+.x-entry .x-en-s{display:block;color:#636366;font-size:.85rem;font-weight:400}
+.x-entry .x-en-a{margin-left:auto;color:#4338ca;font-weight:700;font-size:1.15rem}
 .x-tabs{display:flex;gap:4px;width:max-content;max-width:100%;padding:4px;border-radius:var(--r-pill);background:var(--fill-tertiary);overflow-x:auto;scrollbar-width:none}
       .x-tab{flex:none;min-height:var(--tap);padding:0 16px;border:0;border-radius:var(--r-pill);background:none;color:var(--text-secondary);font:var(--type-label);white-space:nowrap;cursor:pointer}
       .x-tab:hover{color:var(--x-indigo)}
@@ -3038,7 +3056,7 @@
       const fmtM = (ym) => parseISO(ym + "-01").toLocaleDateString("en-IN", { month: "long", year: "numeric" });
       const pctTxt = (p) => (p === null || p === undefined ? "—" : p + "%");
       const lastMonths = (n) => { const out = []; const d = parseISO(todayISO()); for (let i = 0; i < n; i++) { const t = new Date(d.getFullYear(), d.getMonth() - i, 1); out.push(`${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}`); } return out; };
-      const UI0 = () => ({ loginRole: "admin", tab: "overview", stab: "overview", flash: null, msg: "", sQ: "", sCls: "", sStatus: "", edit: null, confirm: null, feeStu: "", feeSt: "", feeEdit: null, pay: null, attDate: todayISO(), attCls: "", attMonth: todayISO().slice(0, 7), mExam: "Unit Test 1", mCls: "", mSub: "", mMax: "", mAtt: "Regular", memoStu: "", payStu: "", pm: null, rcpt: null, noticeAtt: null, noticeTitle: "", noticeText: "", imp: null, impMode: "merge", impErr: "", impBusy: false, impResult: null, note: "", feeYear: "", feeQ: "", view: null, showAad: false, contactEdit: false, pmsg: "", oConfirm: null, oMsg: "", claim: null, claimNote: "" });
+      const UI0 = () => ({ loginRole: "admin", tab: "overview", stab: "overview", flash: null, msg: "", sQ: "", sCls: "", sStatus: "", edit: null, confirm: null, feeStu: "", feeSt: "", feeEdit: null, pay: null, attDate: todayISO(), attCls: "", attMonth: todayISO().slice(0, 7), mExam: "Unit Test 1", mCls: "", mSub: "", mMax: "", mAtt: "Regular", memoStu: "", payStu: "", pm: null, rcpt: null, noticeAtt: null, noticeTitle: "", noticeText: "", imp: null, impMode: "merge", impErr: "", impBusy: false, impResult: null, note: "", feeYear: "", feeQ: "", feeTab: "", payOnline: false, view: null, showAad: false, contactEdit: false, pmsg: "", oConfirm: null, oMsg: "", claim: null, claimNote: "" });
       let UI = UI0();
       const demoNote = `<p class="x-note" role="note">Live mode: data is saved securely to the cloud. Sign in from any device to see the same records.</p>`;
       const PW_EYE = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>`;
@@ -3382,24 +3400,36 @@
         const lat = s.admType === "Lateral Entry", start = lat ? 2 : 1, tsum = (l, k) => l.reduce((a, f) => a + f[k], 0);
         const PH = { Past: "Completed", Current: "Current year", Upcoming: "Upcoming" };
         const yrs = [...new Set([1, 2, 3, 4].filter((y) => y >= start).concat(fees.map((f) => f.year)))].sort((a, b) => a - b).map((y) => {
-          const l = fees.filter((f) => f.year === y), ay = s.admYear + (y - start);
+          const l = fees.filter((f) => f.year === y).slice().sort((a, b) => (a.type === "Tuition" ? 0 : 1) - (b.type === "Tuition" ? 0 : 1)), ay = s.admYear + (y - start);
           return { y, t: `Year ${y}`, l, ay: `${ay}–${String(ay + 1).slice(2)}`, phase: y < s.curYear ? "Past" : y === s.curYear ? "Current" : "Upcoming", amount: tsum(l, "amount"), paid: tsum(l, "paid"), balance: tsum(l, "balance") };
         });
-        const yChip = (x) => (!x.amount ? "—" : chipFor(x.balance <= 0 ? "Paid" : x.paid > 0 ? "Partial" : x.phase === "Upcoming" ? "Upcoming" : "Due"));
+        const dispHead = (f) => (f.type === "Affiliation" ? "JNTU Fee (Affiliation)" : f.head);
         const fsum = (k) => fees.reduce((a, f) => a + f[k], 0);
         const dueNowAmt = tsum(fees.filter((f) => f.phase !== "Upcoming"), "balance"), laterAmt = tsum(fees.filter((f) => f.phase === "Upcoming"), "balance");
-        const lineRow = (f) => `<tr data-fee="${f.id}"><th scope="row">${esc(f.head)}</th><td>${fmtD(f.due)}${f.balance && f.phase !== "Upcoming" && f.due < todayISO() ? "<small>Overdue</small>" : ""}</td><td class="num">${inr(f.amount)}</td><td class="num">${inr(f.paid)}</td><td class="num">${inr(f.balance)}</td><td>${feeChip(f)}</td>${canPay ? `<td>${f.balance > 0 ? `<button type="button" class="x-btn" data-act="pmOpen" data-id="${f.id}" aria-label="Pay fee: ${esc(f.label)}">Pay Fee</button>` : `<span class="x-paid">Paid</span>`}</td>` : ""}</tr>`;
         if (!fees.length) return `<p>No fee lines yet.</p>`;
-        return `<section class="stats" aria-label="Fee totals">
+        const selY = yrs.some((x) => String(x.y) === String(UI.feeTab)) ? Number(UI.feeTab) : (yrs.find((x) => x.phase === "Current") || yrs[0]).y;
+        const sel = yrs.find((x) => x.y === selY);
+        const target = sel.l.filter((f) => f.balance > 0).slice().sort((a, b) => String(a.due || "9999").localeCompare(String(b.due || "9999")))[0] || null;
+        const cardTitle = sel.l.length === 1 ? dispHead(sel.l[0]) : `${sel.t} Fees`;
+        return `<section class="stats" data-course-total aria-label="Fee totals">
             <div class="stat"><span class="stat__fig">${inr(fsum("amount"))}</span><span class="stat__label">Course total (${lat ? "3 years" : "4 years"})</span></div>
             <div class="stat"><span class="stat__fig">${inr(fsum("paid"))}</span><span class="stat__label">Paid so far</span></div>
             <div class="stat"><span class="stat__fig">${inr(dueNowAmt)}</span><span class="stat__label">Due now${laterAmt ? ` · ${inr(laterAmt)} upcoming` : ""}</span></div>
           </section>
-          <div class="x-tw x-tw--s"><table data-fee-summary><caption>All years at a glance · Tuition Fee (Full fee) and Affiliation Fee each year</caption><thead><tr><th scope="col">Year</th><th scope="col">Academic year</th><th scope="col">Total</th><th scope="col">Paid</th><th scope="col">Balance</th><th scope="col">Status</th></tr></thead><tbody>
-            ${lat ? `<tr data-year-row="Year 1"><th scope="row">Year 1</th><td colspan="5" class="muted">Not applicable · lateral entry joins directly in Year 2</td></tr>` : ""}
-            ${yrs.map((x) => `<tr data-year-row="${x.t}"><th scope="row">${x.t}<small>${PH[x.phase]}</small></th><td>${x.ay}</td><td class="num">${inr(x.amount)}</td><td class="num">${inr(x.paid)}</td><td class="num">${inr(x.balance)}</td><td>${yChip(x)}</td></tr>`).join("")}
-            <tr class="x-total" data-course-total><th scope="row">Course total</th><td>${lat ? "3 years" : "4 years"}</td><td class="num">${inr(fsum("amount"))}</td><td class="num">${inr(fsum("paid"))}</td><td class="num">${inr(fsum("balance"))}</td><td></td></tr></tbody></table></div>
-          ${yrs.filter((x) => x.l.length).map((x) => `<h3 class="x-yrhead">${x.t} <span class="chip${x.phase === "Current" ? " chip--solid" : ""}">${PH[x.phase]}</span> <small>AY ${x.ay} · Total ${inr(x.amount)} · Paid ${inr(x.paid)} · Balance ${inr(x.balance)}</small></h3><div class="x-tw"><table data-year="${x.t}"><caption>${x.t} fees · Tuition and Affiliation lines</caption><thead><tr><th scope="col">Fee line</th><th scope="col">Due date</th><th scope="col">Total</th><th scope="col">Paid</th><th scope="col">Balance</th><th scope="col">Status</th>${canPay ? `<th scope="col"><span class="x-sr">Pay</span></th>` : ""}</tr></thead><tbody>${x.l.map(lineRow).join("")}<tr class="x-total"><th scope="row">${x.t} total</th><td></td><td class="num">${inr(x.amount)}</td><td class="num">${inr(x.paid)}</td><td class="num">${inr(x.balance)}</td><td></td>${canPay ? "<td></td>" : ""}</tr></tbody></table></div>`).join("")}`;
+          ${lat ? `<p class="fineprint">Year 1: Not applicable · lateral entry joins directly in Year 2.</p>` : ""}
+          <div class="x-ytabs" role="tablist" aria-label="Fee years">${yrs.map((x) => `<button type="button" role="tab" aria-selected="${x.y === selY}" class="${x.y === selY ? "on" : ""}" data-act="feeYr" data-id="${x.y}">${x.t}</button>`).join("")}</div>
+          <div class="x-duecard">
+            ${canPay ? "" : `<div class="x-dc-who"><b>${esc(s.name)}</b><br /><span>Roll ${esc(s.roll)} · ${esc(s.email || "")}</span></div>`}
+            <h3>${esc(cardTitle)}</h3>
+            <div class="x-dc-sub">${sel.t} · AY ${sel.ay} · ${PH[sel.phase]}</div>
+            <div class="x-dc-lab">Total due amount</div>
+            <div class="x-dc-amt${sel.balance === 0 && sel.l.length ? " clear" : ""}">${inr(sel.balance)}</div>
+            <div class="x-dc-meta">${sel.l.length ? `Total ${inr(sel.amount)} · Paid ${inr(sel.paid)}${sel.balance === 0 ? " · Fully paid" : ""}` : "No fees added for this year yet."}</div>
+            ${canPay && target ? `<div class="x-dc-acts"><button type="button" class="x-sbtn" data-act="pmOpenMode" data-id="${target.id}" data-mode="partial">Pay Partial</button><button type="button" class="x-btn" data-act="pmOpenMode" data-id="${target.id}" data-mode="full">Pay Full</button></div>` : ""}
+          </div>
+          ${sel.l.length ? `<h3 class="x-yrhead">Fee breakup</h3><div class="x-tw"><table data-fee-breakup="${sel.t}"><caption>${sel.t} · what is still due on each part</caption><thead><tr><th scope="col">Fee Type</th><th scope="col">Due date</th><th scope="col">Total</th><th scope="col">Paid</th><th scope="col">Amount Due</th><th scope="col">Status</th>${canPay ? `<th scope="col"><span class="x-sr">Pay</span></th>` : ""}</tr></thead><tbody>${sel.l.map((f) => `<tr data-fee="${f.id}"><th scope="row">${esc(dispHead(f))}</th><td>${fmtD(f.due)}${f.balance && f.phase !== "Upcoming" && f.due < todayISO() ? "<small>Overdue</small>" : ""}</td><td class="num">${inr(f.amount)}</td><td class="num">${inr(f.paid)}</td><td class="num">${inr(f.balance)}</td><td>${feeChip(f)}</td>${canPay ? `<td>${f.balance > 0 ? `<button type="button" class="x-btn" data-act="pmOpen" data-id="${f.id}" aria-label="Pay fee: ${esc(f.label)}">Pay Fee</button>` : `<span class="x-paid">Paid</span>`}</td>` : ""}</tr>`).join("")}<tr class="x-total"><th scope="row">Total</th><td></td><td class="num">${inr(sel.amount)}</td><td class="num">${inr(sel.paid)}</td><td class="num">${inr(sel.balance)}</td><td></td>${canPay ? "<td></td>" : ""}</tr></tbody></table></div>` : ""}
+          ${canPay ? `<button type="button" class="x-entry" data-act="payOnline"><span><span class="x-en-t">Online Transactions</span><span class="x-en-s">UPI payments you submitted</span></span><span class="x-en-a" aria-hidden="true">&#8594;</span></button>
+          <button type="button" class="x-entry" data-act="stab" data-id="payments"><span><span class="x-en-t">Student Payment History</span><span class="x-en-s">All payments and receipts</span></span><span class="x-en-a" aria-hidden="true">&#8594;</span></button>` : ""}`;
       };
 
       function adminDocsHTML(pv) {
@@ -3470,6 +3500,7 @@
               ${pf("Amount received (₹)", "amount", `type="number" min="1" max="${p.balance}" step="1" inputmode="numeric" value="${p.balance}" data-autofocus`)}
               ${formErr}<div class="x-acts"><button class="x-btn" type="submit">Record payment</button><button type="button" class="x-sbtn" data-act="cancel">Cancel</button></div></form>` : "") +
             `<div class="x-bar">${psel("Fee year", "", [["", "All years"], ...YEAR_OPTS], UI.feeYear, `data-ui="feeYear"`)}${psel("Student", "", [["", "All students"], ...stuOpts], UI.feeStu, `data-ui="feeStu"`)}${psel("Status", "", [["", "All"], "Due", "Partial", "Paid", "Upcoming"], UI.feeSt, `data-ui="feeSt"`)}<label class="x-f">Search student<input type="search" data-ui="feeQ" data-live="fees" value="${esc(UI.feeQ)}" placeholder="Name or roll number" /></label></div>`
+            + (() => { const one = UI.feeStu ? sts.find((x) => x.id === UI.feeStu) : null; if (!one) return ""; const sf = DB.getFees(one.id); return feeYearView(sf, one, false) + `<div class="x-dc-acts" style="display:flex;gap:10px;margin:0 0 18px;flex-wrap:wrap"><button type="button" class="x-sbtn" data-act="admStuPays" data-id="${one.id}" data-mode="online">Online Transactions</button><button type="button" class="x-sbtn" data-act="admStuPays" data-id="${one.id}" data-mode="all">Student Payment History</button></div>`; })()
             + `<div id="pa-fees-list">${feesResults()}</div>`;
         },
         attendance() {
@@ -3500,9 +3531,9 @@
         },
         payments() {
           const sts = DB.getStudents(), byId = Object.fromEntries(sts.map((x) => [x.id, x]));
-          const rows = DB.getPayments(UI.payStu), total = rows.reduce((a, p) => a + p.amount, 0);
+          const rows = DB.getPayments(UI.payStu).filter((x) => !UI.payOnline || x.by === "Student (UPI)"), total = rows.reduce((a, p) => a + p.amount, 0);
           const c = DB.me().college;
-          return `<h2>Payments</h2><p>Student UPI payments show here as soon as the student confirms with a UTR number. Match each UTR with your bank statement; payments recorded in the Fees tab show as College office.</p>${okMsg()}
+          return `<h2>Payments</h2>${UI.payOnline ? `<p><b>Online transactions only</b> — UPI payments the student submitted. <button type="button" class="x-sbtn" data-act="payAll">Show all payments</button></p>` : ""}<p>Student UPI payments show here as soon as the student confirms with a UTR number. Match each UTR with your bank statement; payments recorded in the Fees tab show as College office.</p>${okMsg()}
             <form class="x-form" data-portal="collegeUpi" novalidate aria-label="UPI payments for the student app"><h3 class="x-f--full">UPI payments (student app)</h3>
               <p class="x-f">Payee name shown to students<b>${esc(c.name)}</b></p>
               ${pf("UPI ID (VPA)", "upiId", `type="text" autocomplete="off" spellcheck="false" autocapitalize="none" placeholder="yourcollege@okhdfcbank" value="${esc(c.upi_id || "")}"`, false, false)}
@@ -3714,8 +3745,9 @@
           <section class="section${UI.stab === "fees" ? "" : " x-off"}" id="ps-fees"><div class="head"><h2>Fees</h2><p class="head__sub">${esc(s.course)} ${esc(s.branch)} · ${lat ? "Lateral entry · 3 years, Year 2–4" : "Regular · 4 years, Year 1–4"} · year-wise Tuition + Affiliation fees</p></div>
             ${okMsg()}
             ${feeYearView(fees, s, true)}</section>
-          <section class="section${UI.stab === "payments" ? "" : " x-off"}" id="ps-payments"><div class="head"><h2>Payment history</h2><p class="head__sub">${pays.length} ${pays.length === 1 ? "payment" : "payments"}</p></div>
-            ${pays.length ? `<div class="x-tw"><table><thead><tr><th scope="col">Date &amp; time</th><th scope="col">Fee</th><th scope="col">Amount</th><th scope="col">Paid via</th><th scope="col">Reference / UTR</th><th scope="col">Receipt no.</th><th scope="col">Receipt</th></tr></thead><tbody>${pays.map((p) => `<tr><td>${fmtDT(p.at)}</td><th scope="row">${esc(p.fee_label)}</th><td class="num">${inr(p.amount)}</td><td>${esc(p.mode)}</td><td>${esc(p.ref || "—")}</td><td>${esc(p.id.toUpperCase())}</td><td><button type="button" class="x-sbtn" data-act="rcptOpen" data-id="${p.id}">Receipt</button></td></tr>`).join("")}</tbody></table></div>` : `<p>No payments yet. Use Pay Fee next to a fee to pay by UPI.</p>`}</section>
+          <section class="section${UI.stab === "payments" ? "" : " x-off"}" id="ps-payments"><div class="head"><h2>${UI.payOnline ? "Online Transactions" : "Payment history"}</h2><p class="head__sub">${(UI.payOnline ? pays.filter((p) => p.by === "Student (UPI)") : pays).length} ${(UI.payOnline ? pays.filter((p) => p.by === "Student (UPI)") : pays).length === 1 ? "payment" : "payments"}${UI.payOnline ? " · UPI payments you submitted" : ""}</p></div>
+            ${UI.payOnline ? `<p><button type="button" class="x-sbtn" data-act="payAll">Show full payment history</button></p>` : ""}
+            ${(UI.payOnline ? pays.filter((p) => p.by === "Student (UPI)") : pays).length ? `<div class="x-tw"><table><thead><tr><th scope="col">Date &amp; time</th><th scope="col">Fee</th><th scope="col">Amount</th><th scope="col">Paid via</th><th scope="col">Reference / UTR</th><th scope="col">Receipt no.</th><th scope="col">Receipt</th></tr></thead><tbody>${(UI.payOnline ? pays.filter((p) => p.by === "Student (UPI)") : pays).map((p) => `<tr><td>${fmtDT(p.at)}</td><th scope="row">${esc(p.fee_label)}</th><td class="num">${inr(p.amount)}</td><td>${esc(p.mode)}</td><td>${esc(p.ref || "—")}</td><td>${esc(p.id.toUpperCase())}</td><td><button type="button" class="x-sbtn" data-act="rcptOpen" data-id="${p.id}">Receipt</button></td></tr>`).join("")}</tbody></table></div>` : (UI.payOnline ? `<p>No online payments yet. UPI payments you submit appear here.</p>` : `<p>No payments yet. Use Pay Fee next to a fee to pay by UPI.</p>`)}</section>
           <section class="section${UI.stab === "attendance" ? "" : " x-off"}" id="ps-att"><div class="head"><h2>Attendance</h2><p class="head__sub">${att.overall.P} present, ${att.overall.A} absent, ${att.overall.L} leave</p></div>
             ${att.months.length ? `<div class="pair"><div class="x-tw x-tw--s"><table><caption>By month</caption><thead><tr><th scope="col">Month</th><th scope="col">Present</th><th scope="col">Absent</th><th scope="col">Leave</th><th scope="col">Attendance</th></tr></thead><tbody>${att.months.map((m) => `<tr><th scope="row">${fmtM(m.month)}</th><td>${m.P}</td><td>${m.A}</td><td>${m.L}</td><td class="num">${pctTxt(m.pct)}</td></tr>`).join("")}</tbody></table></div>
               <div class="x-tw x-tw--s"><table><caption>Recent days</caption><thead><tr><th scope="col">Date</th><th scope="col">Status</th></tr></thead><tbody>${att.recent.map((r) => `<tr><th scope="row">${parseISO(r.date).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })}</th><td>${chipFor(r.status)}</td></tr>`).join("")}</tbody></table></div></div>` : `<p>No attendance recorded yet.</p>`}</section>
@@ -4142,7 +4174,7 @@
         claimReset() { UI.claim = null; UI.claimNote = ""; paint(); },
         fill(email, b) { UI.loginRole = b.dataset.role; paint(); const lf = document.querySelector('#v-dyn form[data-portal="login"]'); if (lf) { const em = lf.querySelector('[name="email"]') || lf.querySelector('[name="identifier"]'), pw = lf.querySelector('[name="password"]'); if (em) em.value = email; if (pw) pw.value = "Demo@1234"; const sb = lf.querySelector('button[type="submit"]'); if (sb) sb.focus(); } },
         tab(id) { Object.assign(UI, { tab: id, msg: "", edit: null, confirm: null, feeEdit: null, pay: null, rcpt: null, note: "", imp: null, impErr: "", impResult: null, view: null, showAad: false }); paint(`[data-act="tab"][data-id="${id}"]`); },
-        stab(id) { UI.stab = id; UI.msg = ""; paint(`[data-act="stab"][data-id="${id}"]`); },
+        stab(id) { UI.stab = id; UI.msg = ""; if (id !== "payments") UI.payOnline = false; paint(`[data-act="stab"][data-id="${id}"]`); },
         facDel(id) { const f = DB.removeFaculty(id); UI.confirm = null; UI.msg = `${f.name} removed from faculty.`; paint(); },
         stuNew() { Object.assign(UI, { edit: "new", msg: "", view: null }); paint(); },
         stuEdit(id) { Object.assign(UI, { edit: id, msg: "", view: null }); paint(); },
@@ -4166,6 +4198,11 @@
         feeDel(id) { DB.removeFee(id); UI.confirm = null; UI.msg = "Fee item removed."; paint(); },
         noticeDel(id) { DB.removeNotice(id); UI.confirm = null; UI.msg = "Notice removed."; paint(); },
         pmOpen(id) { const f = DB.myFees().find((x) => x.id === id); if (!f || !(f.balance > 0)) return; UI.msg = ""; UI.pm = { fee: id, mode: "full", amount: f.balance, step: "choose" }; paint(); },
+        pmOpenMode(id, b) { const f = DB.myFees().find((x) => x.id === id); if (!f || !(f.balance > 0)) return; const mode = b && b.dataset.mode === "partial" ? "partial" : "full"; UI.msg = ""; UI.pm = { fee: id, mode, amount: mode === "full" ? f.balance : "", step: "choose" }; paint(); },
+        feeYr(id) { UI.feeTab = String(id); UI.msg = ""; paint(); },
+        payOnline() { UI.payOnline = true; UI.stab = "payments"; UI.msg = ""; paint(); },
+        payAll() { UI.payOnline = false; paint(); },
+        admStuPays(id, b) { UI.payStu = id; UI.payOnline = !!(b && b.dataset.mode === "online"); UI.tab = "payments"; UI.msg = ""; paint(); },
         pmClose() { const id = UI.pm && UI.pm.fee; UI.pm = null; paint(`#v-dyn [data-act="pmOpen"][data-id="${id}"]`); },
         pmBack() { if (UI.pm) { UI.pm.step = "choose"; paint(); } },
         xExport(_, b) { b.disabled = true; b.innerHTML = IA_LOAD + " Preparing…"; UI.impErr = ""; return exportXlsx().then(({ file, counts }) => { UI.msg = `Downloaded ${file} · ${counts}.`; paint('#v-dyn [data-act="xExport"]'); }, (err) => { UI.msg = ""; UI.impErr = err.message; paint(); }); },
