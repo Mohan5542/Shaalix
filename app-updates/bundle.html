@@ -7,7 +7,7 @@
     <meta name="supported-color-schemes" content="light" />
     <title>Shaalix</title>
     <!--
-      Shaalix STUDENT APP — bundle 2.2.16.
+      Shaalix STUDENT APP — bundle 2.2.17.
       A purpose-built mobile app for students only (not the website):
       opens at the student sign-in, claim/register for first-time students,
       then the student's own account (overview, fees, payments, attendance,
@@ -73,23 +73,44 @@
       .chip--partial,.chip--upcoming{background:var(--amber-bg);color:var(--amber)}
       .chip--solid{background:var(--indigo);color:#fff}
       .muted{color:var(--text-2)} .small{font-size:13px} .tiny{font-size:12px;color:var(--text-3)}
-      .spin{width:20px;height:20px;border-radius:50%;border:2.5px solid var(--tint-2);border-top-color:var(--indigo);animation:bspin .8s linear infinite;display:inline-block;vertical-align:-4px}
-      @keyframes bspin{to{transform:rotate(360deg)}}
+      /* In-app loading indicator (2.2.17, user amendment): the same
+         approved icon animation as the splash, SMALL and FAST
+         (0.5 s cycle), replacing every old .spin spinner — account
+         loading, busy buttons, receipt preparation, the UPI QR box.
+         Purple #4338ca on light surfaces (default), white on
+         coloured/dark surfaces such as buttons; the dot stays
+         orange. No text, no bar. (The splash .icon-anim runs the
+         same keyframes at the full 1.5 s.) */
+      .ia-load{display:inline-flex;align-items:center;justify-content:center;color:#4338ca;animation:iaSceneFade .5s linear infinite}
+      .ia-load svg{display:block;width:34px;height:34px}
+      .ia-load .ia-cap{animation-duration:.5s}
+      .ia-load .ia-u{animation-duration:.5s}
+      .ia-load .ia-dot{animation-duration:.5s}
+      .btn .ia-load{color:#fff}
+      .btn .ia-load svg{width:20px;height:20px}
       .loading{display:flex;flex-direction:column;align-items:center;gap:12px;padding:56px 20px;color:var(--text-2);font-size:14px}
 
       /* ---------- splash: session check (2.2.14) + approved icon
-         animation (2.2.16) ----------
-         First paint of every cold start. Held until the stored
-         session is known, so the sign-in form never flashes for a
-         signed-in student. The loading animation is the user-approved
-         icon-only animation (preview/icon-loading-preview-v2.html,
-         approved 2026-11-27): the logo SYMBOL only — cap settles in,
-         the U draws itself, the orange dot pops — theme purple
-         #4338ca, dot #fb923c, transparent, no bar, no text, 1.5 s
-         loop, centred on the splash's navy gradient. (Class names
-         ia-prefixed: the app already uses .dot for attendance.) */
+         animation (2.2.16, amended 2.2.17) ----------
+         First paint of every cold start: the animation is the very
+         first thing shown — no static logo before it. Held until the
+         stored session is known AND one full animation play has
+         completed (boot gate, 1.5 s), so the destination never
+         appears mid-first-play and the sign-in form never flashes
+         for a signed-in student. The loading animation is the
+         user-approved icon-only animation
+         (preview/icon-loading-preview-v2.html, approved 2026-11-27):
+         the logo SYMBOL only — cap settles in, the U draws itself,
+         the orange dot pops — transparent, no bar, no text, 1.5 s
+         loop, centred on the splash's navy gradient. Colour rule
+         (user, 2026-11-27): the symbol adapts to its background via
+         currentColor — WHITE here on the app's purple/navy (the
+         website renders the same snippet purple on its light
+         background); the dot stays orange #fb923c in both. (Class
+         names ia-prefixed: the app already uses .dot for
+         attendance.) */
       .splash{min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(158deg,var(--navy-deep) 0%,var(--navy) 58%,var(--indigo) 135%);padding:24px calc(24px + env(safe-area-inset-right,0px)) calc(24px + env(safe-area-inset-bottom,0px)) calc(24px + env(safe-area-inset-left,0px))}
-      .icon-anim{animation:iaSceneFade 1.5s linear infinite}
+      .icon-anim{color:#fff;animation:iaSceneFade 1.5s linear infinite}
       @keyframes iaSceneFade{0%{opacity:0}5%{opacity:1}93%{opacity:1}100%{opacity:0}}
       .icon-anim svg{display:block;width:180px;height:180px}
       .ia-cap{animation:iaCapDrop 1.5s cubic-bezier(.3,.7,.3,1) infinite}
@@ -98,7 +119,7 @@
       @keyframes iaUDraw{0%,6%{stroke-dashoffset:100}48%,100%{stroke-dashoffset:0}}
       .ia-dot{transform-box:fill-box;transform-origin:center;animation:iaDotPop 1.5s ease-in-out infinite}
       @keyframes iaDotPop{0%,40%{transform:scale(0)}54%{transform:scale(1.18)}62%{transform:scale(1)}74%{transform:scale(1.12)}84%,100%{transform:scale(1)}}
-      @media (prefers-reduced-motion:reduce){.icon-anim,.ia-cap,.ia-u,.ia-dot{animation:none}}
+      @media (prefers-reduced-motion:reduce){.icon-anim,.ia-load,.ia-cap,.ia-u,.ia-dot{animation:none}}
 
       /* ---------- auth screens ---------- */
       .auth{min-height:100dvh;display:flex;flex-direction:column;background:var(--surface)}
@@ -280,8 +301,8 @@
     <section id="view-splash" class="splash">
       <div class="icon-anim" role="img" aria-label="Shaalix">
         <svg viewBox="0 0 240 240" aria-hidden="true">
-          <polygon class="ia-cap" points="119.8,66 188.2,98.3 119.8,130.5 51.7,98.3" fill="#4338ca"/>
-          <path class="ia-u" pathLength="100" d="M80.2,112.7 V147.6 A39.7,27.9 0 0 0 159.7,147.6 V112.7" fill="none" stroke="#4338ca" stroke-width="14.2"/>
+          <polygon class="ia-cap" points="119.8,66 188.2,98.3 119.8,130.5 51.7,98.3" fill="currentColor"/>
+          <path class="ia-u" pathLength="100" d="M80.2,112.7 V147.6 A39.7,27.9 0 0 0 159.7,147.6 V112.7" fill="none" stroke="currentColor" stroke-width="14.2"/>
           <circle class="ia-dot" cx="188.5" cy="148.8" r="14.4" fill="#fb923c"/>
         </svg>
       </div>
@@ -313,7 +334,7 @@
         </form>
         <p class="auth__alt">New student, no account yet?<br /><button type="button" id="go-claim">Claim your account</button></p>
       </div>
-      <p class="auth__foot">Shaalix for students · Your college manages records on the Shaalix website.<br />App version 2.2.16</p>
+      <p class="auth__foot">Shaalix for students · Your college manages records on the Shaalix website.<br />App version 2.2.17</p>
     </section>
 
     <!-- ======================= AUTH: CLAIM ======================= -->
@@ -382,7 +403,7 @@
           <button class="btn" id="cl-done" type="button">Go to sign in</button>
         </div>
       </div>
-      <p class="auth__foot">Shaalix for students · App version 2.2.16</p>
+      <p class="auth__foot">Shaalix for students · App version 2.2.17</p>
     </section>
 
     <!-- ======================= APP SHELL ======================= -->
@@ -449,7 +470,7 @@
         <p><span class="chip chip--solid" id="wait-chip">Pending approval</span></p>
         <button class="btn btn--ghost" id="wait-logout" type="button">Log out</button>
       </div>
-      <p class="auth__foot">Shaalix for students · App version 2.2.16</p>
+      <p class="auth__foot">Shaalix for students · App version 2.2.17</p>
     </section>
 
     <div id="sheet-root"></div>
@@ -485,7 +506,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 //# sourceMappingURL=/sm/26b4b0d0b1e283d6b3ec9857ac597d7a60c76ac17be1ef4c965f03086de426bb.map
 </script>
     <script>
-      window.__BUNDLE_VERSION__ = "2.2.16";
+      window.__BUNDLE_VERSION__ = "2.2.17";
       /* OTA health signal (2.2.15): this bundle's own code is running,
          so the load is healthy — clear the boot loader's watchdog flag
          NOW, in the first bundle-owned script, instead of leaving it
@@ -549,9 +570,12 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     var t = $("toast"); t.textContent = msg; t.classList.add("on");
     clearTimeout(t._h); t._h = setTimeout(function () { t.classList.remove("on"); }, 3400);
   }
+  /* Small fast in-app loader: the approved icon animation at 0.5 s
+     (see .ia-load CSS). Used by every in-app loading state. */
+  var IA_LOAD = '<span class="ia-load" role="status" aria-label="Loading"><svg viewBox="0 0 240 240" aria-hidden="true"><polygon class="ia-cap" points="119.8,66 188.2,98.3 119.8,130.5 51.7,98.3" fill="currentColor"/><path class="ia-u" pathLength="100" d="M80.2,112.7 V147.6 A39.7,27.9 0 0 0 159.7,147.6 V112.7" fill="none" stroke="currentColor" stroke-width="14.2"/><circle class="ia-dot" cx="188.5" cy="148.8" r="14.4" fill="#fb923c"/></svg></span>';
   function setBusy(btn, busy, label) {
     if (!btn) return;
-    if (busy) { btn._t = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<span class="spin"></span> ' + (label || "Please wait…"); }
+    if (busy) { btn._t = btn.innerHTML; btn.disabled = true; btn.innerHTML = IA_LOAD + ' ' + (label || "Please wait…"); }
     else { btn.disabled = false; if (btn._t) btn.innerHTML = btn._t; }
   }
   function fieldErr(inputId, errId, msg) {
@@ -1161,7 +1185,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     var h = "<h2>Fee receipt</h2><p class=\"sub\">" + esc(S.college ? S.college.name : "") + "</p><dl style=\"margin:0\">" +
       rows.map(function (r) { return '<div class="kv"><dt>' + esc(r[0]) + "</dt><dd>" + esc(r[1]) + "</dd></div>"; }).join("") + "</dl>";
     if (p.receipt_path) {
-      h += '<p style="margin:16px 0 0"><span class="spin"></span> <span class="small muted">Preparing your receipt file…</span></p>';
+      h += '<p style="margin:16px 0 0">' + IA_LOAD + ' <span class="small muted">Preparing your receipt file…</span></p>';
       openSheet(h);
       var url = await signedUrl("generated", p.receipt_path);
       var cur = $("sheet-root");
@@ -1282,7 +1306,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     var f = payFeeById(payCtx.feeId); if (!f) return;
     var o = feeOut(f), uri = upiUri(payCtx.amount, o.label);
     var h = "<h2>Pay by UPI</h2><p class=\"sub\">Step 2 of 2 · " + esc(o.label) + "</p>";
-    h += '<div class="qrbox" id="pay-qr"><span class="small muted">Loading QR code…</span></div>';
+    h += '<div class="qrbox" id="pay-qr">' + IA_LOAD + '</div>';
     h += '<p class="amtbig">' + inr(payCtx.amount) + "</p>";
     h += '<p style="text-align:center;margin:0 0 4px">to <b>' + esc(S.college.name) + "</b></p>";
     h += '<p class="small muted" style="text-align:center;margin:0 0 12px">UPI ID ' + esc(collegeUpiId()) + "</p>";
@@ -1785,7 +1809,18 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   /* ---------- boot ---------- */
   async function boot() {
     wire();
-    if (!sb) { showView("view-login"); var er = $("login-err"); er.textContent = netFail(); er.classList.add("on"); return; }
+    /* One-full-play gate (2.2.17): the destination screen is never
+       revealed until the splash animation has played through once —
+       1.5 s from boot start — even when the session decision lands
+       sooner; if the decision takes longer, the animation simply
+       keeps looping until it lands. Nothing of the app UI appears
+       mid-first-play. */
+    var bootT0 = Date.now();
+    function splashGate() {
+      var left = 1500 - (Date.now() - bootT0);
+      return left > 0 ? new Promise(function (r) { setTimeout(r, left); }) : Promise.resolve();
+    }
+    if (!sb) { await splashGate(); showView("view-login"); var er = $("login-err"); er.textContent = netFail(); er.classList.add("on"); return; }
     /* Splash first (2.2.14): the splash is the markup default and is
        held until the stored session is known. getSession() resolves
        from the locally persisted session — no network round-trip is
@@ -1800,7 +1835,8 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
         var prof = await fetchProfile(session.user.id);
         if (prof && prof.role === "student") {
           S.user = session.user; S.profile = prof;
-          $("screen-home").innerHTML = '<div class="loading"><span class="spin"></span>Loading your account…</div>';
+          $("screen-home").innerHTML = '<div class="loading">' + IA_LOAD + '</div>';
+          await splashGate();
           showView("view-app");
           await loadStudentData();
           return;
@@ -1808,6 +1844,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
         await sb.auth.signOut();
       }
     } catch (e) { /* fall through to the sign-in screen */ }
+    await splashGate();
     showView("view-login");
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);

@@ -1,8 +1,8 @@
 {
-  "version": "2.2.16",
+  "version": "2.2.17",
   "bundle": "bundle.html",
-  "sha256": "a4356abadce31ae39cdee2a1e23d64026037a160072e42eaee52b18a4edd1673",
-  "size": 485601,
+  "sha256": "5e54ce54e3a4917cf8095be71cac24c65d8a6952157ba1fb41020b9f0ce1f39e",
+  "size": 487908,
   "publishedAt": "2026-11-27",
-  "notes": "New loading animation: the Shaalix icon animates while the app opens."
+  "notes": "The loading icon now shows in white and plays fully before the app opens. Loading spots inside the app use the same icon, small and fast."
 }
