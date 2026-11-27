@@ -1,8 +1,8 @@
 {
-  "version": "2.2.14",
+  "version": "2.2.15",
   "bundle": "bundle.html",
-  "sha256": "033a94d13405aff7f6219aca5bfd37a28ec02a43d3c36420b8d400a7ade0a356",
-  "size": 484081,
+  "sha256": "08a84809c8ac3456a340d8b129e98a4e9cb53d541d85663c611c4e7a0b05d6e1",
+  "size": 485425,
   "publishedAt": "2026-11-27",
-  "notes": "Opening the app now goes straight to your account when you are already signed in, with a short loading screen instead of the sign-in screen flashing first."
+  "notes": "Fixes the repeated update: the app now stays on the new version after updating, instead of offering the same update again on every open."
 }

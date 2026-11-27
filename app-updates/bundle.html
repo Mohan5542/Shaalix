@@ -7,7 +7,7 @@
     <meta name="supported-color-schemes" content="light" />
     <title>Shaalix</title>
     <!--
-      Shaalix STUDENT APP — bundle 2.2.14.
+      Shaalix STUDENT APP — bundle 2.2.15.
       A purpose-built mobile app for students only (not the website):
       opens at the student sign-in, claim/register for first-time students,
       then the student's own account (overview, fees, payments, attendance,
@@ -306,7 +306,7 @@
         </form>
         <p class="auth__alt">New student, no account yet?<br /><button type="button" id="go-claim">Claim your account</button></p>
       </div>
-      <p class="auth__foot">Shaalix for students · Your college manages records on the Shaalix website.<br />App version 2.2.14</p>
+      <p class="auth__foot">Shaalix for students · Your college manages records on the Shaalix website.<br />App version 2.2.15</p>
     </section>
 
     <!-- ======================= AUTH: CLAIM ======================= -->
@@ -375,7 +375,7 @@
           <button class="btn" id="cl-done" type="button">Go to sign in</button>
         </div>
       </div>
-      <p class="auth__foot">Shaalix for students · App version 2.2.14</p>
+      <p class="auth__foot">Shaalix for students · App version 2.2.15</p>
     </section>
 
     <!-- ======================= APP SHELL ======================= -->
@@ -442,7 +442,7 @@
         <p><span class="chip chip--solid" id="wait-chip">Pending approval</span></p>
         <button class="btn btn--ghost" id="wait-logout" type="button">Log out</button>
       </div>
-      <p class="auth__foot">Shaalix for students · App version 2.2.14</p>
+      <p class="auth__foot">Shaalix for students · App version 2.2.15</p>
     </section>
 
     <div id="sheet-root"></div>
@@ -478,7 +478,18 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 //# sourceMappingURL=/sm/26b4b0d0b1e283d6b3ec9857ac597d7a60c76ac17be1ef4c965f03086de426bb.map
 </script>
     <script>
-      window.__BUNDLE_VERSION__ = "2.2.14";
+      window.__BUNDLE_VERSION__ = "2.2.15";
+      /* OTA health signal (2.2.15): this bundle's own code is running,
+         so the load is healthy — clear the boot loader's watchdog flag
+         NOW, in the first bundle-owned script, instead of leaving it
+         to the OTA client at the very end of the document (+2.5 s).
+         The old timing left the flag set long enough that closing the
+         app soon after an update made the boot loader roll back to
+         the previous bundle on the next start, so the same update was
+         offered again on every open (the 2.2.14 update loop). A
+         bundle too corrupt to reach this script still never clears
+         the flag, so the rollback protection stands. */
+      try { localStorage.removeItem("shaalix_ota_boot_pending"); } catch (e) {}
     </script>
     <script>
 /* ================= Shaalix student app — application logic ================= */
@@ -1825,10 +1836,19 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   var VERSION = window.__BUNDLE_VERSION__ || "0.0.0";
   var BASE = "https://www.shaalix.com/app-updates/";
 
-  /* Watchdog: this bundle parsed and its scripts are running, so after a
-     short grace period tell the boot loader the load was healthy. If the
-     bundle were corrupt, this timer would never run and the boot loader
-     would roll back on the next start. */
+  /* Watchdog: this bundle's scripts are running, so tell the boot
+     loader the load was healthy — IMMEDIATELY, not after a grace
+     period. The bundle's version-stamp script has already cleared the
+     flag at first execution; this is a second, independent clear.
+     (The pre-2.2.15 behaviour — clearing only after 2.5 s — left the
+     flag set long enough that closing the app soon after an update
+     made the boot loader roll back to the previous bundle on the
+     next start, and the same update was offered again on every open:
+     the 2.2.14 update loop.) If the bundle were corrupt, neither
+     clear would run and the boot loader would still roll back on the
+     next start. The delayed re-clear below is kept only as a
+     backstop. */
+  try { localStorage.removeItem("shaalix_ota_boot_pending"); } catch (e) {}
   setTimeout(function () {
     try { localStorage.removeItem("shaalix_ota_boot_pending"); } catch (e) {}
   }, 2500);
