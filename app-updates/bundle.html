@@ -7,7 +7,7 @@
     <meta name="supported-color-schemes" content="light" />
     <title>Shaalix</title>
     <!--
-      Shaalix STUDENT APP — bundle 2.2.15.
+      Shaalix STUDENT APP — bundle 2.2.16.
       A purpose-built mobile app for students only (not the website):
       opens at the student sign-in, claim/register for first-time students,
       then the student's own account (overview, fees, payments, attendance,
@@ -77,23 +77,28 @@
       @keyframes bspin{to{transform:rotate(360deg)}}
       .loading{display:flex;flex-direction:column;align-items:center;gap:12px;padding:56px 20px;color:var(--text-2);font-size:14px}
 
-      /* ---------- splash: session check (2.2.14) ----------
-         First paint of every cold start. The logo itself loads —
-         fade/scale entrance, a soft pulse, a shine sweeping across
-         it — over a slim loading bar, on the auth hero's navy
-         gradient. Held until the stored session is known, so the
-         sign-in form never flashes for a signed-in student. */
+      /* ---------- splash: session check (2.2.14) + approved icon
+         animation (2.2.16) ----------
+         First paint of every cold start. Held until the stored
+         session is known, so the sign-in form never flashes for a
+         signed-in student. The loading animation is the user-approved
+         icon-only animation (preview/icon-loading-preview-v2.html,
+         approved 2026-11-27): the logo SYMBOL only — cap settles in,
+         the U draws itself, the orange dot pops — theme purple
+         #4338ca, dot #fb923c, transparent, no bar, no text, 1.5 s
+         loop, centred on the splash's navy gradient. (Class names
+         ia-prefixed: the app already uses .dot for attendance.) */
       .splash{min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(158deg,var(--navy-deep) 0%,var(--navy) 58%,var(--indigo) 135%);padding:24px calc(24px + env(safe-area-inset-right,0px)) calc(24px + env(safe-area-inset-bottom,0px)) calc(24px + env(safe-area-inset-left,0px))}
-      .splash__logo{position:relative;width:min(66%,260px);overflow:hidden;border-radius:8px;animation:splashIn .55s ease-out both}
-      .splash__logo .auth__brand{width:100%;margin:0;animation:splashPulse 2.8s ease-in-out .55s infinite}
-      .splash__shine{position:absolute;top:-12%;bottom:-12%;left:0;width:42%;pointer-events:none;background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,.38),rgba(255,255,255,0));transform:translateX(-140%) skewX(-14deg);animation:splashShine 2.3s ease-in-out infinite}
-      .splash__bar{width:132px;height:3.5px;border-radius:3px;background:rgba(255,255,255,.18);margin-top:30px;overflow:hidden}
-      .splash__fill{display:block;height:100%;width:42%;border-radius:3px;background:linear-gradient(90deg,#ffffff,#fb923c);animation:splashBar 1.5s ease-in-out infinite}
-      @keyframes splashIn{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:scale(1)}}
-      @keyframes splashPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.025)}}
-      @keyframes splashShine{0%{transform:translateX(-140%) skewX(-14deg)}55%,100%{transform:translateX(330%) skewX(-14deg)}}
-      @keyframes splashBar{0%{transform:translateX(-110%)}100%{transform:translateX(340%)}}
-      @media (prefers-reduced-motion:reduce){.splash__logo,.splash__logo .auth__brand,.splash__shine,.splash__fill{animation:none}}
+      .icon-anim{animation:iaSceneFade 1.5s linear infinite}
+      @keyframes iaSceneFade{0%{opacity:0}5%{opacity:1}93%{opacity:1}100%{opacity:0}}
+      .icon-anim svg{display:block;width:180px;height:180px}
+      .ia-cap{animation:iaCapDrop 1.5s cubic-bezier(.3,.7,.3,1) infinite}
+      @keyframes iaCapDrop{0%{opacity:0;transform:translateY(-16px)}10%{opacity:1}26%{transform:translateY(2px)}34%,100%{opacity:1;transform:translateY(0)}}
+      .ia-u{stroke-dasharray:100;stroke-dashoffset:0;animation:iaUDraw 1.5s cubic-bezier(.5,.05,.3,1) infinite}
+      @keyframes iaUDraw{0%,6%{stroke-dashoffset:100}48%,100%{stroke-dashoffset:0}}
+      .ia-dot{transform-box:fill-box;transform-origin:center;animation:iaDotPop 1.5s ease-in-out infinite}
+      @keyframes iaDotPop{0%,40%{transform:scale(0)}54%{transform:scale(1.18)}62%{transform:scale(1)}74%{transform:scale(1.12)}84%,100%{transform:scale(1)}}
+      @media (prefers-reduced-motion:reduce){.icon-anim,.ia-cap,.ia-u,.ia-dot{animation:none}}
 
       /* ---------- auth screens ---------- */
       .auth{min-height:100dvh;display:flex;flex-direction:column;background:var(--surface)}
@@ -273,11 +278,13 @@
   <body>
     <!-- ======================= SPLASH: SESSION CHECK ======================= -->
     <section id="view-splash" class="splash">
-      <div class="splash__logo">
-        <div class="auth__brand" role="img" aria-label="Shaalix"></div>
-        <span class="splash__shine" aria-hidden="true"></span>
+      <div class="icon-anim" role="img" aria-label="Shaalix">
+        <svg viewBox="0 0 240 240" aria-hidden="true">
+          <polygon class="ia-cap" points="119.8,66 188.2,98.3 119.8,130.5 51.7,98.3" fill="#4338ca"/>
+          <path class="ia-u" pathLength="100" d="M80.2,112.7 V147.6 A39.7,27.9 0 0 0 159.7,147.6 V112.7" fill="none" stroke="#4338ca" stroke-width="14.2"/>
+          <circle class="ia-dot" cx="188.5" cy="148.8" r="14.4" fill="#fb923c"/>
+        </svg>
       </div>
-      <div class="splash__bar" aria-hidden="true"><span class="splash__fill"></span></div>
     </section>
 
     <!-- ======================= AUTH: LOGIN ======================= -->
@@ -306,7 +313,7 @@
         </form>
         <p class="auth__alt">New student, no account yet?<br /><button type="button" id="go-claim">Claim your account</button></p>
       </div>
-      <p class="auth__foot">Shaalix for students · Your college manages records on the Shaalix website.<br />App version 2.2.15</p>
+      <p class="auth__foot">Shaalix for students · Your college manages records on the Shaalix website.<br />App version 2.2.16</p>
     </section>
 
     <!-- ======================= AUTH: CLAIM ======================= -->
@@ -375,7 +382,7 @@
           <button class="btn" id="cl-done" type="button">Go to sign in</button>
         </div>
       </div>
-      <p class="auth__foot">Shaalix for students · App version 2.2.15</p>
+      <p class="auth__foot">Shaalix for students · App version 2.2.16</p>
     </section>
 
     <!-- ======================= APP SHELL ======================= -->
@@ -442,7 +449,7 @@
         <p><span class="chip chip--solid" id="wait-chip">Pending approval</span></p>
         <button class="btn btn--ghost" id="wait-logout" type="button">Log out</button>
       </div>
-      <p class="auth__foot">Shaalix for students · App version 2.2.15</p>
+      <p class="auth__foot">Shaalix for students · App version 2.2.16</p>
     </section>
 
     <div id="sheet-root"></div>
@@ -478,7 +485,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 //# sourceMappingURL=/sm/26b4b0d0b1e283d6b3ec9857ac597d7a60c76ac17be1ef4c965f03086de426bb.map
 </script>
     <script>
-      window.__BUNDLE_VERSION__ = "2.2.15";
+      window.__BUNDLE_VERSION__ = "2.2.16";
       /* OTA health signal (2.2.15): this bundle's own code is running,
          so the load is healthy — clear the boot loader's watchdog flag
          NOW, in the first bundle-owned script, instead of leaving it

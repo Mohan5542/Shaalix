@@ -1,8 +1,8 @@
 {
-  "version": "2.2.15",
+  "version": "2.2.16",
   "bundle": "bundle.html",
-  "sha256": "08a84809c8ac3456a340d8b129e98a4e9cb53d541d85663c611c4e7a0b05d6e1",
-  "size": 485425,
+  "sha256": "a4356abadce31ae39cdee2a1e23d64026037a160072e42eaee52b18a4edd1673",
+  "size": 485601,
   "publishedAt": "2026-11-27",
-  "notes": "Fixes the repeated update: the app now stays on the new version after updating, instead of offering the same update again on every open."
+  "notes": "New loading animation: the Shaalix icon animates while the app opens."
 }
