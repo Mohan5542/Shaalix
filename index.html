@@ -376,25 +376,50 @@
       .x-imp table.x-raw td{white-space:nowrap;max-width:260px;overflow:hidden;text-overflow:ellipsis}
       @media (max-width:600px){.x-modal{padding:8px;align-items:end}.x-modal__box{max-height:calc(100dvh - 16px)}}
       @media (max-width:600px){.x-bar>.x-f{flex:1 1 100%;width:100%}.x-bar input,.x-bar select{width:100%}.x-creds .x-tw table{min-width:0}.x-creds .x-tw td,.x-creds .x-tw th{white-space:normal}}
-      /* Initial loading overlay (2026-11-27): the user-approved icon-only
-         loading animation (same as the student app splash) — the logo
-         SYMBOL only: cap settles in, the U draws itself, the orange dot
-         pops; theme purple #4338ca, dot #fb923c, transparent animation
+      /* Initial loading overlay: the user-approved icon-only loading
+         animation (same as the student app splash) — the logo SYMBOL
+         only: cap settles in, the U draws itself, the orange dot pops;
+         theme purple #4338ca, dot #fb923c, transparent animation
          centred on the site's own background (var(--x-surface)); no
-         bar, no text; 1.5s loop. Removed by the script after the
-         overlay as soon as the first view renders (5s failsafe). */
+         bar, no text; ONE play is 1s on the website.
+         Gate (removal script after the overlay): the site is revealed
+         only when the first view has rendered AND one full play has
+         completed — the fade starts on a cycle boundary, never
+         mid-play; if rendering takes longer, the animation loops
+         seamlessly and the reveal waits for the current play to end.
+         (The first version, 2026-11-27, hid the overlay the moment the
+         first view rendered: measured on the live site, the fade began
+         ~280ms into the 1.5s play — U barely drawn, dot not yet popped
+         — the "loads halfway and stops" the user reported.) */
       .x-boot{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;background:var(--x-surface);transition:opacity .4s ease}
       .x-boot--done{opacity:0;pointer-events:none}
-      .x-boot .icon-anim{animation:iaSceneFade 1.5s linear infinite}
+      .x-boot .icon-anim{animation:iaSceneFade 1s linear infinite}
       @keyframes iaSceneFade{0%{opacity:0}5%{opacity:1}93%{opacity:1}100%{opacity:0}}
       .x-boot .icon-anim svg{display:block;width:168px;height:168px}
-      .x-boot .ia-cap{animation:iaCapDrop 1.5s cubic-bezier(.3,.7,.3,1) infinite}
+      .x-boot .ia-cap{animation:iaCapDrop 1s cubic-bezier(.3,.7,.3,1) infinite}
       @keyframes iaCapDrop{0%{opacity:0;transform:translateY(-16px)}10%{opacity:1}26%{transform:translateY(2px)}34%,100%{opacity:1;transform:translateY(0)}}
-      .x-boot .ia-u{stroke-dasharray:100;stroke-dashoffset:0;animation:iaUDraw 1.5s cubic-bezier(.5,.05,.3,1) infinite}
+      .x-boot .ia-u{stroke-dasharray:100;stroke-dashoffset:0;animation:iaUDraw 1s cubic-bezier(.5,.05,.3,1) infinite}
       @keyframes iaUDraw{0%,6%{stroke-dashoffset:100}48%,100%{stroke-dashoffset:0}}
-      .x-boot .ia-dot{transform-box:fill-box;transform-origin:center;animation:iaDotPop 1.5s ease-in-out infinite}
+      .x-boot .ia-dot{transform-box:fill-box;transform-origin:center;animation:iaDotPop 1s ease-in-out infinite}
       @keyframes iaDotPop{0%,40%{transform:scale(0)}54%{transform:scale(1.18)}62%{transform:scale(1)}74%{transform:scale(1.12)}84%,100%{transform:scale(1)}}
       @media (prefers-reduced-motion:reduce){.x-boot .icon-anim,.x-boot .ia-cap,.x-boot .ia-u,.x-boot .ia-dot{animation:none}}
+      /* Small loader (2026-11-27): the same icon animation at small
+         size in a fast 0.5s loop — every small loading state on the
+         site (portal waits, busy submit buttons, the QR placeholder),
+         mirroring the student app's .ia-load. Purple on light
+         surfaces, white inside filled .x-btn buttons, the surface's
+         own colour inside ghost buttons; the dot stays orange.
+         Keyframes are the boot overlay's (above). */
+      .ia-load{display:inline-flex;align-items:center;justify-content:center;color:#4338ca;vertical-align:-.3em;animation:iaSceneFade .5s linear infinite}
+      .ia-load svg{display:block;width:30px;height:30px}
+      .ia-load .ia-cap{animation:iaCapDrop .5s cubic-bezier(.3,.7,.3,1) infinite}
+      .ia-load .ia-u{stroke-dasharray:100;stroke-dashoffset:0;animation:iaUDraw .5s cubic-bezier(.5,.05,.3,1) infinite}
+      .ia-load .ia-dot{transform-box:fill-box;transform-origin:center;animation:iaDotPop .5s ease-in-out infinite}
+      .x-btn .ia-load{color:#fff}
+      .x-btn--ghost .ia-load{color:inherit}
+      button .ia-load svg{width:18px;height:18px}
+      .x-qr__img .ia-load svg{width:46px;height:46px}
+      @media (prefers-reduced-motion:reduce){.ia-load,.ia-load .ia-cap,.ia-load .ia-u,.ia-load .ia-dot{animation:none}}
     </style>
   </head>
   <body>
@@ -408,22 +433,46 @@
       </div>
     </div>
     <script>
-      /* Loading overlay removal: fade out as soon as the router has a
-         view on screen; hard failsafe so it can never stick. */
+      /* Loading overlay gate: reveal the site only when BOTH the
+         router has rendered its first view AND the logo animation has
+         completed one full 1s play; the fade starts on a cycle
+         boundary, never mid-play. Play progress is read from the
+         animation itself (Web Animations currentTime — the clock that
+         actually drives what the user sees; it does not advance while
+         the main thread is blocked parsing, which is exactly when the
+         old gate fired). If rendering takes longer than one play, the
+         animation loops and the reveal waits for the end of the
+         current play. 6s wall-clock failsafe so it can never stick. */
       (function () {
         var boot = document.getElementById("x-boot");
         if (!boot) return;
-        var done = false;
+        var CYCLE = 1000, TOL = 120;
+        var t0 = performance.now();
+        var done = false, scheduled = false;
         function hide() {
           if (done) return;
           done = true;
           boot.classList.add("x-boot--done");
           setTimeout(function () { if (boot.parentNode) boot.parentNode.removeChild(boot); }, 450);
         }
+        function playedMs() {
+          var cap = boot.querySelector(".ia-cap");
+          var a = cap && cap.getAnimations ? cap.getAnimations()[0] : null;
+          return a && typeof a.currentTime === "number" ? a.currentTime : performance.now() - t0;
+        }
         var iv = setInterval(function () {
-          if (document.querySelector(".x-view:not([hidden])")) { clearInterval(iv); hide(); }
-        }, 100);
-        setTimeout(function () { clearInterval(iv); hide(); }, 5000);
+          if (!document.querySelector(".x-view:not([hidden])")) return;
+          var played = playedMs();
+          if (played < CYCLE) return;
+          var into = played % CYCLE;
+          if (into <= TOL) { clearInterval(iv); hide(); return; }
+          if (!scheduled) {
+            scheduled = true;
+            clearInterval(iv);
+            setTimeout(hide, CYCLE - into);
+          }
+        }, 80);
+        setTimeout(function () { clearInterval(iv); hide(); }, 6000);
       })();
     </script>
     <div class="page x-wide" id="top">
@@ -3021,6 +3070,10 @@
       });
       const psel = (label, nm, opts, val = "", attrs = "", full = false) => `<label class="x-f${full ? " x-f--full" : ""}">${label}<select name="${nm}" ${attrs}>${opts.map((o) => { const [v, l] = Array.isArray(o) ? o : [o, o]; return `<option value="${esc(v)}"${String(v) === String(val) ? " selected" : ""}>${esc(l)}</option>`; }).join("")}</select><small class="x-err"></small></label>`;
       const formErr = `<p class="x-err" data-err="_form" role="alert"></p>`;
+      /* Small loader markup (2026-11-27): the icon loading animation
+         (see the .ia-load CSS) — every small loading state on the site
+         uses it: portal waits, busy submit buttons, the QR placeholder. */
+      const IA_LOAD = `<span class="ia-load" role="status" aria-label="Loading"><svg viewBox="0 0 240 240" aria-hidden="true"><polygon class="ia-cap" points="119.8,66 188.2,98.3 119.8,130.5 51.7,98.3" fill="currentColor"/><path class="ia-u" pathLength="100" d="M80.2,112.7 V147.6 A39.7,27.9 0 0 0 159.7,147.6 V112.7" fill="none" stroke="currentColor" stroke-width="14.2"/><circle class="ia-dot" cx="188.5" cy="148.8" r="14.4" fill="#fb923c"/></svg></span>`;
       const okMsg = () => `<p class="x-ok" role="status">${esc(UI.msg)}</p>`;
       const chipFor = (s) => ({ Due: `<span class="chip chip--solid">Due</span>`, Partial: `<span class="chip">Partial</span>`, Paid: `<span class="chip">Paid</span>`, Upcoming: `<span class="chip">Upcoming</span>`, pending: `<span class="chip chip--solid">Pending approval</span>`, approved: `<span class="chip">Approved</span>`, rejected: `<span class="chip">Rejected</span>`, P: `<span class="chip">Present</span>`, A: `<span class="chip chip--solid">Absent</span>`, L: `<span class="chip">Leave</span>` })[s] || esc(s);
       const tabs = (list, cur, act, label) => `<div class="x-tabs" role="tablist" aria-label="${label}">${list.map(([k, l]) => `<button type="button" class="x-tab" role="tab" id="tab-${act}-${k}" aria-selected="${k === cur}" tabindex="${k === cur ? 0 : -1}" data-act="${act}" data-id="${k}">${l}</button>`).join("")}</div>`;
@@ -3293,7 +3346,7 @@
       ROUTES["/portal/owner"] = () => {
         ensureOwner();
         const v = DB.ownerState(), head = portalCrumbs("Owner console") + titleHero("Shaalix Portal · Demo", "Platform owner", "New colleges open on Shaalix only after you approve them here.") + demoNote;
-        if (!v.ready) return void dyn(head + `<p class="x-note" role="status">Loading the owner console…</p>`);
+        if (!v.ready) return void dyn(head + `<p class="x-note" role="status">${IA_LOAD} Loading the owner console…</p>`);
         if (v.user) {
           const prow = (r) => `<tr><th scope="row">${esc(r.name)}<small>${esc(r.code)} · ${esc(r.type || "")}</small></th><td>${esc(r.city)}, ${esc(r.state)}</td><td>${esc(r.admin ? r.admin.display_name || "" : "—")}<small>${esc(r.admin ? r.admin.email || "" : "")}</small></td><td>${esc(r.phone || "—")}</td><td>${r.created ? fmtD(r.created) : "—"}</td><td><div class="x-acts">${UI.oConfirm === "a:" + r.id ? `<button type="button" class="x-sbtn x-sbtn--warn" data-act="ownerApprove" data-id="${r.id}">Confirm approve</button><button type="button" class="x-sbtn" data-act="ownerConfirmCancel">Cancel</button>` : UI.oConfirm === "r:" + r.id ? `<button type="button" class="x-sbtn x-sbtn--warn" data-act="ownerReject" data-id="${r.id}">Confirm reject</button><button type="button" class="x-sbtn" data-act="ownerConfirmCancel">Cancel</button>` : `<button type="button" class="x-sbtn" data-act="ownerApprove" data-id="${r.id}">Approve</button><button type="button" class="x-sbtn" data-act="ownerReject" data-id="${r.id}">Reject</button>`}</div></td></tr>`;
           return void dyn(head + `<div class="x-panel"><div class="x-phead"><div><p class="x-kicker">Platform owner</p><h2>${esc(v.user.name || "Owner")}</h2><p>Signed in as ${esc(v.user.email)}</p></div><div class="x-acts"><button type="button" class="x-sbtn" data-act="ownerLogout">Log out</button></div></div>${UI.oMsg ? `<p class="x-ok" role="status">${esc(UI.oMsg)}</p>` : ""}</div>
@@ -3497,7 +3550,7 @@
               <div><h3>Import Data</h3><p>Excel files only (.xlsx or .xls). You see a full preview before anything changes.</p><div class="x-acts x-acts--card"><label class="x-btn x-file">Import Data<input type="file" class="x-sr" accept=".xlsx,.xls" data-import aria-label="Choose an Excel file to import" /></label><button type="button" class="x-sbtn" data-act="xTemplate">Download template</button></div></div>
             </div>
             <p class="x-err" data-err="_form" role="alert">${esc(UI.impErr)}</p>${okMsg()}
-            ${UI.impBusy ? `<p class="x-note" role="status">Reading the file…</p>` : ""}${UI.impResult ? importResult(UI.impResult) : ""}${r ? importPreview(r) : ""}`;
+            ${UI.impBusy ? `<p class="x-note" role="status">${IA_LOAD} Reading the file…</p>` : ""}${UI.impResult ? importResult(UI.impResult) : ""}${r ? importPreview(r) : ""}`;
         },
         notices() {
           const list = DB.getNotices();
@@ -3696,7 +3749,7 @@
             ${formErr}<div class="x-acts"><button class="x-btn" type="submit">Pay</button><button type="button" class="x-sbtn" data-act="pmClose">Cancel</button></div></form>`;
         } else if (pm.step === "qr") {
           const uri = upiUri(pm.amount, f.label, st.roll, college.name, upiId);
-          body = `<div class="x-qr"><div class="x-qr__img" id="pm-qr" role="img" aria-label="UPI QR code to pay ${inr(pm.amount)} to ${esc(college.name)}" data-uri="${esc(uri)}" data-upi="${esc(upiId)}"><span class="fineprint">Loading QR code…</span></div>
+          body = `<div class="x-qr"><div class="x-qr__img" id="pm-qr" role="img" aria-label="UPI QR code to pay ${inr(pm.amount)} to ${esc(college.name)}" data-uri="${esc(uri)}" data-upi="${esc(upiId)}"><span class="fineprint">${IA_LOAD} Loading QR code…</span></div>
               <p class="x-qr__amt" data-pm-amount>${inr(pm.amount)}</p><p class="x-qr__to">to <b>${esc(college.name)}</b><br /><span class="muted">UPI ID ${esc(upiId)}</span></p>
               <p class="fineprint">Scan with any UPI app: Google Pay, PhonePe, Paytm or BHIM. On a phone, <a class="link" href="${esc(uri)}">open your UPI app</a>.</p></div>
             <form class="x-form" data-portal="pmConfirm" novalidate aria-label="Payment details"><h3 class="x-f--full">After paying, enter the payment details</h3>
@@ -4059,7 +4112,24 @@
         e.preventDefault(); clearErrs(f);
         const empty = [...f.querySelectorAll("[required]")].filter((el) => !String(el.value).trim());
         if (empty.length) { empty.forEach((el) => fieldErr(f, el.name, "Required.")); empty[0].focus(); return; }
-        try { const r = FORMS[k](f, Object.fromEntries(new FormData(f))); if (r && typeof r.then === "function") r.catch((err) => { const el = fieldErr(f, err.field, err.message); (el || f.querySelector("button[type=submit]")).focus(); }); }
+        try {
+          const r = FORMS[k](f, Object.fromEntries(new FormData(f)));
+          if (r && typeof r.then === "function") {
+            /* Busy state (2026-11-27): while a portal form is working,
+               its submit button shows the small logo loader (the app's
+               setBusy pattern) and is disabled; restored when the work
+               settles — on success the view usually re-renders anyway. */
+            const sb = f.querySelector("button[type=submit]");
+            if (sb && !sb.disabled) {
+              const orig = sb.innerHTML;
+              sb.disabled = true;
+              sb.innerHTML = IA_LOAD + " Please wait…";
+              const restore = () => { sb.disabled = false; sb.innerHTML = orig; };
+              r.then(restore, restore);
+            }
+            r.catch((err) => { const el = fieldErr(f, err.field, err.message); (el || f.querySelector("button[type=submit]")).focus(); });
+          }
+        }
         catch (err) { const el = fieldErr(f, err.field, err.message); (el || f.querySelector("button[type=submit]")).focus(); }
       });
       const ACTS = {
@@ -4098,7 +4168,7 @@
         pmOpen(id) { const f = DB.myFees().find((x) => x.id === id); if (!f || !(f.balance > 0)) return; UI.msg = ""; UI.pm = { fee: id, mode: "full", amount: f.balance, step: "choose" }; paint(); },
         pmClose() { const id = UI.pm && UI.pm.fee; UI.pm = null; paint(`#v-dyn [data-act="pmOpen"][data-id="${id}"]`); },
         pmBack() { if (UI.pm) { UI.pm.step = "choose"; paint(); } },
-        xExport(_, b) { b.disabled = true; b.textContent = "Preparing…"; UI.impErr = ""; return exportXlsx().then(({ file, counts }) => { UI.msg = `Downloaded ${file} · ${counts}.`; paint('#v-dyn [data-act="xExport"]'); }, (err) => { UI.msg = ""; UI.impErr = err.message; paint(); }); },
+        xExport(_, b) { b.disabled = true; b.innerHTML = IA_LOAD + " Preparing…"; UI.impErr = ""; return exportXlsx().then(({ file, counts }) => { UI.msg = `Downloaded ${file} · ${counts}.`; paint('#v-dyn [data-act="xExport"]'); }, (err) => { UI.msg = ""; UI.impErr = err.message; paint(); }); },
         xTemplate(_, b) { b.disabled = true; UI.impErr = ""; return templateXlsx().then(() => { UI.msg = "Downloaded Shaalix_Import_Template.xlsx. Fill it in, then use Import Data."; paint('#v-dyn [data-act="xTemplate"]'); }, (err) => { UI.msg = ""; UI.impErr = err.message; paint(); }); },
         impConfirm() {
           if (!UI.imp) return;
