@@ -1,8 +1,8 @@
 {
-  "version": "2.2.18",
+  "version": "2.2.19",
   "bundle": "bundle.html",
-  "sha256": "9dc7ff17076d6d2b0477823aaa66409bc37c54cb9286c8cb257c55caeecfd954",
-  "size": 490057,
+  "sha256": "a62a763cf5b9d3bd4ba4f35cc89dd6350d3707739ddd2f3266e308633ff91c2f",
+  "size": 497574,
   "publishedAt": "2026-11-27",
-  "notes": "Menu bar: smoother tab animation, and a smaller white circle that lifts as it glides."
+  "notes": "Fees screen redesigned: pick a year, see the total due and fee breakup, pay part or full by UPI, and find your online transactions and payment history below."
 }

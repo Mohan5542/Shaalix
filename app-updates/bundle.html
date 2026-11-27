@@ -7,7 +7,7 @@
     <meta name="supported-color-schemes" content="light" />
     <title>Shaalix</title>
     <!--
-      Shaalix STUDENT APP — bundle 2.2.18.
+      Shaalix STUDENT APP — bundle 2.2.19.
       A purpose-built mobile app for students only (not the website):
       opens at the student sign-in, claim/register for first-time students,
       then the student's own account (overview, fees, payments, attendance,
@@ -233,6 +233,36 @@
       .seg button{flex:1;min-height:38px;border-radius:var(--pill);font-weight:600;font-size:14px;color:var(--text-2)}
       .seg button.on{background:var(--surface);color:var(--text);box-shadow:0 1px 4px rgba(22,31,57,.14)}
       .payrow{display:flex;justify-content:flex-end;padding:2px 0 10px}
+      /* fees 2.2.19 — year tabs, total-due card, fee breakup (Shaalix design:
+         white surfaces, indigo selection, orange primary action; the layout
+         method follows the user's reference, the look is our own) */
+      .ytabs{display:flex;gap:8px;margin:0 0 14px;overflow-x:auto;padding:2px 2px 4px;scrollbar-width:none}
+      .ytabs::-webkit-scrollbar{display:none}
+      .ytabs button{flex:1 0 auto;min-height:40px;padding:0 16px;border-radius:var(--pill);border:1.5px solid var(--tint-2);background:var(--surface);font-weight:600;font-size:14px;color:var(--text-2)}
+      .ytabs button.on{background:var(--indigo);border-color:var(--indigo);color:#fff;box-shadow:0 4px 12px rgba(67,56,202,.28)}
+      .duecard{padding:18px 18px 16px;margin:0 0 14px;border-top:4px solid var(--orange)}
+      .duecard .dc-top{display:flex;align-items:flex-start;gap:10px}
+      .duecard h3{margin:0;font-size:17px;color:var(--navy)}
+      .duecard .dc-sub{font-size:12.5px;color:var(--text-3);margin-top:2px}
+      .duecard .dc-info{margin-left:auto;flex:none;width:34px;height:34px;border-radius:50%;background:var(--tint);color:var(--indigo);display:grid;place-items:center}
+      .duecard .dc-note{font-size:13px;color:var(--text-2);background:var(--tint);border-radius:var(--r-s);padding:9px 12px;margin:12px 0 0}
+      .duecard .dc-lab{font-size:13px;color:var(--text-2);margin-top:14px}
+      .duecard .dc-amt{font-size:31px;font-weight:800;color:var(--navy);line-height:1.15;letter-spacing:-.3px}
+      .duecard .dc-amt.clear{color:var(--green)}
+      .duecard .dc-meta{font-size:13px;color:var(--text-2);margin-top:5px}
+      .duecard .dc-acts{display:flex;gap:10px;margin-top:16px}
+      .duecard .dc-acts .btn{flex:1;width:auto}
+      .btn--outline{background:var(--surface);color:var(--indigo);border:1.5px solid var(--indigo)}
+      .bk{padding:4px 18px 8px;margin:0 0 14px}
+      .bk table{width:100%;border-collapse:collapse;font-size:14.5px}
+      .bk th,.bk td{padding:11px 0;border-bottom:1px solid var(--stroke-2);text-align:left;vertical-align:top}
+      .bk thead th{font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--text-3);font-weight:700}
+      .bk .num{text-align:right;font-weight:700;white-space:nowrap;color:var(--navy)}
+      .bk .bk-name{font-weight:600}
+      .bk .bk-sub{display:block;font-size:12.5px;color:var(--text-2);font-weight:400;margin-top:1px}
+      .bk .bk-pay{margin-top:6px;font-size:13px;font-weight:700;color:var(--orange);padding:2px 0}
+      .bk tr.bk-total th,.bk tr.bk-total td{border-bottom:0;font-weight:800;color:var(--navy);font-size:15.5px}
+      .entryrow .arr{color:var(--indigo);flex:none}
       .qrbox{display:grid;place-items:center;width:min(232px,64vw);aspect-ratio:1;margin:8px auto 4px;padding:8px;background:#fff;border:1px solid var(--stroke);border-radius:var(--r-s)}
       .qrbox svg{display:block;width:100%;height:100%}
       .amtbig{font-size:27px;font-weight:800;text-align:center;margin:10px 0 2px}
@@ -335,7 +365,7 @@
         </form>
         <p class="auth__alt">New student, no account yet?<br /><button type="button" id="go-claim">Claim your account</button></p>
       </div>
-      <p class="auth__foot">Shaalix for students · Your college manages records on the Shaalix website.<br />App version 2.2.18</p>
+      <p class="auth__foot">Shaalix for students · Your college manages records on the Shaalix website.<br />App version 2.2.19</p>
     </section>
 
     <!-- ======================= AUTH: CLAIM ======================= -->
@@ -404,7 +434,7 @@
           <button class="btn" id="cl-done" type="button">Go to sign in</button>
         </div>
       </div>
-      <p class="auth__foot">Shaalix for students · App version 2.2.18</p>
+      <p class="auth__foot">Shaalix for students · App version 2.2.19</p>
     </section>
 
     <!-- ======================= APP SHELL ======================= -->
@@ -471,7 +501,7 @@
         <p><span class="chip chip--solid" id="wait-chip">Pending approval</span></p>
         <button class="btn btn--ghost" id="wait-logout" type="button">Log out</button>
       </div>
-      <p class="auth__foot">Shaalix for students · App version 2.2.18</p>
+      <p class="auth__foot">Shaalix for students · App version 2.2.19</p>
     </section>
 
     <div id="sheet-root"></div>
@@ -507,7 +537,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 //# sourceMappingURL=/sm/26b4b0d0b1e283d6b3ec9857ac597d7a60c76ac17be1ef4c965f03086de426bb.map
 </script>
     <script>
-      window.__BUNDLE_VERSION__ = "2.2.18";
+      window.__BUNDLE_VERSION__ = "2.2.19";
       /* OTA health signal (2.2.15): this bundle's own code is running,
          so the load is healthy — clear the boot loader's watchdog flag
          NOW, in the first bundle-owned script, instead of leaving it
@@ -537,6 +567,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   function lc(s) { return tx(s).toLowerCase(); }
   function r2(n) { return Math.round(n * 100) / 100; }
   function inr(n) { return "₹" + r2(Number(n) || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 }); }
+  function inr2(n) { return "₹" + (Number(n) || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   function inrShort(n) { n = Number(n) || 0; return n >= 100000 ? "₹" + (Math.round(n / 1000) / 100).toLocaleString("en-IN") + "L" : inr(n); }
   function inrWords(n) {
     n = Math.floor(Math.abs(Number(n) || 0));
@@ -588,7 +619,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   var S = {
     user: null, profile: null, student: null, college: null,
     fees: [], payments: [], marks: [], attendance: [], notices: [],
-    documents: [], certificates: [], tab: "home", feesSeg: "fees",
+    documents: [], certificates: [], tab: "home", feesSeg: "fees", feeYear: null,
     photoUrl: "", logoUrl: "", idCardUrl: "", docUrls: {}, attUrls: {},
     loaded: false, showAad: false, sub: null, dataSig: null
   };
@@ -1053,7 +1084,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     var balance = Math.max(0, amount - paid);
     var status = paid >= amount ? "Paid" : paid > 0 ? "Partial" : "Due";
     var phase = f.year < S.student.curYear ? "Past" : f.year === S.student.curYear ? "Current" : "Upcoming";
-    var head = f.type === "Tuition" ? "Tuition Fee (Full fee)" : f.type + " Fee";
+    var head = f.type === "Tuition" ? "Tuition Fee" : f.type === "Affiliation" ? "JNTU Fee (Affiliation)" : f.type + " Fee";
     return { amount: amount, paid: paid, balance: balance, status: status, phase: phase, head: head, label: "Year " + f.year + " · " + head };
   }
   function feeTotals() {
@@ -1169,32 +1200,97 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   }
 
   /* ---------- render: fees + payments ---------- */
+  function feeYears() {
+    var start = S.student.admType === "Lateral Entry" ? 2 : 1, ys = [];
+    for (var y = start; y <= 4; y++) ys.push(y);
+    S.fees.forEach(function (f) { if (ys.indexOf(f.year) === -1) ys.push(f.year); });
+    return ys.sort(function (a, b) { return a - b; });
+  }
+  function selFeeYear() {
+    var ys = feeYears();
+    if (!S.feeYear || ys.indexOf(S.feeYear) === -1) {
+      var cy = Number(S.student.curYear) || ys[0];
+      S.feeYear = ys.indexOf(cy) !== -1 ? cy : ys[0];
+    }
+    return S.feeYear;
+  }
+  function yearLines(y) {
+    return S.fees.filter(function (f) { return f.year === y; })
+      .sort(function (a, b) { return (a.type === "Tuition" ? 0 : 1) - (b.type === "Tuition" ? 0 : 1) || String(a.due || "").localeCompare(String(b.due || "")); });
+  }
+  function yearTarget(y) {
+    var due = yearLines(y).filter(function (f) { return feeOut(f).balance > 0; });
+    if (!due.length) return null;
+    due.sort(function (a, b) { return String(a.due || "9999-99").localeCompare(String(b.due || "9999-99")); });
+    return due[0];
+  }
+  var INFO_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg>';
+  var ARR_SVG = '<svg class="arr" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15"/><path d="m13 6 6 6-6 6"/></svg>';
   function renderFees() {
     var el = $("screen-fees");
-    var h = '<h2 class="screen-title">Fees</h2><p class="screen-sub">Your fee record, year by year. Pay a due fee by UPI here, or at your college office.</p>';
-    h += '<div class="seg"><button data-seg="fees" class="' + (S.feesSeg === "fees" ? "on" : "") + '">Fees</button><button data-seg="payments" class="' + (S.feesSeg === "payments" ? "on" : "") + '">Payment history</button></div>';
-    if (S.feesSeg === "payments") { el.innerHTML = h + paymentsHTML(); bindFeesSeg(el); bindPaymentRows(el); return; }
+    var h = '<h2 class="screen-title">Fees</h2><p class="screen-sub">Pick a year to see what is due, pay part or full by UPI, and check every payment below.</p>';
+    if (S.feesSeg === "payments" || S.feesSeg === "online") {
+      var online = S.feesSeg === "online";
+      h += '<button class="btn btn--ghost btn--sm" data-seg="fees" style="margin:0 0 14px">&#8592; Back to fees</button>';
+      h += '<h3 class="sec-title">' + (online ? "Online Transactions" : "Student Payment History") + "</h3>";
+      el.innerHTML = h + (online ? onlineHTML() : paymentsHTML());
+      bindFeesSeg(el); bindPaymentRows(el); return;
+    }
     var t = feeTotals();
     h += '<div class="card totals"><div><div class="fig">' + inr(t.amount) + '</div><div class="lab">Total fees</div></div><div><div class="fig" style="color:var(--green)">' + inr(t.paid) + '</div><div class="lab">Paid</div></div><div><div class="fig" style="color:' + (t.balance ? "var(--red)" : "var(--text)") + '">' + inr(t.balance) + '</div><div class="lab">Balance</div></div></div>';
-    if (t.balance > 0) { var tf = payTargetFee(); if (tf) h += '<button class="btn" style="margin:0 0 14px" data-paynow="' + tf.id + '">Pay now</button>'; }
+    var ys = feeYears(), sel = selFeeYear();
+    h += '<div class="ytabs" role="tablist" aria-label="Fee years">' + ys.map(function (y) {
+      return '<button type="button" role="tab" data-yr="' + y + '" class="' + (y === sel ? "on" : "") + '" aria-selected="' + (y === sel) + '">' + y + " Year</button>";
+    }).join("") + "</div>";
+    var lines = yearLines(sel), yBal = 0, yAmt = 0, yPaid = 0;
+    lines.forEach(function (f) { var o = feeOut(f); yBal += o.balance; yAmt += o.amount; yPaid += o.paid; });
+    var phase = sel < S.student.curYear ? "Completed year" : sel === S.student.curYear ? "Current year" : "Upcoming year";
     var startYear = S.student.admType === "Lateral Entry" ? 2 : 1;
-    for (var y = startYear; y <= 4; y++) {
-      var lines = S.fees.filter(function (f) { return f.year === y; })
-        .sort(function (a, b) { return (a.type === "Tuition" ? 0 : 1) - (b.type === "Tuition" ? 0 : 1) || String(a.due || "").localeCompare(String(b.due || "")); });
-      var yBal = 0, yPaid = 0; lines.forEach(function (f) { var o = feeOut(f); yBal += o.balance; yPaid += o.paid; });
-      var phase = y < S.student.curYear ? "Past" : y === S.student.curYear ? "Current year" : "Upcoming";
-      h += '<div class="card yearblock"><header><h3>Year ' + y + '</h3><span class="ay">AY ' + (S.student.admYear ? (S.student.admYear + (y - startYear)) + "–" + String(S.student.admYear + (y - startYear) + 1).slice(2) : "—") + '</span><span class="rhs"><span class="chip ' + (yBal === 0 && lines.length ? "chip--paid" : phase === "Upcoming" ? "chip--upcoming" : "chip--due") + '">' + (lines.length ? (yBal === 0 ? "Fully paid" : inr(yBal) + " due") : phase) + "</span></span></header>";
-      if (!lines.length) h += '<p class="small muted" style="margin:8px 0 10px">No fees added for this year yet.</p>';
+    var ay = S.student.admYear ? (S.student.admYear + (sel - startYear)) + "–" + String(S.student.admYear + (sel - startYear) + 1).slice(2) : "";
+    var title = lines.length === 1 ? feeOut(lines[0]).head : lines.length ? "Year " + sel + " Fees" : "Year " + sel + " Fees";
+    h += '<div class="card duecard"><div class="dc-top"><div><h3>' + esc(title) + '</h3><div class="dc-sub">Year ' + sel + (ay ? " · AY " + ay : "") + " · " + phase + '</div></div><button type="button" class="dc-info" data-feeinfo aria-label="About this year\'s fees">' + INFO_SVG + "</button></div>";
+    if (S.feeInfo) h += '<p class="dc-note">This year\'s fee has two parts: the Tuition Fee and the JNTU Fee (Affiliation). The breakup below shows how much is still due on each part.</p>';
+    h += '<div class="dc-lab">Total due amount</div><div class="dc-amt' + (yBal === 0 && lines.length ? " clear" : "") + '">' + inr2(yBal) + "</div>";
+    if (lines.length) h += '<div class="dc-meta">Total ' + inr(yAmt) + " · Paid " + inr(yPaid) + (yBal === 0 ? " · Fully paid" : "") + "</div>";
+    else h += '<div class="dc-meta">No fees added for this year yet.</div>';
+    var tgt = yearTarget(sel);
+    if (tgt && yBal > 0) {
+      h += '<div class="dc-acts"><button type="button" class="btn btn--outline" data-paypartial="' + tgt.id + '">Pay Partial</button><button type="button" class="btn" data-paynow="' + tgt.id + '">Pay Full</button></div>';
+    }
+    h += "</div>";
+    if (lines.length) {
+      h += '<h3 class="sec-title">Fee breakup</h3><div class="card bk"><table><thead><tr><th scope="col">Fee Type</th><th scope="col" class="num">Amount Due</th></tr></thead><tbody>';
       lines.forEach(function (f) {
         var o = feeOut(f);
-        h += '<div class="feeline"><div class="grow"><div class="nm">' + esc(o.head) + '</div><div class="meta">Due by ' + esc(fmtD(f.due)) + (o.phase === "Upcoming" ? " · Upcoming" : "") + '</div></div><div class="nums"><b>' + inr(o.amount) + "</b>" + (o.paid ? "Paid " + inr(o.paid) : "Not paid") + '</div><span class="chip chip--' + o.status.toLowerCase() + '">' + o.status + "</span></div>";
-        if (o.balance > 0) h += '<div class="payrow"><button class="btn btn--sm" data-paynow="' + f.id + '">Pay now</button></div>';
+        h += '<tr><td><span class="bk-name">' + esc(o.head) + '</span><span class="bk-sub">Total ' + inr(o.amount) + " · Paid " + inr(o.paid) + (f.due ? " · Due by " + esc(fmtD(f.due)) : "") + "</span>" +
+          (o.balance > 0 ? '<button type="button" class="bk-pay" data-paynow="' + f.id + '">Pay this fee</button>' : '<span class="bk-sub" style="color:var(--green);font-weight:700">Paid in full</span>') +
+          '</td><td class="num">' + inr2(o.balance) + "</td></tr>";
       });
-      h += "</div>";
+      h += '<tr class="bk-total"><th scope="row">Total</th><td class="num">' + inr2(yBal) + "</td></tr></tbody></table></div>";
     }
+    h += '<button type="button" class="rowline entryrow" data-seg="online"><span class="grow"><span class="t">Online Transactions</span><span class="s" style="display:block">UPI payments you submitted</span></span>' + ARR_SVG + "</button>";
+    h += '<button type="button" class="rowline entryrow" data-seg="payments"><span class="grow"><span class="t">Student Payment History</span><span class="s" style="display:block">All payments and receipts</span></span>' + ARR_SVG + "</button>";
     el.innerHTML = h;
     bindFeesSeg(el);
     bindPayNow(el);
+    el.querySelectorAll("[data-yr]").forEach(function (b) {
+      b.addEventListener("click", function () { S.feeYear = Number(b.dataset.yr); renderFees(); });
+    });
+    el.querySelectorAll("[data-paypartial]").forEach(function (b) {
+      b.addEventListener("click", function () { openPay(b.dataset.paypartial, "partial"); });
+    });
+    var ib = el.querySelector("[data-feeinfo]");
+    if (ib) ib.addEventListener("click", function () { S.feeInfo = !S.feeInfo; renderFees(); });
+  }
+  function onlineHTML() {
+    var rows = S.payments.filter(function (p) { return p.by_role === "Student (UPI)"; });
+    if (!rows.length) return '<div class="card" style="padding:22px;text-align:center"><p class="muted" style="margin:0">No online payments yet.<br />UPI payments you submit appear here.</p></div>';
+    var h = "";
+    rows.forEach(function (p) {
+      var i = S.payments.indexOf(p);
+      h += '<button class="rowline" data-pay="' + i + '"><span class="grow"><span class="t">' + esc(p.fee_label) + '</span><span class="s" style="display:block">' + esc(fmtDT(p.paid_at)) + " · " + esc(p.mode || "UPI") + (p.ref ? " · UTR " + esc(p.ref) : "") + '</span></span><span class="amt">' + inr(p.amount) + '</span><svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m9 6 6 6-6 6"/></svg></button>';
+    });
+    return h;
   }
   function paymentsHTML() {
     if (!S.payments.length) return '<div class="card" style="padding:22px;text-align:center"><p class="muted" style="margin:0">No payments recorded yet.<br />Payments you make appear here with a receipt.</p></div>';
@@ -1281,12 +1377,12 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     if (a > bal) return { err: "The amount cannot be more than the balance of " + inr(bal) + ".", field: true };
     return { amount: a };
   }
-  function openPay(feeId) {
+  function openPay(feeId, mode) {
     var f = payFeeById(feeId);
     if (!f) return;
     var o = feeOut(f);
     if (o.balance <= 0) return;
-    payCtx = { feeId: f.id, amount: o.balance, full: true };
+    payCtx = { feeId: f.id, amount: mode === "partial" ? "" : o.balance, full: mode !== "partial" };
     if (!collegeUpiId()) {
       openSheet("<h2>Pay fee</h2><p class=\"sub\">" + esc(o.label) + "</p>" +
         '<p style="font-size:14.5px;margin:0 0 8px">Online UPI payment is not enabled by your college yet.</p>' +
