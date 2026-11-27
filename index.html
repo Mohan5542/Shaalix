@@ -376,9 +376,56 @@
       .x-imp table.x-raw td{white-space:nowrap;max-width:260px;overflow:hidden;text-overflow:ellipsis}
       @media (max-width:600px){.x-modal{padding:8px;align-items:end}.x-modal__box{max-height:calc(100dvh - 16px)}}
       @media (max-width:600px){.x-bar>.x-f{flex:1 1 100%;width:100%}.x-bar input,.x-bar select{width:100%}.x-creds .x-tw table{min-width:0}.x-creds .x-tw td,.x-creds .x-tw th{white-space:normal}}
+      /* Initial loading overlay (2026-11-27): the user-approved icon-only
+         loading animation (same as the student app splash) — the logo
+         SYMBOL only: cap settles in, the U draws itself, the orange dot
+         pops; theme purple #4338ca, dot #fb923c, transparent animation
+         centred on the site's own background (var(--x-surface)); no
+         bar, no text; 1.5s loop. Removed by the script after the
+         overlay as soon as the first view renders (5s failsafe). */
+      .x-boot{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;background:var(--x-surface);transition:opacity .4s ease}
+      .x-boot--done{opacity:0;pointer-events:none}
+      .x-boot .icon-anim{animation:iaSceneFade 1.5s linear infinite}
+      @keyframes iaSceneFade{0%{opacity:0}5%{opacity:1}93%{opacity:1}100%{opacity:0}}
+      .x-boot .icon-anim svg{display:block;width:168px;height:168px}
+      .x-boot .ia-cap{animation:iaCapDrop 1.5s cubic-bezier(.3,.7,.3,1) infinite}
+      @keyframes iaCapDrop{0%{opacity:0;transform:translateY(-16px)}10%{opacity:1}26%{transform:translateY(2px)}34%,100%{opacity:1;transform:translateY(0)}}
+      .x-boot .ia-u{stroke-dasharray:100;stroke-dashoffset:0;animation:iaUDraw 1.5s cubic-bezier(.5,.05,.3,1) infinite}
+      @keyframes iaUDraw{0%,6%{stroke-dashoffset:100}48%,100%{stroke-dashoffset:0}}
+      .x-boot .ia-dot{transform-box:fill-box;transform-origin:center;animation:iaDotPop 1.5s ease-in-out infinite}
+      @keyframes iaDotPop{0%,40%{transform:scale(0)}54%{transform:scale(1.18)}62%{transform:scale(1)}74%{transform:scale(1.12)}84%,100%{transform:scale(1)}}
+      @media (prefers-reduced-motion:reduce){.x-boot .icon-anim,.x-boot .ia-cap,.x-boot .ia-u,.x-boot .ia-dot{animation:none}}
     </style>
   </head>
   <body>
+    <div class="x-boot" id="x-boot" role="status" aria-label="Loading">
+      <div class="icon-anim" aria-hidden="true">
+        <svg viewBox="0 0 240 240">
+          <polygon class="ia-cap" points="119.8,66 188.2,98.3 119.8,130.5 51.7,98.3" fill="#4338ca"/>
+          <path class="ia-u" pathLength="100" d="M80.2,112.7 V147.6 A39.7,27.9 0 0 0 159.7,147.6 V112.7" fill="none" stroke="#4338ca" stroke-width="14.2"/>
+          <circle class="ia-dot" cx="188.5" cy="148.8" r="14.4" fill="#fb923c"/>
+        </svg>
+      </div>
+    </div>
+    <script>
+      /* Loading overlay removal: fade out as soon as the router has a
+         view on screen; hard failsafe so it can never stick. */
+      (function () {
+        var boot = document.getElementById("x-boot");
+        if (!boot) return;
+        var done = false;
+        function hide() {
+          if (done) return;
+          done = true;
+          boot.classList.add("x-boot--done");
+          setTimeout(function () { if (boot.parentNode) boot.parentNode.removeChild(boot); }, 450);
+        }
+        var iv = setInterval(function () {
+          if (document.querySelector(".x-view:not([hidden])")) { clearInterval(iv); hide(); }
+        }, 100);
+        setTimeout(function () { clearInterval(iv); hide(); }, 5000);
+      })();
+    </script>
     <div class="page x-wide" id="top">
       <div class="x-top">
         <a href="tel:+919703222544">📞 +91 97032 22544</a>
