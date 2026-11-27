@@ -1,8 +1,8 @@
 {
-  "version": "2.2.13",
+  "version": "2.2.14",
   "bundle": "bundle.html",
-  "sha256": "69867cbf35f0f809c72aac6785a2e114772026a1bc1811f145de39cee7bf8373",
-  "size": 481145,
-  "publishedAt": "2026-11-26",
-  "notes": "The menu circle is a little smaller now and never gets cut off at the edge of the screen. Every menu icon has its name under it, and the icons sit a bit closer together."
+  "sha256": "033a94d13405aff7f6219aca5bfd37a28ec02a43d3c36420b8d400a7ade0a356",
+  "size": 484081,
+  "publishedAt": "2026-11-27",
+  "notes": "Opening the app now goes straight to your account when you are already signed in, with a short loading screen instead of the sign-in screen flashing first."
 }

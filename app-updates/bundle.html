@@ -7,7 +7,7 @@
     <meta name="supported-color-schemes" content="light" />
     <title>Shaalix</title>
     <!--
-      Shaalix STUDENT APP — bundle 2.2.13.
+      Shaalix STUDENT APP — bundle 2.2.14.
       A purpose-built mobile app for students only (not the website):
       opens at the student sign-in, claim/register for first-time students,
       then the student's own account (overview, fees, payments, attendance,
@@ -76,6 +76,24 @@
       .spin{width:20px;height:20px;border-radius:50%;border:2.5px solid var(--tint-2);border-top-color:var(--indigo);animation:bspin .8s linear infinite;display:inline-block;vertical-align:-4px}
       @keyframes bspin{to{transform:rotate(360deg)}}
       .loading{display:flex;flex-direction:column;align-items:center;gap:12px;padding:56px 20px;color:var(--text-2);font-size:14px}
+
+      /* ---------- splash: session check (2.2.14) ----------
+         First paint of every cold start. The logo itself loads —
+         fade/scale entrance, a soft pulse, a shine sweeping across
+         it — over a slim loading bar, on the auth hero's navy
+         gradient. Held until the stored session is known, so the
+         sign-in form never flashes for a signed-in student. */
+      .splash{min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(158deg,var(--navy-deep) 0%,var(--navy) 58%,var(--indigo) 135%);padding:24px calc(24px + env(safe-area-inset-right,0px)) calc(24px + env(safe-area-inset-bottom,0px)) calc(24px + env(safe-area-inset-left,0px))}
+      .splash__logo{position:relative;width:min(66%,260px);overflow:hidden;border-radius:8px;animation:splashIn .55s ease-out both}
+      .splash__logo .auth__brand{width:100%;margin:0;animation:splashPulse 2.8s ease-in-out .55s infinite}
+      .splash__shine{position:absolute;top:-12%;bottom:-12%;left:0;width:42%;pointer-events:none;background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,.38),rgba(255,255,255,0));transform:translateX(-140%) skewX(-14deg);animation:splashShine 2.3s ease-in-out infinite}
+      .splash__bar{width:132px;height:3.5px;border-radius:3px;background:rgba(255,255,255,.18);margin-top:30px;overflow:hidden}
+      .splash__fill{display:block;height:100%;width:42%;border-radius:3px;background:linear-gradient(90deg,#ffffff,#fb923c);animation:splashBar 1.5s ease-in-out infinite}
+      @keyframes splashIn{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:scale(1)}}
+      @keyframes splashPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.025)}}
+      @keyframes splashShine{0%{transform:translateX(-140%) skewX(-14deg)}55%,100%{transform:translateX(330%) skewX(-14deg)}}
+      @keyframes splashBar{0%{transform:translateX(-110%)}100%{transform:translateX(340%)}}
+      @media (prefers-reduced-motion:reduce){.splash__logo,.splash__logo .auth__brand,.splash__shine,.splash__fill{animation:none}}
 
       /* ---------- auth screens ---------- */
       .auth{min-height:100dvh;display:flex;flex-direction:column;background:var(--surface)}
@@ -253,8 +271,17 @@
     </style>
   </head>
   <body>
+    <!-- ======================= SPLASH: SESSION CHECK ======================= -->
+    <section id="view-splash" class="splash">
+      <div class="splash__logo">
+        <div class="auth__brand" role="img" aria-label="Shaalix"></div>
+        <span class="splash__shine" aria-hidden="true"></span>
+      </div>
+      <div class="splash__bar" aria-hidden="true"><span class="splash__fill"></span></div>
+    </section>
+
     <!-- ======================= AUTH: LOGIN ======================= -->
-    <section id="view-login" class="auth">
+    <section id="view-login" class="auth hidden">
       <div class="auth__hero">
         <div class="auth__brand" role="img" aria-label="Shaalix"></div>
         <p class="auth__tag">Student app</p>
@@ -279,7 +306,7 @@
         </form>
         <p class="auth__alt">New student, no account yet?<br /><button type="button" id="go-claim">Claim your account</button></p>
       </div>
-      <p class="auth__foot">Shaalix for students · Your college manages records on the Shaalix website.<br />App version 2.2.13</p>
+      <p class="auth__foot">Shaalix for students · Your college manages records on the Shaalix website.<br />App version 2.2.14</p>
     </section>
 
     <!-- ======================= AUTH: CLAIM ======================= -->
@@ -348,7 +375,7 @@
           <button class="btn" id="cl-done" type="button">Go to sign in</button>
         </div>
       </div>
-      <p class="auth__foot">Shaalix for students · App version 2.2.13</p>
+      <p class="auth__foot">Shaalix for students · App version 2.2.14</p>
     </section>
 
     <!-- ======================= APP SHELL ======================= -->
@@ -415,7 +442,7 @@
         <p><span class="chip chip--solid" id="wait-chip">Pending approval</span></p>
         <button class="btn btn--ghost" id="wait-logout" type="button">Log out</button>
       </div>
-      <p class="auth__foot">Shaalix for students · App version 2.2.13</p>
+      <p class="auth__foot">Shaalix for students · App version 2.2.14</p>
     </section>
 
     <div id="sheet-root"></div>
@@ -451,7 +478,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 //# sourceMappingURL=/sm/26b4b0d0b1e283d6b3ec9857ac597d7a60c76ac17be1ef4c965f03086de426bb.map
 </script>
     <script>
-      window.__BUNDLE_VERSION__ = "2.2.13";
+      window.__BUNDLE_VERSION__ = "2.2.14";
     </script>
     <script>
 /* ================= Shaalix student app — application logic ================= */
@@ -524,7 +551,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   };
 
   /* ---------- view switching ---------- */
-  var VIEWS = ["view-login", "view-claim", "view-app", "view-wait"];
+  var VIEWS = ["view-splash", "view-login", "view-claim", "view-app", "view-wait"];
   function showView(id) {
     VIEWS.forEach(function (v) { $(v).classList.toggle("hidden", v !== id); });
     window.scrollTo(0, 0);
@@ -1741,7 +1768,13 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   async function boot() {
     wire();
     if (!sb) { showView("view-login"); var er = $("login-err"); er.textContent = netFail(); er.classList.add("on"); return; }
-    showView("view-login");
+    /* Splash first (2.2.14): the splash is the markup default and is
+       held until the stored session is known. getSession() resolves
+       from the locally persisted session — no network round-trip is
+       needed just to decide — and the sign-in form is only shown
+       once there is provably no session, so a signed-in student
+       never sees it flash before landing in the account. */
+    showView("view-splash");
     try {
       var sess = await sb.auth.getSession();
       var session = sess && sess.data && sess.data.session;
