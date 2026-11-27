@@ -7,7 +7,7 @@
     <meta name="supported-color-schemes" content="light" />
     <title>Shaalix</title>
     <!--
-      Shaalix STUDENT APP — bundle 2.2.17.
+      Shaalix STUDENT APP — bundle 2.2.18.
       A purpose-built mobile app for students only (not the website):
       opens at the student sign-in, claim/register for first-time students,
       then the student's own account (overview, fees, payments, attendance,
@@ -155,9 +155,9 @@
       .iconbtn:active{background:rgba(255,255,255,.14)}
       .avatar{width:38px;height:38px;border-radius:50%;object-fit:cover;background:var(--tint-2);color:var(--indigo-deep);font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;flex:none;border:2px solid rgba(255,255,255,.35)}
       .main{flex:1;padding:16px 16px calc(var(--nav-h) + var(--safe-b) + 22px);max-width:560px;width:100%;margin:0 auto}
-      .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:30;--bw:min(100vw,532px);--bh:calc(var(--bw)*.1708);--gd:calc(var(--bw)*.152);--rt:calc(var(--bw)*.0235);--od:calc(var(--gd) + var(--rt)*2);--rise:calc(var(--bw)*.085);--tin:calc(var(--bw)*.05)}
+      .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:30;--bw:min(100vw,532px);--bh:calc(var(--bw)*.1708);--gd:calc(var(--bw)*.174);--rt:calc(var(--bw)*.008);--od:calc(var(--gd) + var(--rt)*2);--rise:calc(var(--bw)*.085);--tin:calc(var(--bw)*.05)}
       .tabstage{position:relative;width:var(--bw);height:calc(var(--rise) + var(--bh));margin:0 auto calc(var(--safe-b) + 10px);filter:drop-shadow(0 14px 30px rgba(30,27,75,.38))}
-      .tabband{position:absolute;left:0;right:0;bottom:0;height:var(--bh);background:linear-gradient(90deg,#4f46e5 0%,#4338ca 34%,#332b96 66%,#1e1b4b 100%);transition:clip-path .6s cubic-bezier(.33,1.18,.32,1);will-change:clip-path}
+      .tabband{position:absolute;left:0;right:0;bottom:0;height:var(--bh);background:linear-gradient(90deg,#4f46e5 0%,#4338ca 34%,#332b96 66%,#1e1b4b 100%);will-change:clip-path}
       .tabband::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(255,255,255,.16) 0%,rgba(255,255,255,.05) 42%,rgba(255,255,255,0) 62%);pointer-events:none}
       .tabband.notrans{transition:none}
       .tabfill{position:absolute;left:0;right:0;top:var(--rise);height:calc(var(--bh) + var(--safe-b) + 11px);transform:translateY(-1px);background:linear-gradient(90deg,#4f46e5 0%,#4338ca 34%,#332b96 66%,#1e1b4b 100%)}
@@ -168,12 +168,13 @@
       .tabbar button.on svg{visibility:hidden}
       .tablabel{position:absolute;left:50%;bottom:4px;transform:translateX(-50%);font-size:10px;font-weight:600;line-height:1;letter-spacing:.02em;color:rgba(255,255,255,.92);white-space:nowrap;pointer-events:none}
       .tabbar button.on .tablabel{color:#fff;font-weight:700}
-      .tabslide{position:absolute;top:0;left:var(--tin);width:calc((var(--bw) - var(--tin)*2)/5);height:100%;transform:translateX(0);transition:transform .6s cubic-bezier(.33,1.18,.32,1);will-change:transform;pointer-events:none;z-index:3}
-      .tabfab{position:absolute;left:50%;top:calc(var(--rise) + var(--bh)*.146 - var(--od)/2);transform:translateX(-50%);width:var(--od);height:var(--od);border-radius:50%;border:var(--rt) solid var(--bg);box-sizing:border-box;background-image:linear-gradient(90deg,#4f46e5 0%,#4338ca 34%,#332b96 66%,#1e1b4b 100%);background-size:var(--bw) 100%;background-repeat:no-repeat;box-shadow:inset 0 1px 0 rgba(255,255,255,.42),inset 0 -3px 8px rgba(0,0,0,.20),inset 0 0 0 1px rgba(255,255,255,.22),0 2px 6px rgba(30,27,75,.28),0 10px 22px rgba(30,27,75,.40);display:flex;align-items:center;justify-content:center;color:#fff;transition:background-position .6s cubic-bezier(.33,1.18,.32,1)}
+      .tabslide{position:absolute;top:0;left:var(--tin);width:calc((var(--bw) - var(--tin)*2)/5);height:100%;transform:translateX(0);will-change:transform;pointer-events:none;z-index:3}
+      .tabfab{position:absolute;left:50%;top:calc(var(--rise) + var(--bh)*.146 - var(--od)/2);transform:translateX(-50%);width:var(--od);height:var(--od);border-radius:50%;border:var(--rt) solid var(--bg);box-sizing:border-box;background-image:linear-gradient(90deg,#4f46e5 0%,#4338ca 34%,#332b96 66%,#1e1b4b 100%);background-size:var(--bw) 100%;background-repeat:no-repeat;box-shadow:inset 0 1px 0 rgba(255,255,255,.5),inset 0 -3px 8px rgba(0,0,0,.20),inset 0 0 0 1px rgba(255,255,255,.26),0 3px 7px rgba(30,27,75,.30),0 18px 34px rgba(30,27,75,.46);display:flex;align-items:center;justify-content:center;color:#fff;transition:transform .3s ease,box-shadow .3s ease}
+      .tabfab.lift{transform:translateX(-50%) translateY(-2.5px);box-shadow:inset 0 1px 0 rgba(255,255,255,.5),inset 0 -3px 8px rgba(0,0,0,.20),inset 0 0 0 1px rgba(255,255,255,.26),0 5px 10px rgba(30,27,75,.28),0 24px 40px rgba(30,27,75,.50)}
       .tabfab::before{content:"";position:absolute;inset:var(--rt);border-radius:50%;background:radial-gradient(115% 85% at 30% 16%,rgba(255,255,255,.34),rgba(255,255,255,0) 52%),linear-gradient(180deg,rgba(255,255,255,.08),rgba(0,0,0,.13) 82%);pointer-events:none}
       .tabfab svg{display:block;width:25px;height:25px;position:relative;z-index:1}
-      .tabfab.pop svg{animation:fabPop .55s cubic-bezier(.33,1.18,.32,1)}
-      @keyframes fabPop{0%{transform:scale(.7)}55%{transform:scale(1.07)}100%{transform:scale(1)}}
+      .tabfab.pop svg{animation:fabPop .35s cubic-bezier(.25,1,.35,1)}
+      @keyframes fabPop{0%{transform:scale(.84)}100%{transform:scale(1)}}
       @keyframes screenIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
       .main>div:not(.hidden){animation:screenIn .24s ease both}
       @media (prefers-reduced-motion:reduce){.tabband{transition:none}.tabslide{transition:none}.tabfab{transition:none}.tabfab.pop svg{animation:none}.tabbar button svg{transition:none}.main>div:not(.hidden){animation:none}}
@@ -334,7 +335,7 @@
         </form>
         <p class="auth__alt">New student, no account yet?<br /><button type="button" id="go-claim">Claim your account</button></p>
       </div>
-      <p class="auth__foot">Shaalix for students · Your college manages records on the Shaalix website.<br />App version 2.2.17</p>
+      <p class="auth__foot">Shaalix for students · Your college manages records on the Shaalix website.<br />App version 2.2.18</p>
     </section>
 
     <!-- ======================= AUTH: CLAIM ======================= -->
@@ -403,7 +404,7 @@
           <button class="btn" id="cl-done" type="button">Go to sign in</button>
         </div>
       </div>
-      <p class="auth__foot">Shaalix for students · App version 2.2.17</p>
+      <p class="auth__foot">Shaalix for students · App version 2.2.18</p>
     </section>
 
     <!-- ======================= APP SHELL ======================= -->
@@ -470,7 +471,7 @@
         <p><span class="chip chip--solid" id="wait-chip">Pending approval</span></p>
         <button class="btn btn--ghost" id="wait-logout" type="button">Log out</button>
       </div>
-      <p class="auth__foot">Shaalix for students · App version 2.2.17</p>
+      <p class="auth__foot">Shaalix for students · App version 2.2.18</p>
     </section>
 
     <div id="sheet-root"></div>
@@ -506,7 +507,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 //# sourceMappingURL=/sm/26b4b0d0b1e283d6b3ec9857ac597d7a60c76ac17be1ef4c965f03086de426bb.map
 </script>
     <script>
-      window.__BUNDLE_VERSION__ = "2.2.17";
+      window.__BUNDLE_VERSION__ = "2.2.18";
       /* OTA health signal (2.2.15): this bundle's own code is running,
          so the load is healthy — clear the boot loader's watchdog flag
          NOW, in the first bundle-owned script, instead of leaving it
@@ -605,12 +606,14 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
      circle, drawn as a clip-path whose structure never changes, so the
      CSS transition can glide the scoop with the circle. Proportions are
      the reference image's, in band-width units: band height .1708, circle
-     centre .146 of the band height below the top edge. Circle disc .152,
-     ring .0235 (scoop radius .0995 = the circle's outer radius), scoop
-     shoulders from .1495 (2.2.13: circle uniformly smaller so it never
-     clips — see BUILD-REPORT §v2.2.13). */
+     centre .146 of the band height below the top edge. Circle disc .174,
+     ring .008, outer diameter .190 (2.2.18: thin ring AND a slightly
+     smaller white footprint, per the user's word — scoop radius .095 =
+     the circle's outer radius, shoulders .1452 keep the same blend run),
+     scoop shoulders from .1495 in 2.2.13 (circle uniformly smaller so it
+     never clips — see BUILD-REPORT §v2.2.13). */
   function bandPath(W, H, cx) {
-    var Ro = W * 0.0995, cy = H * 0.146, S = W * 0.1495;
+    var Ro = W * 0.095, cy = H * 0.146, S = W * 0.1452;
     var R = H * 0.68, r = Math.min(7, H * 0.12);
     var ax = cx - 0.9659 * Ro, ay = cy + 0.2588 * Ro, bx = cx + 0.9659 * Ro;
     var run = S - 0.9659 * Ro;
@@ -653,30 +656,71 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       " L" + f(W) + "," + f(H + F + 2) +
       " L0," + f(H + F + 2) + " Z";
   }
-  function layoutBand() {
+  /* Tab glide (2.2.18): ONE requestAnimationFrame driver moves the
+     slide, the band scoop and the circle's gradient offset from the
+     same eased progress, so the circle and its hollow travel as one
+     shape. The previous design ran three independent .6s CSS
+     transitions (transform / clip-path / background-position) that
+     could drift apart in the WebView — the circle arrived, then the
+     scoop settled — which read as a dip-then-pop. 350 ms, gentle
+     spring ease (easeOutBack, s = 1.0, ~4% overshoot). */
+  var bandPos = null;   /* displayed position, in tab units */
+  var bandAnim = null;  /* {from, to, t0} while a glide is running */
+  function bandEase(t) { var u = t - 1; return 1 + 2 * u * u * u + u * u; }
+  function placeBand(pos) {
     var b = $("tab-band"); if (!b) return;
     var W = b.clientWidth, H = b.clientHeight; if (W < 50 || H < 10) return;
-    var ti = TABS.indexOf(S.tab); if (ti < 0) ti = 0;
     /* tab row is inset by .05 of the width on both sides (2.2.13), so
        the scoop centres on the active tab's inset position */
-    var cx = W * 0.05 + (ti + 0.5) * (W * 0.90) / 5;
+    var cx = W * 0.05 + (pos + 0.5) * (W * 0.90) / 5;
     b.style.clipPath = "path(\"" + bandPath(W, H, cx) + "\")";
     var fl = $("tab-fill");
     if (fl) { var F = fl.clientHeight - H; fl.style.clipPath = "path(\"" + fillPath(W, H, F > 0 ? F : 0) + "\")"; }
+    var fs = $("tab-fab-slide");
+    if (fs) fs.style.transform = "translateX(" + (Math.round(pos * 10000) / 100) + "%)";
     var fab = $("tab-fab");
     if (fab) {
       /* the gradient runs purely left-to-right, so only the x offset is
          needed to keep the circle's fill continuous with the band's */
-      var gd = W * 0.152;
+      var gd = W * 0.174;
       fab.style.backgroundPosition = (-(cx - gd / 2)).toFixed(1) + "px 0px";
     }
   }
-  var bandResizeT = null;
+  function layoutBand() {
+    var ti = TABS.indexOf(S.tab); if (ti < 0) ti = 0;
+    if (bandPos === null) bandPos = ti;
+    placeBand(bandPos);
+  }
+  function setLift(on) {
+    var fab = $("tab-fab"); if (!fab) return;
+    fab.classList.toggle("lift", !!on);
+  }
+  function glideBand(to) {
+    var reduce = false;
+    try { reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
+    if (bandPos === null || bandPos === to || reduce) {
+      bandAnim = null; bandPos = to; setLift(false); placeBand(to); return;
+    }
+    /* press-lift (2.2.18): the circle floats UP a touch as the glide
+       starts and settles back as it lands — upward only, never a dip.
+       The lift is a 2.5px Y emphasis on the circle itself; the X glide
+       of circle + scoop stays locked to the one rAF driver above. */
+    setLift(true);
+    bandAnim = { from: bandPos, to: to, t0: performance.now() };
+    requestAnimationFrame(bandTick);
+  }
+  function bandTick(now) {
+    if (!bandAnim) return;
+    var t = (now - bandAnim.t0) / 350;
+    if (t >= 1) { bandPos = bandAnim.to; bandAnim = null; placeBand(bandPos); setLift(false); return; }
+    bandPos = bandAnim.from + (bandAnim.to - bandAnim.from) * bandEase(t);
+    placeBand(bandPos);
+    requestAnimationFrame(bandTick);
+  }
   window.addEventListener("resize", function () {
-    var b = $("tab-band"); if (!b) return;
-    b.classList.add("notrans"); layoutBand();
-    clearTimeout(bandResizeT);
-    bandResizeT = setTimeout(function () { b.classList.remove("notrans"); }, 80);
+    bandAnim = null; setLift(false);
+    var ti = TABS.indexOf(S.tab); if (ti < 0) ti = 0;
+    bandPos = ti; layoutBand();
   });
   function showTab(tab) {
     S.tab = tab; S.sub = null;
@@ -686,10 +730,8 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     btns.forEach(function (b) { b.classList.toggle("on", b.dataset.tab === tab); });
     var ti = TABS.indexOf(tab);
     if (ti >= 0) {
-      var tr = "translateX(" + ti * 100 + "%)";
-      var fs = $("tab-fab-slide");
-      if (fs) fs.style.transform = tr;
       layoutBand();
+      glideBand(ti);
       if (ti !== lastFabTab) {
         lastFabTab = ti;
         var fab = $("tab-fab"), ab = document.querySelector('#tabbar button[data-tab="' + tab + '"] svg');
